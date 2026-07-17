@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.*
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+coverage/
+.turbo/
+
+# Runtime files
+*.log
+logs/
+tmp/
+temp/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local databases and generated data
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+storage/
+uploads/
+exports/
+generated/
+
+# Secrets and certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Package managers
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
