@@ -2,7 +2,7 @@
 
 AI 内容增长 Agent 是一个独立 Web 系统，面向新品品牌和多产品团队，作为“AI 内容增长负责人”辅助完成市场判断、内容策略、素材生成、审核提醒和数据复盘。
 
-当前仓库状态：仅完成项目初始化、版本管理规则和技术规划，尚未开始产品功能开发。
+当前仓库状态：第一阶段 Foundation 正在 `feature/phase-1-foundation` 分支实现，目标是形成可运行、可测试、可扩展的中文后台系统骨架。
 
 ## 产品原则
 
@@ -74,6 +74,79 @@ AI 内容增长 Agent 是一个独立 Web 系统，面向新品品牌和多产�
 ## 当前版本
 
 - 初始化版本：`v0.0.1-initial`
-- 当前阶段：仓库初始化与技术规划
-- 下一阶段建议：`feature/phase-1-foundation`
+- 当前阶段：`feature/phase-1-foundation`
+- 下一稳定版本目标：`v0.1.0-foundation`
 
+## 本地开发
+
+前置条件：
+
+- Node.js。
+- pnpm。若本机没有全局 pnpm，可使用 `npx pnpm@10.13.1 ...` 运行下列命令。
+- Docker Desktop 与 Docker Compose，用于本地 PostgreSQL。
+
+首次启动：
+
+```bash
+cp .env.example .env
+```
+
+然后编辑 `.env`，填写本地 `POSTGRES_USER`、`POSTGRES_PASSWORD` 和 `DATABASE_URL`。不要把 `.env` 提交到 Git。
+
+安装依赖：
+
+```bash
+npx pnpm@10.13.1 install
+```
+
+启动 PostgreSQL：
+
+```bash
+npx pnpm@10.13.1 run docker:up
+```
+
+执行数据库迁移和 seed：
+
+```bash
+npx pnpm@10.13.1 run db:migrate
+npx pnpm@10.13.1 run db:seed
+```
+
+启动 Web：
+
+```bash
+npx pnpm@10.13.1 run dev
+```
+
+打开 `http://localhost:3000`。
+
+## 演示用户
+
+第一阶段使用本地演示用户模拟登录：
+
+- 邮箱：`demo@example.com`
+- Workspace：`演示增长团队`
+
+演示用户由 `prisma/seed.ts` 创建。页面不会把用户 ID 散落写死，而是通过统一 Workspace 上下文读取当前演示用户。
+
+## 第一阶段页面
+
+已规划的中文后台导航：
+
+- 今日工作台
+- 项目中心
+- 产品大脑
+- 内容日历
+- 素材包
+- 审核中心
+- 提醒中心
+- 数据复盘
+- 集成设置
+
+第一阶段具备基础操作的页面：
+
+- 今日工作台。
+- 项目中心。
+- 产品大脑。
+
+其他页面先建立路由和占位说明。

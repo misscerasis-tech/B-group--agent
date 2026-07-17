@@ -17,6 +17,15 @@ AI 内容增长 Agent 是独立 Web 系统，不依赖飞书作为业务底座�
 - 飞书集成：作为 Workspace 级 Integration Connector。
 - 测试：单元测试、数据模型测试、API 测试、关键用户流端到端测试。
 
+第一阶段实际落地：
+
+- Next.js App Router + TypeScript。
+- Docker Compose PostgreSQL。
+- Prisma schema、migration 和 seed。
+- 本地演示用户模拟登录。
+- 服务端 Workspace 上下文与数据隔离。
+- 中文后台工作台页面。
+
 ## 分层设计
 
 ```text
@@ -42,6 +51,36 @@ Optional Connectors: Feishu, AI Providers, Analytics Sources
 - 审核、提醒、任务和通知。
 - 数据复盘与指标沉淀。
 - Workspace 级飞书连接与迁移记录。
+
+## 第一阶段核心数据模型
+
+第一阶段实现：
+
+- `User`
+- `Workspace`
+- `WorkspaceMember`
+- `Project`
+- `Product`
+- `ProjectProduct`
+
+`Project` 和 `Product` 使用多对多关系，因为一个项目可能包含多个产品，一个产品也可能用于多个国家或 Campaign 项目。产品知识不应重复复制到不同项目。
+
+除 `User` 这类全局身份表外，核心业务表必须带有 `workspace_id` 或等价字段。第一阶段 Prisma 字段为 `workspaceId`，数据库迁移中对应列为 `"workspaceId"`。
+
+后续预留：
+
+- `Asset`
+- `ImageGenerationJob`
+- `ImageGenerationProviderConfig`
+- `ContentPlan`
+- `ContentPackage`
+- `ReviewTask`
+- `Reminder`
+- `MetricsSnapshot`
+- `IntegrationConnection`
+- `FeishuConnection`
+- `IntegrationMigration`
+- `AuditLog`
 
 ## 多 Workspace 原则
 
@@ -110,3 +149,13 @@ Optional Connectors: Feishu, AI Providers, Analytics Sources
 - 素材效果预测。
 - 自动 A/B 测试建议。
 
+## 图片生成抽象
+
+图片生成不得绑定单一供应商。第一阶段通过 `ImageGenerationProvider` 接口预留：
+
+- `template_composition`
+- `background_generation`
+- `image_edit`
+- `image_expand`
+
+正式产品图和 Logo 必须引用已审核真实 Asset，图片模型不能重绘、替换或改变产品结构。详细策略见 `docs/image-generation-strategy.md`。

@@ -39,6 +39,23 @@
 
 6. 在回滚分支运行测试和本地启动验证，确认无误后再决定是否重新部署该版本。
 
+## 回滚第一阶段开发分支
+
+如果还没有合并 `feature/phase-1-foundation`，回滚最简单：
+
+```bash
+git switch main
+git branch -D feature/phase-1-foundation
+```
+
+如果分支已推送到 GitHub，不建议直接删除远程分支，除非确认不再需要验收记录。
+
+如果要回到初始化版本：
+
+```bash
+git switch -c rollback/v0.0.1-initial v0.0.1-initial
+```
+
 ## 使用 Git Tag 恢复
 
 查看 Tag：
@@ -91,6 +108,18 @@ psql "$DATABASE_URL" < backups/backup-YYYYMMDD-HHMM.sql
 - 危险迁移必须先在测试环境演练。
 - 如果应用代码回滚到旧版本，数据库结构也必须与旧版本兼容。
 - 对象存储中的素材文件也需要保留版本或备份策略。
+- 第一阶段 Docker PostgreSQL 使用持久化 volume：`ai_content_growth_agent_pgdata`。
+- 删除 volume 会清空本地数据库，只能在确认已备份或只是本地演示数据时执行。
+
+本地开发环境完全重置示例：
+
+```bash
+docker compose down
+docker volume rm ai-content-growth-agent_ai_content_growth_agent_pgdata
+docker compose up -d db
+npx pnpm@10.13.1 run db:migrate
+npx pnpm@10.13.1 run db:seed
+```
 
 ## 环境变量处理
 
@@ -141,4 +170,3 @@ psql "$DATABASE_URL" < backups/backup-YYYYMMDD-HHMM.sql
 - 环境变量是否变化。
 - 部署时间。
 - 验证结果。
-

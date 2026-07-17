@@ -10,6 +10,7 @@ dist/
 build/
 coverage/
 .turbo/
+tsconfig.tsbuildinfo
 
 # Runtime files
 *.log
@@ -31,6 +32,7 @@ storage/
 uploads/
 exports/
 generated/
+backups/
 
 # Secrets and certificates
 *.pem
@@ -53,4 +55,3 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
