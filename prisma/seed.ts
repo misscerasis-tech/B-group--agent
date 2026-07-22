@@ -18,6 +18,8 @@ import {
   ProjectStatus,
   ReminderSeverity,
   ReminderStatus,
+  ReviewSubjectType,
+  ReviewTaskStatus,
   StrategyStatus,
   WorkspaceRole,
 } from "@prisma/client";
@@ -320,6 +322,58 @@ async function main() {
       },
     });
   }
+
+  await prisma.reviewTask.upsert({
+    where: { id: "demo-review-strategy-v1" },
+    update: {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      subjectType: ReviewSubjectType.PROJECT_STRATEGY,
+      subjectId: strategy.id,
+      title: "确认项目策略 v1",
+      description: "审核巴西首月市场、客群、平台渠道、内容方向和素材包频率。",
+      status: ReviewTaskStatus.PENDING,
+      reviewerUserId: null,
+      decisionNote: null,
+      decidedAt: null,
+    },
+    create: {
+      id: "demo-review-strategy-v1",
+      workspaceId: workspace.id,
+      projectId: project.id,
+      subjectType: ReviewSubjectType.PROJECT_STRATEGY,
+      subjectId: strategy.id,
+      title: "确认项目策略 v1",
+      description: "审核巴西首月市场、客群、平台渠道、内容方向和素材包频率。",
+      status: ReviewTaskStatus.PENDING,
+    },
+  });
+
+  await prisma.reviewTask.upsert({
+    where: { id: "demo-review-package-week-1" },
+    update: {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      subjectType: ReviewSubjectType.CONTENT_PACKAGE,
+      subjectId: contentPackage.id,
+      title: "审核素材包：巴西首月第 1 周素材包",
+      description: "检查素材包结构、文件清单、平台适配比例和品牌合规要求。",
+      status: ReviewTaskStatus.PENDING,
+      reviewerUserId: null,
+      decisionNote: null,
+      decidedAt: null,
+    },
+    create: {
+      id: "demo-review-package-week-1",
+      workspaceId: workspace.id,
+      projectId: project.id,
+      subjectType: ReviewSubjectType.CONTENT_PACKAGE,
+      subjectId: contentPackage.id,
+      title: "审核素材包：巴西首月第 1 周素材包",
+      description: "检查素材包结构、文件清单、平台适配比例和品牌合规要求。",
+      status: ReviewTaskStatus.PENDING,
+    },
+  });
 
   await prisma.reminder.upsert({
     where: { id: "demo-reminder-prize-rules" },

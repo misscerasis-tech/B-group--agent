@@ -16,6 +16,8 @@ import type {
   ProjectStatus,
   ReminderSeverity,
   ReminderStatus,
+  ReviewSubjectType,
+  ReviewTaskStatus,
   StrategyStatus,
   WorkspaceRole,
 } from "@prisma/client";
@@ -89,6 +91,20 @@ export const reminderStatusLabels: Record<ReminderStatus, string> = {
   OPEN: "待处理",
   DONE: "已完成",
   DISMISSED: "已忽略",
+};
+
+export const reviewTaskStatusLabels: Record<ReviewTaskStatus, string> = {
+  PENDING: "待审核",
+  APPROVED: "已通过",
+  CHANGES_REQUESTED: "需修改",
+  CANCELED: "已取消",
+};
+
+export const reviewSubjectTypeLabels: Record<ReviewSubjectType, string> = {
+  PRODUCT_FACT: "产品事实",
+  PROJECT_STRATEGY: "项目策略",
+  CONTENT_PACKAGE: "素材包",
+  ASSET: "素材",
 };
 
 export const agentOperationStatusLabels: Record<AgentOperationStatus, string> = {

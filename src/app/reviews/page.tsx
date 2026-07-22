@@ -1,12 +1,21 @@
 import Link from "next/link";
-import { ClipboardCheck, FileArchive, Target } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, FileArchive, RefreshCw, Target, XCircle } from "lucide-react";
+import {
+  createMissingReviewTasksAction,
+  decideReviewTaskAction,
+} from "@/app/actions/review-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getWorkspaceReviewQueue } from "@/lib/data/content-workspace";
 import { loadWorkspaceContextSafe } from "@/lib/page-context";
-import { contentPackageStatusLabels, strategyStatusLabels } from "@/lib/status";
+import {
+  contentPackageStatusLabels,
+  reviewSubjectTypeLabels,
+  reviewTaskStatusLabels,
+  strategyStatusLabels,
+} from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +33,11 @@ export default async function ReviewsPage() {
   try {
     const reviewQueue = await getWorkspaceReviewQueue(context.currentWorkspace.id);
     const empty =
-      reviewQueue.strategyDrafts.length === 0 && reviewQueue.packageReviews.length === 0;
+      reviewQueue.reviewTasks.length === 0 &&
+      reviewQueue.strategyDrafts.length === 0 &&
+      reviewQueue.packageReviews.length === 0 &&
+      reviewQueue.assetReviews.length === 0 &&
+      reviewQueue.factReviews.length === 0;
 
     return (
       <AppShell activePath="/reviews" context={context} returnTo="/reviews">
@@ -35,14 +48,77 @@ export default async function ReviewsPage() {
               当前先承接策略确认和素材包结构审核；未来飞书只作为简单审核入口。
             </p>
           </div>
-          <Link className="button" href="/b-agent">
-            进入 B组 Agent
-          </Link>
+          <div className="hero-actions">
+            <form action={createMissingReviewTasksAction} className="inline-form">
+              <button className="button" type="submit">
+                <RefreshCw size={16} aria-hidden="true" />
+                生成审核任务
+              </button>
+            </form>
+            <Link className="button secondary" href="/b-agent">
+              进入 B组 Agent
+            </Link>
+          </div>
         </section>
+
+        {reviewQueue.reviewTasks.length > 0 ? (
+          <section className="panel">
+            <div className="section-title-row">
+              <h3>待处理审核任务</h3>
+              <StatusBadge label={`${reviewQueue.reviewTasks.length} 条`} tone="warning" />
+            </div>
+            <div className="review-list">
+              {reviewQueue.reviewTasks.map((task) => (
+                <article className="review-item" key={task.id}>
+                  <ClipboardCheck size={18} aria-hidden="true" />
+                  <div>
+                    <strong>{task.title}</strong>
+                    <p>{task.description ?? "暂无审核说明。"}</p>
+                    <small>
+                      {reviewSubjectTypeLabels[task.subjectType]} ·{" "}
+                      {task.project ? task.project.name : "Workspace 级"} ·{" "}
+                      {reviewTaskStatusLabels[task.status]}
+                    </small>
+                    <form action={decideReviewTaskAction} className="form compact">
+                      <input name="taskId" type="hidden" value={task.id} />
+                      <label className="form-row">
+                        <span className="field-label">审核备注</span>
+                        <input
+                          name="decisionNote"
+                          placeholder="可填写通过依据、修改意见或风险点"
+                          type="text"
+                        />
+                      </label>
+                      <div className="hero-actions">
+                        <button className="button" name="decision" type="submit" value="APPROVED">
+                          <CheckCircle2 size={16} aria-hidden="true" />
+                          通过
+                        </button>
+                        <button
+                          className="button secondary"
+                          name="decision"
+                          type="submit"
+                          value="CHANGES_REQUESTED"
+                        >
+                          <XCircle size={16} aria-hidden="true" />
+                          要求修改
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                  <StatusBadge label={reviewTaskStatusLabels[task.status]} tone="warning" />
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {empty ? (
           <section className="panel">
-            <EmptyState title="暂无待审核事项" description="策略草案或素材包生成后会出现在这里。" />
+            <EmptyState
+              title="暂无待审核事项"
+              description="策略草案、素材包、素材或产品事实需要审核时会出现在这里。"
+            />
           </section>
         ) : (
           <section className="review-board">
@@ -99,8 +175,91 @@ export default async function ReviewsPage() {
                 ))}
               </div>
             </div>
+
+            <div className="panel">
+              <div className="section-title-row">
+                <h3>素材来源审核</h3>
+                <StatusBadge label={`${reviewQueue.assetReviews.length} 条`} tone="warning" />
+              </div>
+              <div className="review-list">
+                {reviewQueue.assetReviews.length > 0 ? (
+                  reviewQueue.assetReviews.map((asset) => (
+                    <Link className="review-item" href="/assets" key={asset.id}>
+                      <ClipboardCheck size={18} aria-hidden="true" />
+                      <div>
+                        <strong>{asset.name}</strong>
+                        <p>
+                          {asset.product?.name ?? "未关联产品"} ·{" "}
+                          {asset.originalFilename ?? "无原始文件名"}
+                        </p>
+                      </div>
+                      <StatusBadge label="待审核" tone="warning" />
+                    </Link>
+                  ))
+                ) : (
+                  <p className="muted">暂无待审核素材。</p>
+                )}
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="section-title-row">
+                <h3>产品事实复核</h3>
+                <StatusBadge label={`${reviewQueue.factReviews.length} 条`} tone="neutral" />
+              </div>
+              <div className="review-list">
+                {reviewQueue.factReviews.length > 0 ? (
+                  reviewQueue.factReviews.map((fact) => (
+                    <Link
+                      className="review-item"
+                      href={`/brain/products/${fact.productId}`}
+                      key={fact.id}
+                    >
+                      <Target size={18} aria-hidden="true" />
+                      <div>
+                        <strong>{fact.label}</strong>
+                        <p>
+                          {fact.product.name} · {fact.value}
+                        </p>
+                      </div>
+                      <StatusBadge label="需复核" tone="warning" />
+                    </Link>
+                  ))
+                ) : (
+                  <p className="muted">暂无待复核事实。</p>
+                )}
+              </div>
+            </div>
           </section>
         )}
+
+        {reviewQueue.completedReviewTasks.length > 0 ? (
+          <section className="panel" style={{ marginTop: 16 }}>
+            <div className="section-title-row">
+              <h3>最近审核记录</h3>
+              <StatusBadge label={`${reviewQueue.completedReviewTasks.length} 条`} tone="success" />
+            </div>
+            <div className="review-list">
+              {reviewQueue.completedReviewTasks.map((task) => (
+                <article className="review-item" key={task.id}>
+                  <CheckCircle2 size={18} aria-hidden="true" />
+                  <div>
+                    <strong>{task.title}</strong>
+                    <p>{task.decisionNote ?? task.description ?? "暂无审核备注。"}</p>
+                    <small>
+                      {reviewSubjectTypeLabels[task.subjectType]} ·{" "}
+                      {task.reviewer ? task.reviewer.name : "未记录审核人"}
+                    </small>
+                  </div>
+                  <StatusBadge
+                    label={reviewTaskStatusLabels[task.status]}
+                    tone={task.status === "APPROVED" ? "success" : "warning"}
+                  />
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="demo-footer-panel" style={{ marginTop: 16 }}>
           <ClipboardCheck size={20} aria-hidden="true" />

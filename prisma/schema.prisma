@@ -66,6 +66,20 @@ enum PackageFileStatus {
   APPROVED
 }
 
+enum ReviewTaskStatus {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+  CANCELED
+}
+
+enum ReviewSubjectType {
+  PRODUCT_FACT
+  PROJECT_STRATEGY
+  CONTENT_PACKAGE
+  ASSET
+}
+
 enum ReminderSeverity {
   INFO
   WARNING
@@ -139,13 +153,14 @@ enum IntegrationStatus {
 }
 
 model User {
-  id          String            @id @default(cuid())
-  name        String
-  email       String            @unique
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  memberships WorkspaceMember[]
-  changeLogs  ChangeLog[]
+  id              String            @id @default(cuid())
+  name            String
+  email           String            @unique
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  memberships     WorkspaceMember[]
+  changeLogs      ChangeLog[]
+  assignedReviews ReviewTask[]      @relation("ReviewTaskReviewer")
 }
 
 model Workspace {
@@ -162,6 +177,7 @@ model Workspace {
   projectStrategies      ProjectStrategy[]
   contentPlanItems       ContentPlanItem[]
   contentPackages        ContentPackage[]
+  reviewTasks            ReviewTask[]
   reminders              Reminder[]
   conversations          AgentConversation[]
   messages               AgentMessage[]
@@ -202,6 +218,7 @@ model Project {
   strategies          ProjectStrategy[]
   contentPlanItems    ContentPlanItem[]
   contentPackages     ContentPackage[]
+  reviewTasks         ReviewTask[]
   reminders           Reminder[]
   conversations       AgentConversation[]
   operations          AgentOperation[]
@@ -342,6 +359,30 @@ model ContentPackageFile {
 
   @@index([contentPackageId, status])
   @@index([assetId])
+}
+
+model ReviewTask {
+  id             String            @id @default(cuid())
+  workspaceId    String
+  projectId      String?
+  subjectType    ReviewSubjectType
+  subjectId      String
+  title          String
+  description    String?
+  status         ReviewTaskStatus  @default(PENDING)
+  reviewerUserId String?
+  decisionNote   String?
+  dueAt          DateTime?
+  decidedAt      DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project        Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reviewer       User?             @relation("ReviewTaskReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, projectId])
+  @@index([reviewerUserId])
 }
 
 model Reminder {

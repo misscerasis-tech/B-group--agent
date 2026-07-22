@@ -83,6 +83,7 @@ B 组工作助手已新增：
 - `ProjectStrategy`：项目策略，支持目标市场、客群、渠道、内容方向、素材包频率、确认状态和版本记录。
 - `ContentPlanItem`：首月内容计划项。
 - `ContentPackage` 与 `ContentPackageFile`：素材包结构和文件状态。
+- `ReviewTask`：策略、素材包、素材和产品事实的 Web-first 审核任务。
 - `Reminder`：基于项目风险和缺口生成的提醒。
 - `AgentConversation` 与 `AgentMessage`：项目级 Agent 对话。
 - `AgentOperation`：自然语言转换后的结构化操作。
@@ -95,7 +96,6 @@ B 组工作助手已新增：
 
 仍预留：
 
-- `ReviewTask`
 - `MetricsSnapshot`
 - `FeishuConnection`
 - `AuditLog`
