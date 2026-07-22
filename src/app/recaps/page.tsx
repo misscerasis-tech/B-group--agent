@@ -50,6 +50,15 @@ export default async function RecapsPage() {
           <MetricCard label="花费" value={formatMoney(recap.metrics.spendCents)} />
         </section>
 
+        <section className="grid three" style={{ marginTop: 16 }}>
+          <MetricCard label="点击率 CTR" value={formatPercent(recap.metrics.clickRate)} />
+          <MetricCard label="点击转化率" value={formatPercent(recap.metrics.conversionRate)} />
+          <MetricCard
+            label="单次转化成本"
+            value={formatMoney(recap.metrics.costPerConversionCents)}
+          />
+        </section>
+
         <section className="grid four" style={{ marginTop: 16 }}>
           <MetricCard label="指标快照" value={recap.metrics.metricSnapshots} />
           <MetricCard label="素材包草稿" value={recap.metrics.draftPackages} />
@@ -206,4 +215,8 @@ function MetricCard({ label, value }: { label: string; value: number | string })
 
 function formatMoney(spendCents: number) {
   return `¥${(spendCents / 100).toFixed(2)}`;
+}
+
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(2)}%`;
 }

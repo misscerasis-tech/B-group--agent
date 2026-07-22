@@ -113,6 +113,11 @@ export async function getWorkspaceRecapSummary(workspaceId: string) {
     }),
   ]);
 
+  const impressions = metricsAggregate._sum.impressions ?? 0;
+  const clicks = metricsAggregate._sum.clicks ?? 0;
+  const conversions = metricsAggregate._sum.conversions ?? 0;
+  const spendCents = metricsAggregate._sum.spendCents ?? 0;
+
   return {
     metrics: {
       confirmedStrategies,
@@ -126,10 +131,13 @@ export async function getWorkspaceRecapSummary(workspaceId: string) {
       appliedOperations,
       pendingOperations,
       metricSnapshots: metricsAggregate._count._all,
-      impressions: metricsAggregate._sum.impressions ?? 0,
-      clicks: metricsAggregate._sum.clicks ?? 0,
-      conversions: metricsAggregate._sum.conversions ?? 0,
-      spendCents: metricsAggregate._sum.spendCents ?? 0,
+      impressions,
+      clicks,
+      conversions,
+      spendCents,
+      clickRate: impressions > 0 ? clicks / impressions : 0,
+      conversionRate: clicks > 0 ? conversions / clicks : 0,
+      costPerConversionCents: conversions > 0 ? Math.round(spendCents / conversions) : 0,
     },
     suggestions: buildRecapSuggestions({
       draftStrategies,

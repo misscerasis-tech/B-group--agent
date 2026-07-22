@@ -40,6 +40,17 @@ function readSpendCents(formData: FormData) {
 export async function createMetricsSnapshotAction(formData: FormData) {
   const context = await getWorkspaceContext();
   const notes = String(formData.get("notes") ?? "").trim();
+  const impressions = readNonNegativeInteger(formData, "impressions", "曝光");
+  const clicks = readNonNegativeInteger(formData, "clicks", "点击");
+  const conversions = readNonNegativeInteger(formData, "conversions", "转化");
+
+  if (clicks > impressions) {
+    throw new Error("点击不能大于曝光。");
+  }
+
+  if (conversions > clicks) {
+    throw new Error("转化不能大于点击。");
+  }
 
   await createMetricsSnapshot({
     workspaceId: context.currentWorkspace.id,
@@ -47,9 +58,9 @@ export async function createMetricsSnapshotAction(formData: FormData) {
     projectId: readRequiredText(formData, "projectId", "项目"),
     period: readRequiredText(formData, "period", "周期"),
     channel: readRequiredText(formData, "channel", "渠道"),
-    impressions: readNonNegativeInteger(formData, "impressions", "曝光"),
-    clicks: readNonNegativeInteger(formData, "clicks", "点击"),
-    conversions: readNonNegativeInteger(formData, "conversions", "转化"),
+    impressions,
+    clicks,
+    conversions,
     spendCents: readSpendCents(formData),
     notes: notes.length > 0 ? notes : undefined,
   });
