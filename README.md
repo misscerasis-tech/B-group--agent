@@ -133,6 +133,7 @@ npx pnpm@10.13.1 run dev
 
 已规划的中文后台导航：
 
+- B组 Agent
 - 今日工作台
 - 项目中心
 - 产品大脑
@@ -150,3 +151,14 @@ npx pnpm@10.13.1 run dev
 - 产品大脑。
 
 其他页面先建立路由和占位说明。
+
+## AI赛 ABC 三组入口
+
+为避免 A/B/C 三组页面互相覆盖，固定入口如下：
+
+- `/agent`：分组选择入口。
+- `/a-agent`：A 组 Agent 独立入口。
+- `/b-agent`：B 组 AI 内容增长 Agent 独立入口。
+- `/c-agent`：C 组 Agent 独立入口。
+
+当前仓库当前分支以 B 组为主。详细规则见 `docs/group-routing.md`。

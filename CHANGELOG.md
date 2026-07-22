@@ -8,6 +8,9 @@
 
 ### Added
 
+- 增加 AI 赛 ABC 三组路由拆分规则，避免 `/agent` 被单一小组覆盖。
+- 增加 B 组固定入口 `/b-agent`。
+- 增加通用分组入口 `/agent`。
 - 搭建 Next.js + TypeScript 中文后台系统骨架。
 - 增加左侧导航、顶部 Workspace 切换和右侧内容区。
 - 增加 Docker PostgreSQL 本地开发配置。

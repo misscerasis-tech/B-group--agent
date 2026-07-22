@@ -24,6 +24,7 @@ type AppShellProps = {
 };
 
 const navItems = [
+  { href: "/b-agent", label: "B组 Agent", icon: Sparkles },
   { href: "/dashboard", label: "今日工作台", icon: LayoutDashboard },
   { href: "/projects", label: "项目中心", icon: FolderKanban },
   { href: "/brain", label: "产品大脑", icon: Boxes },
@@ -123,4 +124,3 @@ export function AppShell({
     </div>
   );
 }
-
