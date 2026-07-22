@@ -90,7 +90,7 @@ B 组工作助手已新增：
 - `AgentConversation` 与 `AgentMessage`：项目级 Agent 对话。
 - `AgentOperation`：自然语言转换后的结构化操作。
 - `ChangeLog`：人工确认、手工 CRUD、指令应用、事实生成和生成动作的变更记录。
-- `Asset`：素材库，保存真实产品图、官方 Logo、资料、参考图、生成图和导出文件；上传时必须服务端校验关联项目/产品属于当前 Workspace，并自动进入 Web 审核任务。
+- `Asset`：素材库，保存真实产品图、官方 Logo、资料、参考图、生成图和导出文件；上传时必须服务端校验文件大小、格式和关联项目/产品属于当前 Workspace，并自动进入 Web 审核任务。
 - `ImageGenerationProviderConfig`：Workspace 级图片生成候选供应商配置，不保存 seed 密钥。
 - `ImageGenerationJob`：图片生成/模板合成任务，保存 provider、model、promptVersion、sourceAssetIds、generationMode、aspectRatio、status 和 error。
 - `IntegrationConnection`：Workspace 级可插拔集成连接，当前支持飞书占位连接。

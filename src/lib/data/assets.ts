@@ -14,6 +14,21 @@ import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/workspace-scope";
 
 const LOCAL_ASSET_ROOT = "storage/assets";
+const MAX_ASSET_UPLOAD_BYTES = 20 * 1024 * 1024;
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"]);
+const DOCUMENT_EXTENSIONS = new Set([
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".txt",
+  ".md",
+  ".csv",
+  ".xls",
+  ".xlsx",
+  ".ppt",
+  ".pptx",
+]);
+const EXPORT_EXTENSIONS = new Set([".zip", ".pdf", ".docx", ".xlsx", ".txt", ".md", ".csv"]);
 
 export async function listWorkspaceAssets(workspaceId: string) {
   return prisma.asset.findMany({
@@ -152,10 +167,7 @@ export async function createUploadedAsset(input: {
   kind: AssetKind;
   file: File;
 }) {
-  if (input.file.size <= 0) {
-    throw new Error("请选择要上传的素材文件。");
-  }
-
+  validateAssetFile(input.kind, input.file);
   await validateAssetRelations(input.workspaceId, input.projectId, input.productId);
 
   const buffer = Buffer.from(await input.file.arrayBuffer());
@@ -223,6 +235,77 @@ export async function createUploadedAsset(input: {
 
     return asset;
   });
+}
+
+export function validateAssetFile(
+  kind: AssetKind,
+  file: {
+    name: string;
+    type: string;
+    size: number;
+  },
+) {
+  if (file.size <= 0) {
+    throw new Error("请选择要上传的素材文件。");
+  }
+
+  if (file.size > MAX_ASSET_UPLOAD_BYTES) {
+    throw new Error("素材文件不能超过 20MB。");
+  }
+
+  const extension = path.extname(file.name).toLowerCase();
+  const mimeType = file.type.toLowerCase();
+
+  if (isImageAssetKind(kind) && !isAllowedImageFile(extension, mimeType)) {
+    throw new Error("真实产品图、官方 Logo 和参考图必须上传图片文件。");
+  }
+
+  if (kind === AssetKind.DOCUMENT && !isAllowedDocumentFile(extension, mimeType)) {
+    throw new Error("产品资料仅支持 PDF、Office、TXT、Markdown 或表格文件。");
+  }
+
+  if (kind === AssetKind.EXPORT_FILE && !isAllowedExportFile(extension, mimeType)) {
+    throw new Error("导出文件仅支持 ZIP、PDF、Office、TXT、Markdown 或表格文件。");
+  }
+}
+
+function isImageAssetKind(kind: AssetKind) {
+  return (
+    kind === AssetKind.PRODUCT_IMAGE ||
+    kind === AssetKind.LOGO ||
+    kind === AssetKind.REFERENCE_IMAGE ||
+    kind === AssetKind.GENERATED_IMAGE
+  );
+}
+
+function isAllowedImageFile(extension: string, mimeType: string) {
+  return mimeType.startsWith("image/") || IMAGE_EXTENSIONS.has(extension);
+}
+
+function isAllowedDocumentFile(extension: string, mimeType: string) {
+  return (
+    DOCUMENT_EXTENSIONS.has(extension) ||
+    mimeType === "application/pdf" ||
+    mimeType === "text/plain" ||
+    mimeType === "text/markdown" ||
+    mimeType === "text/csv" ||
+    mimeType.includes("officedocument") ||
+    mimeType.includes("msword") ||
+    mimeType.includes("ms-excel") ||
+    mimeType.includes("ms-powerpoint")
+  );
+}
+
+function isAllowedExportFile(extension: string, mimeType: string) {
+  return (
+    EXPORT_EXTENSIONS.has(extension) ||
+    mimeType === "application/zip" ||
+    mimeType === "application/pdf" ||
+    mimeType === "text/plain" ||
+    mimeType === "text/markdown" ||
+    mimeType === "text/csv" ||
+    mimeType.includes("officedocument")
+  );
 }
 
 async function validateAssetProjectFit(
