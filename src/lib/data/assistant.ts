@@ -53,6 +53,7 @@ export async function getAssistantState(workspaceId: string, projectId?: string)
       linkedProducts: [],
       productFacts: [],
       strategy: null,
+      strategyHistory: [],
       planItems: [],
       contentPackages: [],
       reminders: [],
@@ -68,6 +69,7 @@ export async function getAssistantState(workspaceId: string, projectId?: string)
   const [
     productFacts,
     strategy,
+    strategyHistory,
     planItems,
     contentPackages,
     reminders,
@@ -100,6 +102,23 @@ export async function getAssistantState(workspaceId: string, projectId?: string)
           updatedAt: "desc",
         },
       ],
+    }),
+    prisma.projectStrategy.findMany({
+      where: scopedWhere(workspaceId, {
+        projectId: selectedProject.id,
+        status: {
+          not: StrategyStatus.ARCHIVED,
+        },
+      }) as Prisma.ProjectStrategyWhereInput,
+      orderBy: [
+        {
+          version: "desc",
+        },
+        {
+          updatedAt: "desc",
+        },
+      ],
+      take: 8,
     }),
     prisma.contentPlanItem.findMany({
       where: scopedWhere(workspaceId, {
@@ -185,6 +204,7 @@ export async function getAssistantState(workspaceId: string, projectId?: string)
     linkedProducts,
     productFacts,
     strategy,
+    strategyHistory,
     planItems,
     contentPackages,
     reminders,

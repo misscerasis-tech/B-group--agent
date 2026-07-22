@@ -277,6 +277,32 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                         </article>
                       </div>
 
+                      {state.strategyHistory.length > 1 ? (
+                        <div className="operation-list">
+                          <h4>策略版本历史</h4>
+                          {state.strategyHistory.map((strategyVersion) => (
+                            <article className="operation-item" key={strategyVersion.id}>
+                              <header>
+                                <strong>v{strategyVersion.version}</strong>
+                                <StatusBadge
+                                  label={strategyStatusLabels[strategyVersion.status]}
+                                  tone={
+                                    strategyVersion.status === "CONFIRMED"
+                                      ? "success"
+                                      : "warning"
+                                  }
+                                />
+                              </header>
+                              <p>
+                                {strategyVersion.targetMarkets.join("、") || "待补充市场"} ·{" "}
+                                {strategyVersion.channels.join(" + ") || "待补充渠道"} ·{" "}
+                                {contentFrequencyLabels[strategyVersion.packageFrequency]}
+                              </p>
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
+
                       {state.strategy.status === "DRAFT" ? (
                         <form action={confirmProjectStrategyAction} className="inline-form">
                           <input name="projectId" type="hidden" value={selectedProject.id} />
