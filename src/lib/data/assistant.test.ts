@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => {
     },
     productFact: {
       create: vi.fn(),
+      update: vi.fn(),
     },
     contentPackage: {
       count: vi.fn(),
@@ -346,6 +347,64 @@ describe("generateStarterPlan", () => {
         entityId: "fact-created-from-agent",
         action: "agent_product_fact_created",
         summary: "新增产品事实：核心卖点=24小时保温",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("infers multiple product facts from pasted material for the linked product", async () => {
+    mocks.tx.projectProduct.count.mockResolvedValue(1);
+    mocks.tx.projectProduct.findFirst.mockResolvedValue({
+      projectId: "project-1",
+      productId: "product-1",
+      product: {
+        id: "product-1",
+        workspaceId: "workspace-1",
+        name: "Aurora Cup",
+        description: "智能温显保温杯，500ml，不锈钢。",
+        facts: [],
+      },
+    });
+    mocks.tx.productFact.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: `fact-${data.label}`,
+        ...data,
+      }),
+    );
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "请从产品资料提取产品事实：智能温显保温杯，500ml，不锈钢，适合通勤和健身，24小时保温，防漏便携。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.productFact.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        productId: "product-1",
+        label: "核心卖点",
+        value: expect.stringContaining("温度显示"),
+        source: "B组 Agent 中文资料提取",
+        status: "NEEDS_REVIEW",
+      }),
+    });
+    expect(mocks.tx.productFact.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        label: "规格参数",
+        value: expect.stringContaining("容量 500ml"),
+      }),
+    });
+    expect(mocks.tx.productFact.create).toHaveBeenCalledTimes(8);
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ProductFact",
+        entityId: "product-1",
+        action: "agent_product_facts_inferred",
+        summary: expect.stringContaining("新增 8 条"),
         actorUserId: "user-1",
       }),
     });

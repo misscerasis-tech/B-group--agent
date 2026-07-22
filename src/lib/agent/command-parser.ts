@@ -45,6 +45,14 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "infer_product_facts_from_text";
+      value: {
+        sourceText: string;
+        source: string;
+      };
+      label: string;
+    }
+  | {
       type: "complete_reminder";
       value: {
         keyword: string;
@@ -200,6 +208,8 @@ const PRODUCT_FACT_LABELS: Record<string, string> = {
   合规: "合规注意",
 };
 
+const MAX_PRODUCT_FACT_SOURCE_TEXT_LENGTH = 2000;
+
 function compactText(text: string) {
   return text.replace(/\s+/g, "");
 }
@@ -339,6 +349,74 @@ function parseProductFactOperation(text: string): ParsedAgentOperation | null {
     },
     label: `新增产品事实：${label}=${factValue}`,
   };
+}
+
+function parseInferProductFactsFromTextOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(产品资料|产品介绍|官方资料|产品brief|brief|Brief)/.test(text) ||
+    !/(提取|抽取|整理|生成|识别).*(产品事实|事实)/.test(text)
+  ) {
+    return null;
+  }
+
+  const sourceText = extractProductFactSourceText(text);
+
+  if (!sourceText || sourceText.length < 8) {
+    return null;
+  }
+
+  const truncatedSourceText = sourceText.slice(0, MAX_PRODUCT_FACT_SOURCE_TEXT_LENGTH);
+  const preview =
+    truncatedSourceText.length > 42
+      ? `${truncatedSourceText.slice(0, 42)}...`
+      : truncatedSourceText;
+
+  return {
+    type: "infer_product_facts_from_text",
+    value: {
+      sourceText: truncatedSourceText,
+      source: "B组 Agent 中文资料提取",
+    },
+    label: `从产品资料提取事实：${preview}`,
+  };
+}
+
+function extractProductFactSourceText(text: string) {
+  const afterDelimiter = text.match(
+    /(?:产品资料|产品介绍|官方资料|产品brief|brief|Brief)\s*[:：]\s*([\s\S]+)/,
+  );
+
+  if (afterDelimiter?.[1]) {
+    return cleanProductFactSourceText(afterDelimiter[1]);
+  }
+
+  const afterActionDelimiter = text.match(
+    /(?:提取|抽取|整理|生成|识别)(?:产品事实|事实)\s*[:：]\s*([\s\S]+)/,
+  );
+
+  if (afterActionDelimiter?.[1]) {
+    return cleanProductFactSourceText(afterActionDelimiter[1]);
+  }
+
+  const beforeAction = text.match(
+    /(?:从|根据)\s*([\s\S]{8,})\s*(?:提取|抽取|整理|生成|识别)(?:产品事实|事实)/,
+  );
+
+  if (beforeAction?.[1]) {
+    return cleanProductFactSourceText(beforeAction[1]);
+  }
+
+  return null;
+}
+
+function cleanProductFactSourceText(value: string) {
+  return value
+    .replace(/请|麻烦|帮我/g, "")
+    .replace(/提取|抽取|整理|生成|识别/g, "")
+    .replace(/产品事实|事实/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[：:，,。；;\s]+/, "")
+    .trim();
 }
 
 function parseCompleteReminderOperation(text: string): ParsedAgentOperation | null {
@@ -808,6 +886,18 @@ function summarizeOperations(operations: ParsedAgentOperation[]) {
 export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const text = rawText.trim();
   const operations: ParsedAgentOperation[] = [];
+  const inferredProductFactsOperation = parseInferProductFactsFromTextOperation(text);
+
+  if (inferredProductFactsOperation) {
+    operations.push(inferredProductFactsOperation);
+
+    return {
+      rawText: text,
+      operations,
+      summary: summarizeOperations(operations),
+      confidence: "high",
+    };
+  }
 
   for (const [market, aliases] of MARKET_ALIASES) {
     if (includesAny(text, aliases)) {
@@ -986,6 +1076,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     (operation) =>
       operation.type === "complete_reminder" ||
       operation.type === "create_product_fact" ||
+      operation.type === "infer_product_facts_from_text" ||
       operation.type === "create_content_package" ||
       operation.type === "submit_content_package_review" ||
       operation.type === "decide_content_package_review",

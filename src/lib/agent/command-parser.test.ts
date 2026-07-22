@@ -118,6 +118,24 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts product fact inference from pasted Chinese product material", () => {
+    const parsed = parseAgentCommand(
+      "请从产品资料提取产品事实：智能温显保温杯，500ml，不锈钢，适合通勤和健身，24小时保温，防漏便携。",
+    );
+
+    expect(parsed.operations).toEqual([
+      expect.objectContaining({
+        type: "infer_product_facts_from_text",
+        value: {
+          sourceText: "智能温显保温杯，500ml，不锈钢，适合通勤和健身，24小时保温，防漏便携。",
+          source: "B组 Agent 中文资料提取",
+        },
+        label: expect.stringContaining("从产品资料提取事实：智能温显保温杯"),
+      }),
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts starter plan generation requests", () => {
     const parsed = parseAgentCommand("请生成首月计划和第一份素材包结构。");
 

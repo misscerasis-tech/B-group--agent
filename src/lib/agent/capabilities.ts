@@ -50,6 +50,15 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: true,
   },
   {
+    key: "product_fact_infer_text",
+    category: "product_brain",
+    title: "从中文资料提取产品事实",
+    example:
+      "请从产品资料提取产品事实：智能温显保温杯，500ml，不锈钢，适合通勤和健身，24小时保温。",
+    writesTo: ["ProductFact", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
     key: "reminder_create",
     category: "reminder",
     title: "创建项目提醒",

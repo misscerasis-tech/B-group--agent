@@ -16,6 +16,7 @@ import {
 } from "@prisma/client";
 import type { ParsedAgentOperation } from "@/lib/agent/command-parser";
 import { getConfiguredAgentTextProvider } from "@/lib/agent/provider";
+import { inferProductFactsFromText } from "@/lib/product-facts/extractor";
 import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/workspace-scope";
 
@@ -913,6 +914,19 @@ async function findCompletionTargetWarnings(
         warnings.push("当前项目还没有关联产品，无法写入产品事实");
       }
     }
+
+    if (operation.type === "infer_product_facts_from_text") {
+      const linkedProductCount = await tx.projectProduct.count({
+        where: buildProjectProductWhere({
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+        }),
+      });
+
+      if (linkedProductCount === 0) {
+        warnings.push("当前项目还没有关联产品，无法从产品资料提取事实");
+      }
+    }
   }
 
   return warnings;
@@ -1386,7 +1400,11 @@ async function applyProductFactOperations(
       projectId: input.projectId,
     }),
     include: {
-      product: true,
+      product: {
+        include: {
+          facts: true,
+        },
+      },
     },
     orderBy: {
       createdAt: "asc",
@@ -1423,6 +1441,85 @@ async function applyProductFactOperations(
         action: "agent_product_fact_created",
         summary: operation.label,
         after: productFactToJson(productFact),
+        actorUserId: input.userId,
+      },
+    });
+  }
+
+  for (const operation of input.operations) {
+    if (operation.type !== "infer_product_facts_from_text") {
+      continue;
+    }
+
+    const inferredFacts = inferProductFactsFromText({
+      productName: projectProduct.product.name,
+      description: projectProduct.product.description,
+      sourceText: operation.value.sourceText,
+    });
+    const existingFactsByLabel = new Map(
+      projectProduct.product.facts.map((fact) => [fact.label, fact]),
+    );
+    const result = {
+      created: 0,
+      updated: 0,
+      skippedConfirmed: 0,
+    };
+
+    for (const fact of inferredFacts) {
+      const existingFact = existingFactsByLabel.get(fact.label);
+
+      if (!existingFact) {
+        const createdFact = await tx.productFact.create({
+          data: {
+            workspaceId: input.workspaceId,
+            productId: projectProduct.productId,
+            label: fact.label,
+            value: fact.value,
+            source: operation.value.source,
+            confidence: fact.confidence,
+            status: ProductFactStatus.NEEDS_REVIEW,
+          },
+        });
+
+        existingFactsByLabel.set(createdFact.label, createdFact);
+        result.created += 1;
+        continue;
+      }
+
+      if (existingFact.status === ProductFactStatus.CONFIRMED) {
+        result.skippedConfirmed += 1;
+        continue;
+      }
+
+      const updatedFact = await tx.productFact.update({
+        where: {
+          id: existingFact.id,
+        },
+        data: {
+          value: fact.value,
+          source: operation.value.source,
+          confidence: fact.confidence,
+          status: ProductFactStatus.NEEDS_REVIEW,
+        },
+      });
+
+      existingFactsByLabel.set(updatedFact.label, updatedFact);
+      result.updated += 1;
+    }
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ProductFact",
+        entityId: projectProduct.productId,
+        action: "agent_product_facts_inferred",
+        summary: `${operation.label} · 新增 ${result.created} 条，更新 ${result.updated} 条，跳过已确认 ${result.skippedConfirmed} 条`,
+        after: {
+          source: operation.value.source,
+          sourceTextPreview: operation.value.sourceText.slice(0, 160),
+          ...result,
+        },
         actorUserId: input.userId,
       },
     });
@@ -2068,7 +2165,10 @@ function isReminderOperation(operation: ParsedAgentOperation) {
 }
 
 function isProductFactOperation(operation: ParsedAgentOperation) {
-  return operation.type === "create_product_fact";
+  return (
+    operation.type === "create_product_fact" ||
+    operation.type === "infer_product_facts_from_text"
+  );
 }
 
 function isStarterPlanOperation(operation: ParsedAgentOperation) {
@@ -2171,6 +2271,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         type,
         value,
         label: label || `新增产品事实：${value.label}=${value.value}`,
+      });
+      continue;
+    }
+
+    if (type === "infer_product_facts_from_text" && isProductFactSourceValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `从产品资料提取事实：${value.sourceText.slice(0, 42)}`,
       });
       continue;
     }
@@ -2356,6 +2465,23 @@ function isProductFactValue(value: unknown): value is Extract<
     record.label.trim().length > 0 &&
     typeof record.value === "string" &&
     record.value.trim().length > 0 &&
+    typeof record.source === "string"
+  );
+}
+
+function isProductFactSourceValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "infer_product_facts_from_text" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    typeof record.sourceText === "string" &&
+    record.sourceText.trim().length >= 8 &&
     typeof record.source === "string"
   );
 }
