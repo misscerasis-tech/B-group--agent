@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildContentPackageExportFiles } from "./package-export";
 import { buildZipArchive } from "./zip";
 
 describe("package export zip builder", () => {
@@ -17,5 +18,117 @@ describe("package export zip builder", () => {
     expect(zip.subarray(0, 4).readUInt32LE(0)).toBe(0x04034b50);
     expect(zip.includes(Buffer.from("README-素材包说明.md", "utf8"))).toBe(true);
     expect(zip.subarray(zip.length - 22, zip.length - 18).readUInt32LE(0)).toBe(0x06054b50);
+  });
+});
+
+describe("buildContentPackageExportFiles", () => {
+  it("includes linked asset details in the readme and manifest", () => {
+    const files = buildContentPackageExportFiles({
+      contentPackage: {
+        id: "package-1",
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        strategyId: "strategy-1",
+        name: "首月第一份素材包",
+        period: "首月第 1 周",
+        frequency: "WEEKLY",
+        status: "DRAFT",
+        summary: "首周素材包。",
+        createdAt: new Date("2026-07-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+        strategy: {
+          id: "strategy-1",
+          workspaceId: "workspace-1",
+          projectId: "project-1",
+          version: 1,
+          status: "CONFIRMED",
+          targetMarkets: ["巴西"],
+          audiences: ["礼品购买者"],
+          channels: ["TikTok"],
+          contentDirections: ["世界杯"],
+          packageFrequency: "WEEKLY",
+          positioning: "新品定位",
+          rationale: "策略依据",
+          confirmedAt: new Date("2026-07-01T00:00:00.000Z"),
+          createdAt: new Date("2026-07-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+        },
+        project: {
+          id: "project-1",
+          workspaceId: "workspace-1",
+          name: "巴西新品上市",
+          description: "项目说明",
+          status: "ACTIVE",
+          createdAt: new Date("2026-07-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+          deletedAt: null,
+          projectProducts: [
+            {
+              projectId: "project-1",
+              productId: "product-1",
+              createdAt: new Date("2026-07-01T00:00:00.000Z"),
+              product: {
+                id: "product-1",
+                workspaceId: "workspace-1",
+                name: "Aurora Cup",
+                description: "产品说明",
+                status: "ACTIVE",
+                createdAt: new Date("2026-07-01T00:00:00.000Z"),
+                updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+                deletedAt: null,
+                facts: [],
+                assets: [],
+              },
+            },
+          ],
+        },
+        files: [
+          {
+            id: "file-1",
+            contentPackageId: "package-1",
+            assetId: "asset-1",
+            name: "模板化海报图片",
+            fileType: "PNG",
+            status: "GENERATED",
+            notes: "已关联素材：模板化海报 4:5",
+            createdAt: new Date("2026-07-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+            asset: {
+              id: "asset-1",
+              workspaceId: "workspace-1",
+              projectId: "project-1",
+              productId: "product-1",
+              name: "模板化海报 4:5",
+              kind: "GENERATED_IMAGE",
+              source: "GENERATED",
+              status: "APPROVED",
+              mimeType: "image/svg+xml",
+              sizeBytes: 1024,
+              storagePath: "storage/assets/workspace-1/poster.svg",
+              originalFilename: "poster.svg",
+              checksum: "checksum",
+              metadata: {},
+              createdAt: new Date("2026-07-01T00:00:00.000Z"),
+              updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+            },
+          },
+        ],
+      },
+      planItems: [],
+    } as never);
+
+    const readme = files.find((file) => file.filename === "README-素材包说明.md")?.content ?? "";
+    const manifest = JSON.parse(
+      files.find((file) => file.filename === "manifest.json")?.content ?? "{}",
+    );
+
+    expect(readme).toContain("模板化海报图片 -> 模板化海报 4:5");
+    expect(manifest.files[0].asset).toMatchObject({
+      id: "asset-1",
+      name: "模板化海报 4:5",
+      kind: "GENERATED_IMAGE",
+      source: "GENERATED",
+      checksum: "checksum",
+    });
   });
 });

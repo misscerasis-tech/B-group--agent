@@ -86,6 +86,7 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
   const approvedAssets = products.flatMap((product) =>
     product.assets.filter((asset) => asset.status === "APPROVED"),
   );
+  const linkedPackageFiles = contentPackage.files.filter((file) => file.asset);
 
   return [
     {
@@ -108,7 +109,26 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
         list(contentDirections),
         "",
         "## 文件清单",
-        list(contentPackage.files.map((file) => `${file.name}（${file.fileType} / ${file.status}）`)),
+        list(
+          contentPackage.files.map((file) =>
+            [
+              `${file.name}（${file.fileType} / ${file.status}）`,
+              file.asset ? `关联素材：${file.asset.name}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          ),
+        ),
+        "",
+        "## 已关联素材",
+        linkedPackageFiles.length > 0
+          ? list(
+              linkedPackageFiles.map(
+                (file) =>
+                  `${file.name} -> ${file.asset?.name}（${file.asset?.kind} / ${file.asset?.source}）`,
+              ),
+            )
+          : "- 暂无文件项关联素材。",
       ].join("\n"),
     },
     {
@@ -200,6 +220,18 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
             fileType: file.fileType,
             status: file.status,
             assetId: file.assetId,
+            asset: file.asset
+              ? {
+                  id: file.asset.id,
+                  name: file.asset.name,
+                  kind: file.asset.kind,
+                  source: file.asset.source,
+                  status: file.asset.status,
+                  mimeType: file.asset.mimeType,
+                  originalFilename: file.asset.originalFilename,
+                  checksum: file.asset.checksum,
+                }
+              : null,
           })),
         },
         null,
