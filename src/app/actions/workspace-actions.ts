@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { createWorkspaceForUser } from "@/lib/data/workspaces";
 import { getWorkspaceContext, setCurrentWorkspace } from "@/lib/workspace-context";
 
 export async function switchWorkspaceAction(formData: FormData) {
@@ -16,3 +17,15 @@ export async function switchWorkspaceAction(formData: FormData) {
   redirect(returnTo);
 }
 
+export async function createWorkspaceAction(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  const returnTo = String(formData.get("returnTo") ?? "/dashboard");
+  const context = await getWorkspaceContext();
+  const workspace = await createWorkspaceForUser({
+    userId: context.user.id,
+    name,
+  });
+
+  await setCurrentWorkspace(workspace.slug);
+  redirect(returnTo);
+}

@@ -107,6 +107,7 @@ B 组工作助手已新增：
 
 - 所有业务数据必须带有 `workspace_id`。
 - 用户可以属于多个 Workspace。
+- 用户可以在 Web 中创建新的 Workspace，并自动成为该 Workspace 的所有者。
 - 飞书连接、通知群、沉淀位置、审核配置都归属于 Workspace。
 - 后台任务必须按 Workspace 隔离执行。
 - 导出文件和生成素材必须按 Workspace 隔离存储。

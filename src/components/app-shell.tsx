@@ -12,7 +12,7 @@ import {
   Settings,
   Sparkles,
 } from "lucide-react";
-import { switchWorkspaceAction } from "@/app/actions/workspace-actions";
+import { createWorkspaceAction, switchWorkspaceAction } from "@/app/actions/workspace-actions";
 import type { WorkspaceContext } from "@/lib/workspace-context";
 import { workspaceRoleLabels } from "@/lib/status";
 
@@ -107,6 +107,23 @@ export function AppShell({
                   </select>
                   <button className="button secondary" type="submit">
                     切换
+                  </button>
+                </form>
+
+                <form action={createWorkspaceAction} className="workspace-switcher">
+                  <input name="returnTo" type="hidden" value={returnTo} />
+                  <label className="field-label compact" htmlFor="workspaceName">
+                    新建
+                  </label>
+                  <input
+                    aria-label="新建 Workspace 名称"
+                    id="workspaceName"
+                    name="name"
+                    placeholder="Workspace 名称"
+                    required
+                  />
+                  <button className="button secondary" type="submit">
+                    创建
                   </button>
                 </form>
 
