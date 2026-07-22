@@ -165,6 +165,17 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts content package review submission requests", () => {
+    const parsed = parseAgentCommand("提交最新素材包审核。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "submit_content_package_review",
+      value: {},
+      label: "提交素材包审核：最新素材包",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts reminder completion requests", () => {
     const parsed = parseAgentCommand("把抽奖规则提醒标记完成。");
 

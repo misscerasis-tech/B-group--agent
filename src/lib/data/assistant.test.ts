@@ -33,7 +33,10 @@ const mocks = vi.hoisted(() => {
       update: vi.fn(),
     },
     contentPackage: {
+      count: vi.fn(),
       create: vi.fn(),
+      findFirst: vi.fn(),
+      update: vi.fn(),
     },
     contentPackageFile: {
       createMany: vi.fn(),
@@ -43,6 +46,10 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
+    },
+    reviewTask: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
     },
     changeLog: {
       create: vi.fn(),
@@ -334,6 +341,78 @@ describe("generateStarterPlan", () => {
         entityId: "package-created-from-agent",
         action: "agent_content_package_created",
         summary: "创建素材包结构：2026-08 第1周 TikTok 素材包",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("submits the latest content package for review from a Chinese agent command", async () => {
+    const contentPackage = {
+      id: "package-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      strategyId: "strategy-1",
+      name: "2026-08 第1周 TikTok 素材包",
+      period: "2026-08 第1周",
+      frequency: "WEEKLY",
+      status: "DRAFT",
+      summary: "待审核素材包。",
+      updatedAt: new Date("2026-07-22T00:00:00.000Z"),
+      project: {
+        id: "project-1",
+        name: "巴西新品首月增长",
+      },
+      files: [
+        {
+          id: "file-1",
+          name: "素材包说明 PDF",
+        },
+      ],
+    };
+    mocks.tx.contentPackage.count.mockResolvedValue(1);
+    mocks.tx.contentPackage.findFirst.mockResolvedValue(contentPackage);
+    mocks.tx.contentPackage.update.mockResolvedValue({
+      ...contentPackage,
+      status: "REVIEW_NEEDED",
+    });
+    mocks.tx.reviewTask.findFirst.mockResolvedValue(null);
+    mocks.tx.reviewTask.create.mockResolvedValue({
+      id: "review-1",
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "提交最新素材包审核。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.contentPackage.update).toHaveBeenCalledWith({
+      where: {
+        id: "package-1",
+      },
+      data: {
+        status: "REVIEW_NEEDED",
+      },
+    });
+    expect(mocks.tx.reviewTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        subjectType: "CONTENT_PACKAGE",
+        subjectId: "package-1",
+        status: "PENDING",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPackage",
+        entityId: "package-1",
+        action: "agent_content_package_submitted_for_review",
+        summary: "提交素材包审核：最新素材包",
         actorUserId: "user-1",
       }),
     });

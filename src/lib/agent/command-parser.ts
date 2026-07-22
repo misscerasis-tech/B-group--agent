@@ -73,6 +73,13 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "submit_content_package_review";
+      value: {
+        keyword?: string;
+      };
+      label: string;
+    }
+  | {
       type: "complete_plan_item";
       value: {
         keyword?: string;
@@ -326,6 +333,25 @@ function parseContentPackageOperation(text: string): ParsedAgentOperation | null
   };
 }
 
+function parseSubmitContentPackageReviewOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(素材包|内容包)/.test(text) ||
+    !/(提交审核|送审|发起审核|进入审核|提交.*审核|送去.*审核)/.test(text)
+  ) {
+    return null;
+  }
+
+  const keyword = extractPackageKeyword(text);
+
+  return {
+    type: "submit_content_package_review",
+    value: {
+      ...(keyword ? { keyword } : {}),
+    },
+    label: `提交素材包审核：${keyword ?? "最新素材包"}`,
+  };
+}
+
 function parseContentPackagePeriod(text: string) {
   const explicitPeriod = text.match(/20\d{2}[-/.年]\d{1,2}(?:\s*(?:第\s*\d+\s*周|周|月))?/);
 
@@ -346,6 +372,18 @@ function parseContentPackagePeriod(text: string) {
   }
 
   return null;
+}
+
+function extractPackageKeyword(text: string) {
+  const keyword = text
+    .replace(/请|麻烦|帮我|把|将|当前|这个|项目/g, "")
+    .replace(/提交审核|发起审核|进入审核|提交|送审|送去|审核/g, "")
+    .replace(/最新|最近|一份|一个|素材包|内容包/g, "")
+    .replace(/，|。|！|!|：|:|；|;|、/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return keyword.length >= 2 ? keyword.slice(0, 80) : null;
 }
 
 function parseMetricsSnapshotOperation(text: string): ParsedAgentOperation | null {
@@ -755,6 +793,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(contentPackageOperation);
   }
 
+  const packageReviewOperation = parseSubmitContentPackageReviewOperation(text);
+  if (packageReviewOperation) {
+    operations.push(packageReviewOperation);
+  }
+
   const metricsOperation = parseMetricsSnapshotOperation(text);
   if (metricsOperation) {
     operations.push(metricsOperation);
@@ -820,7 +863,9 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   );
   const hasCompleteWorkflowOperation = dedupedOperations.some(
     (operation) =>
-      operation.type === "complete_reminder" || operation.type === "create_content_package",
+      operation.type === "complete_reminder" ||
+      operation.type === "create_content_package" ||
+      operation.type === "submit_content_package_review",
   );
 
   return {

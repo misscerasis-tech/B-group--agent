@@ -9,6 +9,8 @@ import {
   ProjectStatus,
   ReminderSeverity,
   ReminderStatus,
+  ReviewSubjectType,
+  ReviewTaskStatus,
   StrategyStatus,
 } from "@prisma/client";
 import type { ParsedAgentOperation } from "@/lib/agent/command-parser";
@@ -334,6 +336,7 @@ export async function submitAgentCommand(input: {
       const metricsOperations = parsed.operations.filter(isMetricsOperation);
       const planItemOperations = parsed.operations.filter(isPlanItemOperation);
       const contentPackageOperations = parsed.operations.filter(isContentPackageOperation);
+      const packageReviewOperations = parsed.operations.filter(isPackageReviewOperation);
       const reminderCompletionOperations = parsed.operations.filter(isReminderCompletionOperation);
       const planItemCompletionOperations = parsed.operations.filter(isPlanItemCompletionOperation);
 
@@ -417,6 +420,13 @@ export async function submitAgentCommand(input: {
         operations: contentPackageOperations,
       });
 
+      await applyPackageReviewOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: packageReviewOperations,
+      });
+
       await applyReminderCompletionOperations(tx, {
         workspaceId: input.workspaceId,
         userId: input.userId,
@@ -493,6 +503,7 @@ export async function applyPendingAgentOperation(input: {
     const metricsOperations = parsedOperations.filter(isMetricsOperation);
     const planItemOperations = parsedOperations.filter(isPlanItemOperation);
     const contentPackageOperations = parsedOperations.filter(isContentPackageOperation);
+    const packageReviewOperations = parsedOperations.filter(isPackageReviewOperation);
     const reminderCompletionOperations = parsedOperations.filter(isReminderCompletionOperation);
     const planItemCompletionOperations = parsedOperations.filter(isPlanItemCompletionOperation);
     let updatedStrategy: ProjectStrategyRecord = strategy;
@@ -612,6 +623,13 @@ export async function applyPendingAgentOperation(input: {
       operations: contentPackageOperations,
     });
 
+    await applyPackageReviewOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: packageReviewOperations,
+    });
+
     await applyReminderCompletionOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -657,6 +675,7 @@ export async function applyPendingAgentOperation(input: {
         metricsChanged: metricsOperations.length > 0,
         planItemChanged: planItemOperations.length > 0,
         contentPackageChanged: contentPackageOperations.length > 0,
+        packageReviewSubmitted: packageReviewOperations.length > 0,
         reminderCompleted: reminderCompletionOperations.length > 0,
         planItemCompleted: planItemCompletionOperations.length > 0,
       });
@@ -814,6 +833,20 @@ async function findCompletionTargetWarnings(
         warnings.push(`未找到匹配「${describePlanItemCompletionValue(operation.value)}」的未完成内容计划`);
       }
     }
+
+    if (operation.type === "submit_content_package_review") {
+      const matchCount = await tx.contentPackage.count({
+        where: buildContentPackageReviewWhere({
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          value: operation.value,
+        }),
+      });
+
+      if (matchCount === 0) {
+        warnings.push(`未找到匹配「${operation.value.keyword ?? "最新素材包"}」的可提交素材包`);
+      }
+    }
   }
 
   return warnings;
@@ -831,7 +864,7 @@ function buildAgentConflictCheck(input: {
   const base = input.noSafeOperation
     ? "未识别到足够明确的市场、渠道、频率、项目状态、提醒、内容计划或内容方向，未写入数据库。"
     : input.completionTargetWarnings.length > 0
-      ? `已识别到完成类指令，但${input.completionTargetWarnings.join("；")}，未写入数据库。`
+      ? `已识别到任务类指令，但${input.completionTargetWarnings.join("；")}，未写入数据库。`
     : input.requiresConfirmation
       ? "当前策略已被人工确认为正式版本，需要二次确认后才能修改核心项目配置。"
       : input.hasConfirmationSensitiveOperation
@@ -1433,6 +1466,113 @@ async function applyContentPackageOperations(
   }
 }
 
+async function applyPackageReviewOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "submit_content_package_review") {
+      continue;
+    }
+
+    const contentPackage = await tx.contentPackage.findFirst({
+      where: buildContentPackageReviewWhere({
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        value: operation.value,
+      }),
+      include: {
+        project: true,
+        files: true,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+
+    if (!contentPackage) {
+      continue;
+    }
+
+    const updatedContentPackage = await tx.contentPackage.update({
+      where: {
+        id: contentPackage.id,
+      },
+      data: {
+        status: ContentPackageStatus.REVIEW_NEEDED,
+      },
+    });
+
+    const taskCreated = await createReviewTaskIfMissing(tx, {
+      workspaceId: input.workspaceId,
+      projectId: contentPackage.projectId,
+      subjectType: ReviewSubjectType.CONTENT_PACKAGE,
+      subjectId: contentPackage.id,
+      title: `审核素材包：${contentPackage.name}`,
+      description: `${contentPackage.project.name} · ${contentPackage.files.length} 个文件项 · ${contentPackage.summary ?? "待补充素材包说明"}`,
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ContentPackage",
+        entityId: contentPackage.id,
+        action: "agent_content_package_submitted_for_review",
+        summary: operation.label,
+        before: {
+          status: contentPackage.status,
+        },
+        after: {
+          status: updatedContentPackage.status,
+          reviewTaskCreated: taskCreated > 0,
+          fileCount: contentPackage.files.length,
+        },
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
+async function createReviewTaskIfMissing(
+  tx: Prisma.TransactionClient,
+  data: {
+    workspaceId: string;
+    projectId?: string | null;
+    subjectType: ReviewSubjectType;
+    subjectId: string;
+    title: string;
+    description?: string | null;
+  },
+) {
+  const existingTask = await tx.reviewTask.findFirst({
+    where: {
+      workspaceId: data.workspaceId,
+      subjectType: data.subjectType,
+      subjectId: data.subjectId,
+      status: ReviewTaskStatus.PENDING,
+    },
+  });
+
+  if (existingTask) {
+    return 0;
+  }
+
+  await tx.reviewTask.create({
+    data: {
+      ...data,
+      status: ReviewTaskStatus.PENDING,
+    },
+  });
+
+  return 1;
+}
+
 async function applyReminderCompletionOperations(
   tx: Prisma.TransactionClient,
   input: {
@@ -1620,6 +1760,40 @@ function buildPlanItemCompletionWhere(input: {
   return where;
 }
 
+function buildContentPackageReviewWhere(input: {
+  workspaceId: string;
+  projectId: string;
+  value: Extract<ParsedAgentOperation, { type: "submit_content_package_review" }>["value"];
+}) {
+  const where = scopedWhere(input.workspaceId, {
+    projectId: input.projectId,
+    status: {
+      in: [
+        ContentPackageStatus.DRAFT,
+        ContentPackageStatus.GENERATED,
+        ContentPackageStatus.REVIEW_NEEDED,
+      ],
+    },
+  }) as Prisma.ContentPackageWhereInput;
+
+  if (input.value.keyword) {
+    where.OR = [
+      {
+        name: {
+          contains: input.value.keyword,
+        },
+      },
+      {
+        period: {
+          contains: input.value.keyword,
+        },
+      },
+    ];
+  }
+
+  return where;
+}
+
 function describePlanItemCompletionValue(
   value: Extract<ParsedAgentOperation, { type: "complete_plan_item" }>["value"],
 ) {
@@ -1663,6 +1837,10 @@ function isPlanItemOperation(operation: ParsedAgentOperation) {
 
 function isContentPackageOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_content_package";
+}
+
+function isPackageReviewOperation(operation: ParsedAgentOperation) {
+  return operation.type === "submit_content_package_review";
 }
 
 function isReminderCompletionOperation(operation: ParsedAgentOperation) {
@@ -1784,6 +1962,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
       continue;
     }
 
+    if (type === "submit_content_package_review" && isPackageReviewValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `提交素材包审核：${value.keyword ?? "最新素材包"}`,
+      });
+      continue;
+    }
+
     if (type === "create_plan_item" && isPlanItemValue(value)) {
       operations.push({
         type,
@@ -1848,6 +2035,19 @@ function isContentPackageValue(value: unknown): value is Extract<
       record.frequency === ContentFrequency.MONTHLY) &&
     (record.summary === undefined || typeof record.summary === "string")
   );
+}
+
+function isPackageReviewValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "submit_content_package_review" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return record.keyword === undefined || typeof record.keyword === "string";
 }
 
 function isReminderCompletionValue(value: unknown): value is Extract<
@@ -1938,6 +2138,7 @@ function buildConfirmedAssistantReply(input: {
   metricsChanged: boolean;
   planItemChanged: boolean;
   contentPackageChanged: boolean;
+  packageReviewSubmitted: boolean;
   reminderCompleted: boolean;
   planItemCompleted: boolean;
 }) {
@@ -1945,44 +2146,49 @@ function buildConfirmedAssistantReply(input: {
   const metricsText = input.metricsChanged ? "，并录入渠道表现指标" : "";
   const planItemText = input.planItemChanged ? "，并新增内容计划" : "";
   const contentPackageText = input.contentPackageChanged ? "，并创建素材包结构" : "";
+  const packageReviewText = input.packageReviewSubmitted ? "，并提交素材包审核" : "";
   const completedReminderText = input.reminderCompleted ? "，并完成项目提醒" : "";
   const completedPlanItemText = input.planItemCompleted ? "，并完成内容计划" : "";
 
   if (input.strategyChanged && input.strategyWasConfirmed) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认写入策略草案${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认写入策略草案${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认更新项目基础信息${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认更新项目基础信息${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderChanged) {
-    return `已按你的确认创建提醒${starterPlanText}${metricsText}${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建提醒${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.starterPlanChanged) {
-    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}${planItemText}${contentPackageText}${packageReviewText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.metricsChanged) {
-    return `已按你的确认录入渠道表现指标${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认录入渠道表现指标${planItemText}${contentPackageText}${packageReviewText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.planItemChanged) {
-    return `已按你的确认新增内容计划${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认新增内容计划${contentPackageText}${packageReviewText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.contentPackageChanged) {
-    return `已按你的确认创建素材包结构${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建素材包结构${packageReviewText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.packageReviewSubmitted) {
+    return `已按你的确认提交素材包审核${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderCompleted) {
