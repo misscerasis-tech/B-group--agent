@@ -14,6 +14,7 @@
 - `/setup` 可用于查看中文本地运行诊断，`/api/health` 可用于确认 Web 进程、环境变量和数据库连接状态。
 - `npx pnpm@10.13.1 run doctor` 可检查当前目录、Git 分支、Node、pnpm、Docker、`.env` 和 3002 端口占用。
 - `npx pnpm@10.13.1 run smoke` 可在 Web 启动后检查 `/setup`、`/api/health`、`/b-agent` 和 `/dashboard`；如果改用 3003，追加 `-- --url http://127.0.0.1:3003`。
+- Prisma seed 配置已迁移到 `prisma.config.ts`，避免继续依赖已弃用的 `package.json#prisma`。
 
 ## 已推送能力概览
 

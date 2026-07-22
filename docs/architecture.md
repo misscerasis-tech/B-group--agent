@@ -9,7 +9,7 @@ AI 内容增长 Agent 是独立 Web 系统，不依赖飞书作为业务底座�
 - 前端与 Web API：Next.js App Router + TypeScript。
 - UI：当前使用原生 CSS + lucide-react 图标构建中文后台界面；后续如引入 Tailwind 或 shadcn/ui，必须保持既有后台信息密度和中文交互习惯。
 - 数据库：PostgreSQL。
-- ORM 与迁移：Prisma，所有结构变化必须通过迁移文件提交。
+- ORM 与迁移：Prisma，配置入口为 `prisma.config.ts`，所有结构变化必须通过迁移文件提交。
 - 后台任务：独立 Worker 进程，优先使用 PostgreSQL 队列方案，后续可替换为 Redis/BullMQ。
 - 文件存储：本地开发使用本地存储，生产使用 S3 兼容对象存储。
 - AI 调用：通过 Provider Adapter 封装，避免业务代码绑定单一模型。
