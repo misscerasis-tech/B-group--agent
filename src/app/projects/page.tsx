@@ -1,5 +1,8 @@
 import Link from "next/link";
-import { createProjectAction } from "@/app/actions/project-actions";
+import {
+  createProjectAction,
+  kickoffProjectFromBriefAction,
+} from "@/app/actions/project-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -33,6 +36,33 @@ export default async function ProjectsPage() {
               项目属于当前 Workspace，后续策略、素材包和复盘都会挂在项目下。
             </p>
           </div>
+        </section>
+
+        <section className="panel">
+          <h3>中文 Brief 启动项目</h3>
+          <form action={kickoffProjectFromBriefAction} className="form">
+            <div className="grid two">
+              <label className="form-row">
+                <span className="field-label">项目名称</span>
+                <input name="projectName" placeholder="例如：巴西新品首月内容增长" required />
+              </label>
+              <label className="form-row">
+                <span className="field-label">产品名称</span>
+                <input name="productName" placeholder="例如：Aurora Cup 智能保温杯" required />
+              </label>
+            </div>
+            <label className="form-row">
+              <span className="field-label">中文启动 Brief</span>
+              <textarea
+                name="brief"
+                placeholder="例如：这是一款 600ml 不锈钢保温杯，24 小时保温，主推巴西市场，新增 TikTok 和 Instagram，每周生成一次素材包，世界杯和通勤场景优先。"
+                required
+              />
+            </label>
+            <button className="button" type="submit">
+              创建并进入 B组 Agent
+            </button>
+          </form>
         </section>
 
         <section className="grid two">
@@ -99,4 +129,3 @@ export default async function ProjectsPage() {
     );
   }
 }
-

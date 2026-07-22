@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   createProject,
+  kickoffProjectFromBrief,
   replaceProjectProducts,
   updateProject,
 } from "@/lib/data/projects";
@@ -39,6 +40,26 @@ export async function createProjectAction(formData: FormData) {
 
   revalidatePath("/projects");
   redirect(`/projects/${project.id}`);
+}
+
+export async function kickoffProjectFromBriefAction(formData: FormData) {
+  const context = await getWorkspaceContext();
+  const kickoff = await kickoffProjectFromBrief(
+    context.currentWorkspace.id,
+    {
+      projectName: readRequiredText(formData, "projectName", "项目名称"),
+      productName: readRequiredText(formData, "productName", "产品名称"),
+      brief: readRequiredText(formData, "brief", "中文启动 Brief"),
+    },
+    context.user.id,
+  );
+
+  revalidatePath("/projects");
+  revalidatePath("/brain");
+  revalidatePath("/b-agent");
+  revalidatePath("/dashboard");
+  revalidatePath("/reviews");
+  redirect(`/b-agent?projectId=${kickoff.project.id}`);
 }
 
 export async function updateProjectAction(projectId: string, formData: FormData) {
