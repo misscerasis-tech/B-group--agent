@@ -206,6 +206,58 @@ export async function listWorkspaceReminders(workspaceId: string) {
   });
 }
 
+export async function createManualReminder(input: {
+  workspaceId: string;
+  userId: string;
+  projectId?: string;
+  title: string;
+  description?: string;
+  severity: ReminderSeverity;
+  dueAt?: Date;
+}) {
+  return prisma.$transaction(async (tx) => {
+    if (input.projectId) {
+      const project = await tx.project.findFirst({
+        where: scopedWhere(input.workspaceId, {
+          id: input.projectId,
+          deletedAt: null,
+        }),
+      });
+
+      if (!project) {
+        throw new Error("所选项目不属于当前 Workspace，无法创建提醒。");
+      }
+    }
+
+    const reminder = await tx.reminder.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId ?? null,
+        title: input.title,
+        description: input.description,
+        severity: input.severity,
+        dueAt: input.dueAt,
+        status: ReminderStatus.OPEN,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "Reminder",
+        entityId: reminder.id,
+        action: "manual_reminder_created",
+        summary: `创建提醒：${reminder.title}`,
+        after: reminderToJson(reminder),
+        actorUserId: input.userId,
+      },
+    });
+
+    return reminder;
+  });
+}
+
 export async function createProactiveReminders(input: { workspaceId: string; userId: string }) {
   return prisma.$transaction(async (tx) => {
     const [projects, pendingReviews, draftStrategies, packageReviews, riskyPlanItems] =

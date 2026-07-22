@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, Bell, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import {
+  createManualReminderAction,
   createProactiveRemindersAction,
   resolveReminderAction,
 } from "@/app/actions/reminder-actions";
@@ -9,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { listWorkspaceReminders } from "@/lib/data/content-workspace";
+import { listProjects } from "@/lib/data/projects";
 import { loadWorkspaceContextSafe } from "@/lib/page-context";
 import { reminderSeverityLabels, reminderStatusLabels } from "@/lib/status";
 
@@ -26,7 +28,10 @@ export default async function RemindersPage() {
   }
 
   try {
-    const reminders = await listWorkspaceReminders(context.currentWorkspace.id);
+    const [reminders, projects] = await Promise.all([
+      listWorkspaceReminders(context.currentWorkspace.id),
+      listProjects(context.currentWorkspace.id),
+    ]);
 
     return (
       <AppShell activePath="/reminders" context={context} returnTo="/reminders">
@@ -50,8 +55,60 @@ export default async function RemindersPage() {
           </div>
         </section>
 
+        <section className="grid two">
+          <div className="panel">
+            <h3>手动创建提醒</h3>
+            <form action={createManualReminderAction} className="form">
+              <label className="form-row">
+                <span className="field-label">提醒标题</span>
+                <input name="title" placeholder="例如：确认巴西抽奖奖品和活动规则" required />
+              </label>
+              <label className="form-row">
+                <span className="field-label">关联项目</span>
+                <select defaultValue="" name="projectId">
+                  <option value="">Workspace 级提醒</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-row">
+                <span className="field-label">级别</span>
+                <select defaultValue="WARNING" name="severity">
+                  <option value="INFO">提示</option>
+                  <option value="WARNING">风险</option>
+                  <option value="CRITICAL">紧急</option>
+                </select>
+              </label>
+              <label className="form-row">
+                <span className="field-label">截止日期</span>
+                <input name="dueAt" type="date" />
+              </label>
+              <label className="form-row">
+                <span className="field-label">说明</span>
+                <textarea name="description" placeholder="记录背景、需要谁确认、完成标准。" />
+              </label>
+              <button className="button" type="submit">
+                <Bell size={16} aria-hidden="true" />
+                创建提醒
+              </button>
+            </form>
+          </div>
+
+          <div className="panel">
+            <h3>提醒使用原则</h3>
+            <ul className="clean-list">
+              <li>产品图、Logo、合规和活动规则优先设为风险或紧急。</li>
+              <li>飞书未来只负责通知，提醒记录仍保存在本系统。</li>
+              <li>完成或忽略提醒都会进入变更日志，便于复盘。</li>
+            </ul>
+          </div>
+        </section>
+
         {reminders.length > 0 ? (
-          <section className="reminder-board">
+          <section className="reminder-board" style={{ marginTop: 16 }}>
             {reminders.map((reminder) => (
               <article className="reminder-card" key={reminder.id}>
                 {reminder.severity === "INFO" ? (
@@ -76,6 +133,7 @@ export default async function RemindersPage() {
                   <p>{reminder.description ?? "暂无提醒说明。"}</p>
                   <small>
                     {reminder.project ? `项目：${reminder.project.name}` : "Workspace 级提醒"}
+                    {reminder.dueAt ? ` · 截止：${formatDate(reminder.dueAt)}` : ""}
                   </small>
                   {reminder.status === "OPEN" ? (
                     <form action={resolveReminderAction} className="inline-form">
@@ -118,4 +176,11 @@ export default async function RemindersPage() {
       </AppShell>
     );
   }
+}
+
+function formatDate(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
