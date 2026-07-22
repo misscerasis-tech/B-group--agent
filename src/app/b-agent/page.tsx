@@ -522,7 +522,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                       </div>
                       <div className="download-preview">
                         <Download size={18} aria-hidden="true" />
-                        <span>后续阶段接入真实 PDF/XLSX/DOCX/TXT/PNG/ZIP 文件生成。</span>
+                        <span>当前可下载基础 PDF/XLSX/DOCX/TXT/ZIP 交付包，正式精排和平台规格继续迭代。</span>
                         {state.contentPackages[0].status !== "APPROVED" ? (
                           <form
                             action={submitContentPackageForReviewAction}

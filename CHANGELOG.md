@@ -93,6 +93,7 @@
 - B 组 Agent 支持补齐当前项目审核任务，覆盖策略草案、素材包、待审核素材和待复核产品事实。
 - `/b-agent` 增加常用流程按钮，可一键执行策略推荐、首月计划、项目体检提醒、日历缺口提醒、审核任务补齐和素材包缺口提醒。
 - `/b-agent` 主动提醒区支持直接完成或忽略开放提醒，处理后留在当前项目工作台并写入变更日志。
+- `/b-agent` 素材包预览文案更新为当前可下载基础 ZIP 交付包，避免误导为仍是占位。
 - 增加 `smoke` 冒烟检查脚本，可检查 `/setup`、`/api/health`、`/b-agent` 和 `/dashboard` 是否在指定端口响应。
 - 新增 `prisma.config.ts`，将 Prisma seed 配置从弃用的 `package.json#prisma` 迁移到 Prisma 配置文件。
 - 增加 `AgentTextProvider` 抽象，当前通过 `local-rule` Provider 解析中文指令，未来真实 GPT 接入不需要改业务写入路径。
