@@ -6,6 +6,7 @@ export type WorkspaceBackupExportData = NonNullable<
 >;
 
 const SENSITIVE_KEY_PATTERN = /(secret|token|password|api_?key|credential|tenant_?key)/i;
+export const WORKSPACE_BACKUP_SCHEMA_VERSION = "b-agent-workspace-backup.v1";
 
 export async function getWorkspaceBackupExportData(workspaceId: string) {
   const workspace = await prisma.workspace.findFirst({
@@ -231,7 +232,7 @@ export function buildWorkspaceBackupJson(
 ) {
   return JSON.stringify(
     {
-      schemaVersion: "b-agent-workspace-backup.v1",
+      schemaVersion: WORKSPACE_BACKUP_SCHEMA_VERSION,
       exportedAt: exportedAt.toISOString(),
       safety: {
         includesUploadedFileBytes: false,

@@ -139,6 +139,14 @@ http://127.0.0.1:3002/workspace/export
 
 该 JSON 备份用于核对和辅助恢复当前 Workspace 的结构化业务数据；它会递归屏蔽疑似密钥字段，但不包含上传文件二进制内容，不能替代 `pg_dump`、`storage/assets` 或对象存储备份。
 
+下载后可以先校验结构、计数、敏感字段脱敏和 Workspace 归属：
+
+```bash
+npx pnpm@10.13.1 run backup:validate -- backups/workspace.json
+```
+
+该校验只读取 JSON，不写数据库。通过校验不代表已经完成数据库恢复，只说明该 Workspace 结构化备份适合用于演示核对、迁移对照或人工辅助恢复。
+
 恢复备份示例：
 
 ```bash
