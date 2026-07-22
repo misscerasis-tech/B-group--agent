@@ -162,3 +162,19 @@ npx pnpm@10.13.1 run dev
 - `/c-agent`：C 组 Agent 独立入口。
 
 当前仓库当前分支以 B 组为主。详细规则见 `docs/group-routing.md`。
+
+## B 组仓库
+
+B 组独立 GitHub 仓库：
+
+```text
+https://github.com/misscerasis-tech/B-group--agent.git
+```
+
+当前 B 组正式演示入口：
+
+```text
+/b-agent
+```
+
+能力拆分和后续计划见 `docs/b-group-capability-plan.md`。
