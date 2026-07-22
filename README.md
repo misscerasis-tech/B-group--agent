@@ -123,6 +123,12 @@ cp .env.example .env
 npx pnpm@10.13.1 install
 ```
 
+启动前诊断：
+
+```bash
+npx pnpm@10.13.1 run doctor
+```
+
 启动 PostgreSQL：
 
 ```bash

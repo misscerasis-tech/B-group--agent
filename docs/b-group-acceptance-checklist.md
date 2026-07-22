@@ -13,6 +13,7 @@
 
 ```bash
 npx pnpm@10.13.1 install
+npx pnpm@10.13.1 run doctor
 npx pnpm@10.13.1 run docker:up
 npx pnpm@10.13.1 run db:migrate
 npx pnpm@10.13.1 run db:seed

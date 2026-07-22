@@ -4,7 +4,7 @@
 
 - `feature/b-group-working-assistant`
 - 远程仓库：`misscerasis-tech/B-group--agent.git`
-- 当前最新提交：`8fed6b7 feat: add health check endpoint`
+- 当前最新提交：以 `git log -1 --oneline` 为准；本分支正在持续推进，不合并 `main`，不创建 tag。
 
 ## 当前环境提示
 
@@ -12,6 +12,7 @@
 - 当前机器未检测到 `docker` 命令；本地 PostgreSQL 仍需要用户安装并启动 Docker Desktop，或提供可用的外部 PostgreSQL `DATABASE_URL`。
 - 当前 3002 端口曾被其他进程占用；B 组推荐使用 `npx pnpm@10.13.1 run dev:b`，若端口冲突则改用 `npx pnpm@10.13.1 exec next dev -p 3003`。
 - `/api/health` 可用于确认 Web 进程和数据库连接状态。
+- `npx pnpm@10.13.1 run doctor` 可检查当前目录、Git 分支、Node、pnpm、Docker、`.env` 和 3002 端口占用。
 
 ## 已推送能力概览
 
@@ -28,6 +29,8 @@
 - 数据复盘指标录入、CTR、点击转化率和单次转化成本。
 - 飞书占位连接、占位测试、停用旧连接和迁移记录。
 - 图片生成产品主体锁定护栏测试。
+- 素材包中心支持手动创建素材包结构、提交 Web 审核、审核任务联动和 ZIP 清单导出。
+- 项目中心支持中文 Brief 启动项目，一次创建项目、产品、关联、待确认事实、策略草案、对话和变更日志。
 
 ## 最近完整验证
 
@@ -42,8 +45,8 @@ DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?sc
 
 最近一次测试结果：
 
-- Test Files：`9 passed`
-- Tests：`25 passed`
+- Test Files：`11 passed`
+- Tests：`30 passed`
 - Build：通过，包含 `/api/health`、`/b-agent`、`/projects/[id]/export`、`/packages/[id]/export`
 
 ## 仍需人工完成
