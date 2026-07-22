@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import type { ProductFactStatus, ProductStatus } from "@prisma/client";
 import {
   AssetKind,
@@ -7,18 +5,14 @@ import {
   ProductFactStatus as ProductFactStatusValue,
 } from "@prisma/client";
 import { resolveLocalAssetPath } from "@/lib/data/assets";
+import {
+  canExtractTextFromDocumentAsset,
+  extractTextFromLocalDocument,
+  MAX_DOCUMENT_ASSET_FACT_BYTES,
+} from "@/lib/document-text/extractor";
 import { inferProductFactsFromText, type InferredProductFact } from "@/lib/product-facts/extractor";
 import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/workspace-scope";
-
-const MAX_TEXT_ASSET_FACT_BYTES = 200 * 1024;
-const TEXT_ASSET_EXTENSIONS = new Set([".txt", ".md", ".csv", ".json"]);
-const TEXT_ASSET_MIME_TYPES = new Set([
-  "text/plain",
-  "text/markdown",
-  "text/csv",
-  "application/json",
-]);
 
 export type ProductFormInput = {
   name: string;
@@ -278,14 +272,14 @@ export async function generateProductFactsFromAsset(
   }
 
   if (!canExtractFactsFromAsset(asset)) {
-    throw new Error("当前只支持从 TXT、MD、CSV 或 JSON 产品资料中提取事实。");
+    throw new Error("当前只支持从 TXT、MD、CSV、JSON、DOCX 或文本型 PDF 产品资料中提取事实。");
   }
 
-  if (asset.sizeBytes && asset.sizeBytes > MAX_TEXT_ASSET_FACT_BYTES) {
-    throw new Error("产品资料超过 200KB，请先整理成较短的产品 Brief 后再提取。");
+  if (asset.sizeBytes && asset.sizeBytes > MAX_DOCUMENT_ASSET_FACT_BYTES) {
+    throw new Error("产品资料超过 5MB，请先整理成较短的产品 Brief 后再提取。");
   }
 
-  const sourceText = (await readFile(resolveLocalAssetPath(asset.storagePath), "utf8")).trim();
+  const sourceText = await extractTextFromLocalDocument(resolveLocalAssetPath(asset.storagePath), asset);
 
   if (!sourceText) {
     throw new Error("产品资料为空，无法提取事实。");
@@ -314,12 +308,7 @@ export function canExtractFactsFromAsset(asset: {
     return false;
   }
 
-  if (asset.mimeType && TEXT_ASSET_MIME_TYPES.has(asset.mimeType)) {
-    return true;
-  }
-
-  const filename = asset.originalFilename ?? asset.storagePath;
-  return TEXT_ASSET_EXTENSIONS.has(path.extname(filename).toLowerCase());
+  return canExtractTextFromDocumentAsset(asset);
 }
 
 async function persistInferredProductFacts(

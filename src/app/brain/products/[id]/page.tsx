@@ -179,7 +179,7 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
                       </option>
                     ))
                   ) : (
-                    <option value="">暂无可读取文本资料</option>
+                    <option value="">暂无可读取资料</option>
                   )}
                 </select>
               </label>
@@ -190,7 +190,7 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
               >
                 从资料文件提取事实
               </button>
-              <p className="muted">当前支持 TXT、MD、CSV、JSON；PDF/DOCX 解析留到后续阶段。</p>
+              <p className="muted">当前支持 TXT、MD、CSV、JSON、DOCX 和文本型 PDF；扫描件需先 OCR。</p>
             </form>
 
             <form
