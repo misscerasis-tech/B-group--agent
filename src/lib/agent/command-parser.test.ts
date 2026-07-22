@@ -243,6 +243,19 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts content calendar gap reminder requests", () => {
+    const parsed = parseAgentCommand("把内容日历缺口生成提醒。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_calendar_gap_reminders",
+      value: {
+        limit: 4,
+      },
+      label: "根据内容日历缺口生成提醒",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts content package creation requests for a specific period", () => {
     const parsed = parseAgentCommand("为 2026-08 第1周创建 TikTok 素材包。");
 

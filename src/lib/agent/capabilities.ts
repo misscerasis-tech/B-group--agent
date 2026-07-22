@@ -131,6 +131,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "calendar_gap_reminders",
+    category: "planning",
+    title: "将内容日历缺口生成提醒",
+    example: "把内容日历缺口生成提醒。",
+    writesTo: ["ContentPlanItem", "Reminder", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "content_package_create",
     category: "content_package",
     title: "创建素材包结构",

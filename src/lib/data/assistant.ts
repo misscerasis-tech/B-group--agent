@@ -359,6 +359,9 @@ export async function submitAgentCommand(input: {
         isMetricsRiskReminderOperation,
       );
       const planItemOperations = parsed.operations.filter(isPlanItemOperation);
+      const calendarGapReminderOperations = parsed.operations.filter(
+        isCalendarGapReminderOperation,
+      );
       const contentPackageOperations = parsed.operations.filter(isContentPackageOperation);
       const packageReadinessReminderOperations = parsed.operations.filter(
         isPackageReadinessReminderOperation,
@@ -487,6 +490,14 @@ export async function submitAgentCommand(input: {
         projectId: project.id,
         strategyId: updatedStrategy.id,
         operations: planItemOperations,
+      });
+
+      await applyCalendarGapReminderOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        strategy: updatedStrategy,
+        operations: calendarGapReminderOperations,
       });
 
       await applyContentPackageOperations(tx, {
@@ -625,6 +636,7 @@ export async function applyPendingAgentOperation(input: {
     const metricsOperations = parsedOperations.filter(isMetricsOperation);
     const metricsRiskReminderOperations = parsedOperations.filter(isMetricsRiskReminderOperation);
     const planItemOperations = parsedOperations.filter(isPlanItemOperation);
+    const calendarGapReminderOperations = parsedOperations.filter(isCalendarGapReminderOperation);
     const contentPackageOperations = parsedOperations.filter(isContentPackageOperation);
     const packageReadinessReminderOperations = parsedOperations.filter(
       isPackageReadinessReminderOperation,
@@ -812,6 +824,14 @@ export async function applyPendingAgentOperation(input: {
       operations: planItemOperations,
     });
 
+    await applyCalendarGapReminderOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      strategy: updatedStrategy,
+      operations: calendarGapReminderOperations,
+    });
+
     await applyContentPackageOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -911,6 +931,7 @@ export async function applyPendingAgentOperation(input: {
         metricsChanged: metricsOperations.length > 0,
         metricsRiskReminderChanged: metricsRiskReminderOperations.length > 0,
         planItemChanged: planItemOperations.length > 0,
+        calendarGapReminderChanged: calendarGapReminderOperations.length > 0,
         contentPackageChanged: contentPackageOperations.length > 0,
         packageReadinessReminderChanged: packageReadinessReminderOperations.length > 0,
         packageFilesStatusChanged: packageFilesStatusOperations.length > 0,
@@ -1191,6 +1212,29 @@ async function findCompletionTargetWarnings(
 
       if (metricsCount === 0) {
         warnings.push("当前项目还没有复盘指标，无法生成数据风险提醒");
+      }
+    }
+
+    if (operation.type === "create_calendar_gap_reminders") {
+      const latestStrategy = await tx.projectStrategy.findFirst({
+        where: scopedWhere(input.workspaceId, {
+          projectId: input.projectId,
+          status: {
+            not: StrategyStatus.ARCHIVED,
+          },
+        }) as Prisma.ProjectStrategyWhereInput,
+        orderBy: [
+          {
+            version: "desc",
+          },
+          {
+            updatedAt: "desc",
+          },
+        ],
+      });
+
+      if (!latestStrategy || latestStrategy.channels.length === 0) {
+        warnings.push("当前项目还没有可用于检查内容日历缺口的策略渠道");
       }
     }
 
@@ -2325,6 +2369,128 @@ async function applyPlanItemOperations(
       },
     });
   }
+}
+
+async function applyCalendarGapReminderOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    strategy: ProjectStrategyRecord;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "create_calendar_gap_reminders") {
+      continue;
+    }
+
+    const project = await tx.project.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        id: input.projectId,
+        deletedAt: null,
+      }),
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    if (!project) {
+      continue;
+    }
+
+    const planItems = await tx.contentPlanItem.findMany({
+      where: scopedWhere(input.workspaceId, {
+        projectId: input.projectId,
+        status: {
+          not: PlanItemStatus.DONE,
+        },
+      }) as Prisma.ContentPlanItemWhereInput,
+      select: {
+        week: true,
+        channel: true,
+      },
+    });
+    const reminderDrafts = buildCalendarGapReminderDrafts({
+      projectName: project.name,
+      channels: input.strategy.channels,
+      planItems,
+      limit: operation.value.limit,
+    });
+    let createdCount = 0;
+
+    for (const draft of reminderDrafts) {
+      createdCount += await createReminderIfMissing(tx, {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        title: draft.title,
+        description: draft.description,
+        severity: draft.severity,
+      });
+    }
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ContentPlanItem",
+        entityId: input.projectId,
+        action: "agent_calendar_gap_reminders_generated",
+        summary: `${operation.label}：新增 ${createdCount} 条。`,
+        after: {
+          strategyChannels: input.strategy.channels,
+          activePlanItems: planItems.length,
+          gapCandidates: reminderDrafts.length,
+          createdCount,
+        },
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
+function buildCalendarGapReminderDrafts(input: {
+  projectName: string;
+  channels: string[];
+  planItems: Array<{
+    week: number;
+    channel: string;
+  }>;
+  limit: number;
+}) {
+  const plannedChannels = new Set(input.planItems.map((item) => item.channel));
+  const plannedWeeks = new Set(input.planItems.map((item) => item.week));
+  const drafts: Array<{
+    title: string;
+    description: string;
+    severity: ReminderSeverity;
+  }> = [];
+
+  for (const channel of input.channels) {
+    if (!plannedChannels.has(channel)) {
+      drafts.push({
+        title: `${input.projectName}：${channel} 尚未排入内容日历`,
+        description:
+          "该渠道已在当前策略中，但内容日历还没有对应未完成计划。建议补充主题、交付物和截止日期。",
+        severity: ReminderSeverity.WARNING,
+      });
+    }
+  }
+
+  for (const week of [1, 2, 3, 4]) {
+    if (!plannedWeeks.has(week)) {
+      drafts.push({
+        title: `${input.projectName}：第${week}周缺少内容计划`,
+        description:
+          "首月计划应覆盖至少 4 周，避免素材包生成时缺少明确主题和交付物。",
+        severity: ReminderSeverity.INFO,
+      });
+    }
+  }
+
+  return drafts.slice(0, input.limit);
 }
 
 async function applyContentPackageOperations(
@@ -3692,6 +3858,10 @@ function isPlanItemOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_plan_item";
 }
 
+function isCalendarGapReminderOperation(operation: ParsedAgentOperation) {
+  return operation.type === "create_calendar_gap_reminders";
+}
+
 function isContentPackageOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_content_package";
 }
@@ -3893,6 +4063,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
       continue;
     }
 
+    if (type === "create_calendar_gap_reminders" && isCalendarGapReminderValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || "根据内容日历缺口生成提醒",
+      });
+      continue;
+    }
+
     if (
       type === "create_content_package_readiness_reminders" &&
       isPackageReadinessReminderValue(value)
@@ -4042,6 +4221,19 @@ function isContentPackageValue(value: unknown): value is Extract<
       record.frequency === ContentFrequency.MONTHLY) &&
     (record.summary === undefined || typeof record.summary === "string")
   );
+}
+
+function isCalendarGapReminderValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "create_calendar_gap_reminders" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return Number.isInteger(record.limit) && Number(record.limit) >= 1 && Number(record.limit) <= 8;
 }
 
 function isPackageReadinessReminderValue(value: unknown): value is Extract<
@@ -4316,6 +4508,7 @@ function buildConfirmedAssistantReply(input: {
   metricsChanged: boolean;
   metricsRiskReminderChanged: boolean;
   planItemChanged: boolean;
+  calendarGapReminderChanged: boolean;
   contentPackageChanged: boolean;
   packageReadinessReminderChanged: boolean;
   packageFilesStatusChanged: boolean;
@@ -4336,6 +4529,9 @@ function buildConfirmedAssistantReply(input: {
     ? "，并生成数据复盘风险提醒"
     : "";
   const planItemText = input.planItemChanged ? "，并新增内容计划" : "";
+  const calendarGapReminderText = input.calendarGapReminderChanged
+    ? "，并生成内容日历缺口提醒"
+    : "";
   const contentPackageText = input.contentPackageChanged ? "，并创建素材包结构" : "";
   const packageReadinessReminderText = input.packageReadinessReminderChanged
     ? "，并生成素材包可交付性缺口提醒"
@@ -4398,7 +4594,11 @@ function buildConfirmedAssistantReply(input: {
   }
 
   if (input.planItemChanged) {
-    return `已按你的确认新增内容计划${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认新增内容计划${calendarGapReminderText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.calendarGapReminderChanged) {
+    return `已按你的确认生成内容日历缺口提醒${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.contentPackageChanged) {

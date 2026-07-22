@@ -379,6 +379,58 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("creates reminders from content calendar gaps", async () => {
+    mocks.tx.contentPlanItem.findMany.mockResolvedValue([
+      {
+        week: 1,
+        channel: "TikTok",
+      },
+    ]);
+    mocks.tx.reminder.findFirst.mockResolvedValue(null);
+    mocks.tx.reminder.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: `reminder-${data.title}`,
+        ...data,
+      }),
+    );
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "把内容日历缺口生成提醒。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.reminder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        title: "巴西新品首月增长：Instagram 尚未排入内容日历",
+        severity: "WARNING",
+        status: "OPEN",
+      }),
+    });
+    expect(mocks.tx.reminder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        title: "巴西新品首月增长：第2周缺少内容计划",
+        severity: "INFO",
+      }),
+    });
+    expect(mocks.tx.reminder.create).toHaveBeenCalledTimes(4);
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPlanItem",
+        entityId: "project-1",
+        action: "agent_calendar_gap_reminders_generated",
+        summary: "根据内容日历缺口生成提醒：新增 4 条。",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("creates a product fact for the linked product from a Chinese agent command", async () => {
     mocks.tx.projectProduct.count.mockResolvedValue(1);
     mocks.tx.projectProduct.findFirst.mockResolvedValue({

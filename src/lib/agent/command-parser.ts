@@ -117,6 +117,13 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "create_calendar_gap_reminders";
+      value: {
+        limit: number;
+      };
+      label: string;
+    }
+  | {
       type: "create_content_package";
       value: {
         name: string;
@@ -993,6 +1000,24 @@ function parsePlanItemOperation(text: string): ParsedAgentOperation | null {
   };
 }
 
+function parseCalendarGapReminderOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(内容日历|内容计划|排期|计划缺口|渠道缺口)/.test(text) ||
+    !/(缺口|空缺|遗漏|没排|没有安排|未安排)/.test(text) ||
+    !/(生成|创建|加入|转成|变成).*(提醒|待办)/.test(text)
+  ) {
+    return null;
+  }
+
+  return {
+    type: "create_calendar_gap_reminders",
+    value: {
+      limit: 4,
+    },
+    label: "根据内容日历缺口生成提醒",
+  };
+}
+
 function parseCompletePlanItemOperation(text: string): ParsedAgentOperation | null {
   if (
     !/(计划|内容|视频|图文|脚本|海报|帖子|贴文)/.test(text) ||
@@ -1372,6 +1397,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(planItemOperation);
   }
 
+  const calendarGapReminderOperation = parseCalendarGapReminderOperation(text);
+  if (calendarGapReminderOperation) {
+    operations.push(calendarGapReminderOperation);
+  }
+
   const planItemCompletionOperation = parseCompletePlanItemOperation(text);
   if (planItemCompletionOperation) {
     operations.push(planItemCompletionOperation);
@@ -1440,6 +1470,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "decide_content_package_review" ||
       operation.type === "decide_review_task" ||
       operation.type === "create_metrics_risk_reminders" ||
+      operation.type === "create_calendar_gap_reminders" ||
       operation.type === "create_missing_review_tasks",
   );
 
