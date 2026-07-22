@@ -1,5 +1,6 @@
 import {
   ContentFrequency,
+  PackageFileStatus,
   PlanItemStatus,
   ProjectStatus,
   ReminderSeverity,
@@ -122,6 +123,14 @@ export type ParsedAgentOperation =
       value: {
         keyword?: string;
         limit: number;
+      };
+      label: string;
+    }
+  | {
+      type: "update_content_package_files_status";
+      value: {
+        keyword?: string;
+        status: typeof PackageFileStatus.GENERATED | typeof PackageFileStatus.APPROVED;
       };
       label: string;
     }
@@ -618,6 +627,43 @@ function parseContentPackageReadinessReminderOperation(
   };
 }
 
+function parseContentPackageFilesStatusOperation(text: string): ParsedAgentOperation | null {
+  if (!/(素材包|内容包)/.test(text) || !/(全部文件|所有文件|文件项|交付文件)/.test(text)) {
+    return null;
+  }
+
+  const status = parsePackageFileStatus(text);
+
+  if (!status) {
+    return null;
+  }
+
+  const keyword = extractPackageReadinessKeyword(text);
+  const statusLabel =
+    status === PackageFileStatus.APPROVED ? "全部文件审核通过" : "全部文件标记为已生成";
+
+  return {
+    type: "update_content_package_files_status",
+    value: {
+      ...(keyword ? { keyword } : {}),
+      status,
+    },
+    label: `${statusLabel}：${keyword ?? "最新素材包"}`,
+  };
+}
+
+function parsePackageFileStatus(text: string) {
+  if (/审核通过|全部通过|文件通过|已通过/.test(text)) {
+    return PackageFileStatus.APPROVED;
+  }
+
+  if (/已生成|生成完成|标记生成|标为已生成|设为已生成/.test(text)) {
+    return PackageFileStatus.GENERATED;
+  }
+
+  return null;
+}
+
 function parseDecideContentPackageReviewOperation(text: string): ParsedAgentOperation | null {
   if (!/(素材包|内容包)/.test(text) || !/审核/.test(text)) {
     return null;
@@ -668,6 +714,8 @@ function extractPackageReadinessKeyword(text: string) {
   const keyword = extractPackageKeyword(text)
     ?.replace(/可交付性|可交付|交付检查|交付性|缺口|阻塞|问题|风险/g, "")
     .replace(/生成提醒|创建提醒|加入提醒|转成提醒|变成提醒|生成待办|创建待办|提醒|待办/g, "")
+    .replace(/全部文件|所有文件|文件项|交付文件|已生成|生成完成|标记生成|标为已生成|设为已生成/g, "")
+    .replace(/审核通过|全部通过|文件通过|已通过/g, "")
     .trim();
 
   return keyword && keyword.length >= 2 ? keyword : null;
@@ -1173,6 +1221,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(contentPackageReadinessReminderOperation);
   }
 
+  const contentPackageFilesStatusOperation = parseContentPackageFilesStatusOperation(text);
+  if (contentPackageFilesStatusOperation) {
+    operations.push(contentPackageFilesStatusOperation);
+  }
+
   const packageReviewOperation = parseSubmitContentPackageReviewOperation(text);
   if (packageReviewOperation) {
     operations.push(packageReviewOperation);
@@ -1261,6 +1314,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "recommend_strategy" ||
       operation.type === "create_content_package" ||
       operation.type === "create_content_package_readiness_reminders" ||
+      operation.type === "update_content_package_files_status" ||
       operation.type === "submit_content_package_review" ||
       operation.type === "decide_content_package_review" ||
       operation.type === "create_missing_review_tasks",

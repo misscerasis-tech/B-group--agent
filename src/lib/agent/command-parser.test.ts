@@ -1,5 +1,6 @@
 import {
   ContentFrequency,
+  PackageFileStatus,
   PlanItemStatus,
   ProjectStatus,
   ReminderSeverity,
@@ -253,6 +254,19 @@ describe("parseAgentCommand", () => {
         limit: 4,
       },
       label: "根据素材包可交付性缺口生成提醒：最新素材包",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("extracts content package file status updates", () => {
+    const parsed = parseAgentCommand("把最新素材包全部文件标记为已生成。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "update_content_package_files_status",
+      value: {
+        status: PackageFileStatus.GENERATED,
+      },
+      label: "全部文件标记为已生成：最新素材包",
     });
     expect(parsed.confidence).toBe("high");
   });

@@ -62,6 +62,7 @@ const mocks = vi.hoisted(() => {
     },
     contentPackageFile: {
       createMany: vi.fn(),
+      updateMany: vi.fn(),
     },
     reminder: {
       count: vi.fn(),
@@ -765,6 +766,79 @@ describe("generateStarterPlan", () => {
         entityId: "package-1",
         action: "agent_package_readiness_reminders_generated",
         summary: expect.stringContaining("新增 2 条"),
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("updates all files in the latest content package from a Chinese agent command", async () => {
+    const contentPackage = {
+      id: "package-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      strategyId: "strategy-1",
+      name: "2026-08 第1周 TikTok 素材包",
+      period: "2026-08 第1周",
+      frequency: "WEEKLY",
+      status: "DRAFT",
+      summary: "待生成素材。",
+      updatedAt: new Date("2026-07-22T00:00:00.000Z"),
+      files: [
+        {
+          id: "file-1",
+          status: "PLANNED",
+        },
+        {
+          id: "file-2",
+          status: "PLANNED",
+        },
+      ],
+    };
+    mocks.tx.contentPackage.count.mockResolvedValue(1);
+    mocks.tx.contentPackage.findFirst.mockResolvedValue(contentPackage);
+    mocks.tx.contentPackageFile.updateMany.mockResolvedValue({
+      count: 2,
+    });
+    mocks.tx.contentPackage.update.mockResolvedValue({
+      ...contentPackage,
+      status: "GENERATED",
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "把最新素材包全部文件标记为已生成。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.contentPackageFile.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ["file-1", "file-2"],
+        },
+        contentPackageId: "package-1",
+      },
+      data: {
+        status: "GENERATED",
+      },
+    });
+    expect(mocks.tx.contentPackage.update).toHaveBeenCalledWith({
+      where: {
+        id: "package-1",
+      },
+      data: {
+        status: "GENERATED",
+      },
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPackage",
+        entityId: "package-1",
+        action: "agent_package_files_status_updated",
+        summary: "全部文件标记为已生成：最新素材包：更新 2 个文件项。",
         actorUserId: "user-1",
       }),
     });

@@ -139,6 +139,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "content_package_files_status",
+    category: "content_package",
+    title: "批量推进素材包文件状态",
+    example: "把最新素材包全部文件标记为已生成。",
+    writesTo: ["ContentPackageFile", "ContentPackage", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
     key: "content_package_submit_review",
     category: "review",
     title: "提交素材包审核",
