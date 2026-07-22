@@ -33,9 +33,14 @@ export default async function DashboardPage() {
               当前 Workspace：{context.currentWorkspace.name}。每天从项目、计划、素材包和提醒开始。
             </p>
           </div>
-          <Link className="button" href="/b-agent">
-            打开 B组 Agent
-          </Link>
+          <div className="hero-actions" style={{ marginTop: 0 }}>
+            <Link className="button secondary" href="/workspace/export">
+              导出 Workspace 备份
+            </Link>
+            <Link className="button" href="/b-agent">
+              打开 B组 Agent
+            </Link>
+          </div>
         </section>
 
         <section className="grid four">

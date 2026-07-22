@@ -27,6 +27,7 @@
 - 产品大脑支持从已关联的文本型产品资料 Asset 提取待确认事实。
 - 素材库上传校验、自动审核任务、素材状态同步和模板化合成任务记录。
 - 素材包 ZIP 可交付文件包导出、项目工作台 JSON 快照导出和 Workspace 复盘 JSON 快照导出。
+- 今日工作台支持导出 Workspace 安全备份 JSON，覆盖当前 Workspace 业务数据并屏蔽疑似密钥字段。
 - 素材包中心显示可交付性检查，ZIP 内包含 `00-交付检查.txt`，生成图不会被当作真实产品图来源。
 - 内容日历状态推进、首月计划截止日期。
 - 提醒中心主动提醒、手动提醒、完成/忽略。
@@ -55,9 +56,9 @@ DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?sc
 
 最近一次测试结果：
 
-- Test Files：`22 passed`
-- Tests：`67 passed`
-- Build：通过，包含 `/setup`、`/api/health`、`/b-agent`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
+- Test Files：`23 passed`
+- Tests：`69 passed`
+- Build：通过，包含 `/setup`、`/api/health`、`/b-agent`、`/workspace/export`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
 
 ## 仍需人工完成
 

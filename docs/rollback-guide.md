@@ -131,6 +131,14 @@ git switch -c hotfix/from-v0.1.0-foundation v0.1.0-foundation
 pg_dump "$DATABASE_URL" > backups/backup-YYYYMMDD-HHMM.sql
 ```
 
+演示或阶段验收前，也可以在今日工作台点击“导出 Workspace 备份”，或直接打开：
+
+```text
+http://127.0.0.1:3002/workspace/export
+```
+
+该 JSON 备份用于核对和辅助恢复当前 Workspace 的结构化业务数据；它会递归屏蔽疑似密钥字段，但不包含上传文件二进制内容，不能替代 `pg_dump`、`storage/assets` 或对象存储备份。
+
 恢复备份示例：
 
 ```bash
