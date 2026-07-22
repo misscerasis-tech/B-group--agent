@@ -1,0 +1,60 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { createMetricsSnapshot } from "@/lib/data/recaps";
+import { getWorkspaceContext } from "@/lib/workspace-context";
+
+function readRequiredText(formData: FormData, key: string, label: string) {
+  const value = String(formData.get(key) ?? "").trim();
+
+  if (!value) {
+    throw new Error(`${label}不能为空。`);
+  }
+
+  return value;
+}
+
+function readNonNegativeInteger(formData: FormData, key: string, label: string) {
+  const rawValue = readRequiredText(formData, key, label);
+  const value = Number.parseInt(rawValue, 10);
+
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label}必须是大于或等于 0 的整数。`);
+  }
+
+  return value;
+}
+
+function readSpendCents(formData: FormData) {
+  const rawValue = readRequiredText(formData, "spend", "花费");
+  const value = Number.parseFloat(rawValue);
+
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("花费必须是大于或等于 0 的数字。");
+  }
+
+  return Math.round(value * 100);
+}
+
+export async function createMetricsSnapshotAction(formData: FormData) {
+  const context = await getWorkspaceContext();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  await createMetricsSnapshot({
+    workspaceId: context.currentWorkspace.id,
+    userId: context.user.id,
+    projectId: readRequiredText(formData, "projectId", "项目"),
+    period: readRequiredText(formData, "period", "周期"),
+    channel: readRequiredText(formData, "channel", "渠道"),
+    impressions: readNonNegativeInteger(formData, "impressions", "曝光"),
+    clicks: readNonNegativeInteger(formData, "clicks", "点击"),
+    conversions: readNonNegativeInteger(formData, "conversions", "转化"),
+    spendCents: readSpendCents(formData),
+    notes: notes.length > 0 ? notes : undefined,
+  });
+
+  revalidatePath("/recaps");
+  revalidatePath("/dashboard");
+  redirect("/recaps");
+}

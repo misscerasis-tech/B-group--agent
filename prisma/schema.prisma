@@ -179,6 +179,7 @@ model Workspace {
   contentPackages        ContentPackage[]
   reviewTasks            ReviewTask[]
   reminders              Reminder[]
+  metricsSnapshots       MetricsSnapshot[]
   conversations          AgentConversation[]
   messages               AgentMessage[]
   operations             AgentOperation[]
@@ -220,6 +221,7 @@ model Project {
   contentPackages     ContentPackage[]
   reviewTasks         ReviewTask[]
   reminders           Reminder[]
+  metricsSnapshots    MetricsSnapshot[]
   conversations       AgentConversation[]
   operations          AgentOperation[]
   changeLogs          ChangeLog[]
@@ -401,6 +403,27 @@ model Reminder {
 
   @@index([workspaceId, status])
   @@index([workspaceId, projectId])
+}
+
+model MetricsSnapshot {
+  id          String    @id @default(cuid())
+  workspaceId String
+  projectId   String
+  period      String
+  channel     String
+  impressions Int       @default(0)
+  clicks      Int       @default(0)
+  conversions Int       @default(0)
+  spendCents  Int       @default(0)
+  notes       String?
+  capturedAt  DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, projectId, capturedAt])
+  @@index([workspaceId, channel])
 }
 
 model AgentConversation {

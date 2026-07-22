@@ -396,6 +396,33 @@ async function main() {
     },
   });
 
+  await prisma.metricsSnapshot.upsert({
+    where: { id: "demo-metrics-tiktok-week-1" },
+    update: {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      period: "首月第 1 周",
+      channel: "TikTok",
+      impressions: 12800,
+      clicks: 640,
+      conversions: 42,
+      spendCents: 36000,
+      notes: "Seed 示例数据：新品认知短视频点击率较好，后续可加测礼赠场景。",
+    },
+    create: {
+      id: "demo-metrics-tiktok-week-1",
+      workspaceId: workspace.id,
+      projectId: project.id,
+      period: "首月第 1 周",
+      channel: "TikTok",
+      impressions: 12800,
+      clicks: 640,
+      conversions: 42,
+      spendCents: 36000,
+      notes: "Seed 示例数据：新品认知短视频点击率较好，后续可加测礼赠场景。",
+    },
+  });
+
   const conversation = await prisma.agentConversation.upsert({
     where: { id: "demo-conversation-brazil-launch" },
     update: {

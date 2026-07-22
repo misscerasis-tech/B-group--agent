@@ -80,6 +80,7 @@ prisma/migrations/20260722000000_b_group_working_assistant/migration.sql
 prisma/migrations/20260722010000_assets_and_image_jobs/migration.sql
 prisma/migrations/20260722020000_workspace_integrations/migration.sql
 prisma/migrations/20260722030000_review_tasks/migration.sql
+prisma/migrations/20260722040000_metrics_snapshots/migration.sql
 ```
 
 如果迁移只在本地开发库执行过，最简单的恢复方式是重建本地数据库并重新执行旧版本迁移和 seed。
@@ -88,7 +89,7 @@ prisma/migrations/20260722030000_review_tasks/migration.sql
 
 - 应用回到 `feature/b-group-agent-plan` 或更早版本时，新表可暂时保留，但旧应用不会读取它们。
 - 若必须彻底回退数据库结构，需要在备份确认后删除新增表和枚举，或直接恢复迁移前备份。
-- 不得在没有备份的情况下删除 `AgentOperation`、`ChangeLog`、`ProjectStrategy`、`ContentPackage`、`ReviewTask`、`Asset`、`ImageGenerationJob`、`IntegrationConnection`、`IntegrationMigrationRecord` 等业务记录。
+- 不得在没有备份的情况下删除 `AgentOperation`、`ChangeLog`、`ProjectStrategy`、`ContentPackage`、`ReviewTask`、`Reminder`、`MetricsSnapshot`、`Asset`、`ImageGenerationJob`、`IntegrationConnection`、`IntegrationMigrationRecord` 等业务记录。
 - 本地上传素材保存在 `storage/assets/<workspaceId>`，回滚应用代码前需要决定是否保留、备份或迁移这些本地文件；该目录不在 Git 中。
 
 ## 使用 Git Tag 恢复
