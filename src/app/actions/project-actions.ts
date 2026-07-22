@@ -27,11 +27,15 @@ function readOptionalText(formData: FormData, key: string) {
 
 export async function createProjectAction(formData: FormData) {
   const context = await getWorkspaceContext();
-  const project = await createProject(context.currentWorkspace.id, {
-    name: readRequiredText(formData, "name", "项目名称"),
-    description: readOptionalText(formData, "description"),
-    status: parseProjectStatus(formData.get("status")),
-  });
+  const project = await createProject(
+    context.currentWorkspace.id,
+    {
+      name: readRequiredText(formData, "name", "项目名称"),
+      description: readOptionalText(formData, "description"),
+      status: parseProjectStatus(formData.get("status")),
+    },
+    context.user.id,
+  );
 
   revalidatePath("/projects");
   redirect(`/projects/${project.id}`);
@@ -40,11 +44,16 @@ export async function createProjectAction(formData: FormData) {
 export async function updateProjectAction(projectId: string, formData: FormData) {
   const context = await getWorkspaceContext();
 
-  await updateProject(context.currentWorkspace.id, projectId, {
-    name: readRequiredText(formData, "name", "项目名称"),
-    description: readOptionalText(formData, "description"),
-    status: parseProjectStatus(formData.get("status")),
-  });
+  await updateProject(
+    context.currentWorkspace.id,
+    projectId,
+    {
+      name: readRequiredText(formData, "name", "项目名称"),
+      description: readOptionalText(formData, "description"),
+      status: parseProjectStatus(formData.get("status")),
+    },
+    context.user.id,
+  );
 
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
@@ -55,10 +64,14 @@ export async function updateProjectProductsAction(projectId: string, formData: F
   const context = await getWorkspaceContext();
   const productIds = formData.getAll("productIds").map((id) => String(id));
 
-  await replaceProjectProducts(context.currentWorkspace.id, projectId, productIds);
+  await replaceProjectProducts(
+    context.currentWorkspace.id,
+    projectId,
+    productIds,
+    context.user.id,
+  );
 
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
   redirect(`/projects/${projectId}`);
 }
-

@@ -30,11 +30,15 @@ function readOptionalText(formData: FormData, key: string) {
 
 export async function createProductAction(formData: FormData) {
   const context = await getWorkspaceContext();
-  const product = await createProduct(context.currentWorkspace.id, {
-    name: readRequiredText(formData, "name", "产品名称"),
-    description: readOptionalText(formData, "description"),
-    status: parseProductStatus(formData.get("status")),
-  });
+  const product = await createProduct(
+    context.currentWorkspace.id,
+    {
+      name: readRequiredText(formData, "name", "产品名称"),
+      description: readOptionalText(formData, "description"),
+      status: parseProductStatus(formData.get("status")),
+    },
+    context.user.id,
+  );
 
   revalidatePath("/brain");
   redirect(`/brain/products/${product.id}`);
@@ -43,11 +47,16 @@ export async function createProductAction(formData: FormData) {
 export async function updateProductAction(productId: string, formData: FormData) {
   const context = await getWorkspaceContext();
 
-  await updateProduct(context.currentWorkspace.id, productId, {
-    name: readRequiredText(formData, "name", "产品名称"),
-    description: readOptionalText(formData, "description"),
-    status: parseProductStatus(formData.get("status")),
-  });
+  await updateProduct(
+    context.currentWorkspace.id,
+    productId,
+    {
+      name: readRequiredText(formData, "name", "产品名称"),
+      description: readOptionalText(formData, "description"),
+      status: parseProductStatus(formData.get("status")),
+    },
+    context.user.id,
+  );
 
   revalidatePath("/brain");
   revalidatePath(`/brain/products/${productId}`);
@@ -57,11 +66,16 @@ export async function updateProductAction(productId: string, formData: FormData)
 export async function createProductFactAction(productId: string, formData: FormData) {
   const context = await getWorkspaceContext();
 
-  await createProductFact(context.currentWorkspace.id, productId, {
-    label: readRequiredText(formData, "label", "事实名称"),
-    value: readRequiredText(formData, "value", "事实内容"),
-    status: parseProductFactStatus(formData.get("status")),
-  });
+  await createProductFact(
+    context.currentWorkspace.id,
+    productId,
+    {
+      label: readRequiredText(formData, "label", "事实名称"),
+      value: readRequiredText(formData, "value", "事实内容"),
+      status: parseProductFactStatus(formData.get("status")),
+    },
+    context.user.id,
+  );
 
   revalidatePath("/brain");
   revalidatePath(`/brain/products/${productId}`);
@@ -71,7 +85,7 @@ export async function createProductFactAction(productId: string, formData: FormD
 export async function generateInitialProductFactsAction(productId: string) {
   const context = await getWorkspaceContext();
 
-  await generateInitialProductFacts(context.currentWorkspace.id, productId);
+  await generateInitialProductFacts(context.currentWorkspace.id, productId, context.user.id);
 
   revalidatePath("/brain");
   revalidatePath(`/brain/products/${productId}`);
@@ -85,6 +99,7 @@ export async function generateProductFactsFromTextAction(productId: string, form
     context.currentWorkspace.id,
     productId,
     readRequiredText(formData, "sourceText", "产品资料"),
+    context.user.id,
   );
 
   revalidatePath("/brain");
@@ -95,7 +110,7 @@ export async function generateProductFactsFromTextAction(productId: string, form
 export async function confirmAllProductFactsAction(productId: string) {
   const context = await getWorkspaceContext();
 
-  await confirmAllProductFacts(context.currentWorkspace.id, productId);
+  await confirmAllProductFacts(context.currentWorkspace.id, productId, context.user.id);
 
   revalidatePath("/brain");
   revalidatePath(`/brain/products/${productId}`);
