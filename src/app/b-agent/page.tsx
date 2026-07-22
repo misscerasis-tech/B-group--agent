@@ -41,6 +41,33 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const quickAgentCommands = [
+  {
+    label: "推荐策略",
+    command: "请根据产品事实推荐一版巴西首月增长策略。",
+  },
+  {
+    label: "生成首月计划",
+    command: "请生成首月计划和第一份素材包结构。",
+  },
+  {
+    label: "项目体检提醒",
+    command: "把项目体检缺口生成提醒。",
+  },
+  {
+    label: "日历缺口提醒",
+    command: "把内容日历缺口生成提醒。",
+  },
+  {
+    label: "补齐审核任务",
+    command: "补齐当前项目审核中心任务。",
+  },
+  {
+    label: "素材包缺口提醒",
+    command: "把最新素材包可交付性缺口生成提醒。",
+  },
+];
+
 type BAgentPageProps = {
   searchParams: Promise<{
     projectId?: string;
@@ -183,6 +210,29 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                   执行中文指令
                 </button>
               </form>
+
+              <div className="nl-command-box">
+                <CheckCircle2 size={18} aria-hidden="true" />
+                <div>
+                  <strong>常用流程按钮</strong>
+                  <p>点击后会直接写入当前项目，所有结果仍会进入操作记录和变更日志。</p>
+                  <div className="hero-actions">
+                    {quickAgentCommands.map((item) => (
+                      <form
+                        action={submitAgentCommandAction}
+                        className="inline-form"
+                        key={item.command}
+                      >
+                        <input name="projectId" type="hidden" value={selectedProject.id} />
+                        <input name="command" type="hidden" value={item.command} />
+                        <button className="button secondary" title={item.command} type="submit">
+                          {item.label}
+                        </button>
+                      </form>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
               <div className="nl-command-box">
                 <PencilLine size={18} aria-hidden="true" />
