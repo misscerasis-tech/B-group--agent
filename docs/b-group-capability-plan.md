@@ -138,7 +138,7 @@ V1 目标素材包：
 ## 当前已落地能力
 
 - `ProductFact` 保存产品事实，并支持人工确认。
-- 产品大脑可从产品说明、粘贴资料或已关联的文本型产品资料 Asset 生成待确认事实。
+- 产品大脑可从产品说明、粘贴资料或已关联的 TXT/MD/CSV/JSON/DOCX/文本型 PDF 产品资料 Asset 生成待确认事实。
 - `ProjectStrategy` 保存市场、客群、渠道、内容方向和素材包频率。
 - `AgentTextProvider` 负责把中文指令转换为结构化操作，当前实现为 `local-rule`，后续 GPT 只作为新 Provider 接入。
 - `agentCommandCapabilities` 集中维护 Agent 可执行能力、中文示例、写入表和人工审核要求，作为页面提示和未来 GPT 工具目录基础。
