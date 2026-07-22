@@ -28,6 +28,8 @@ Product Layer 和 Logo Layer 必须保留素材来源，不允许图片模型重
 
 当前素材库可以执行本地 `template_composition`：必须选择已审核真实产品图和官方 Logo，系统生成分层 SVG 海报文件，生成结果作为 `GENERATED_IMAGE` 进入统一 Asset 素材库；任务保留 sourceAssetIds、aspectRatio、resultAssetId 与状态，不调用外部模型。
 
+素材包可交付性检查必须继续检查真实产品图和官方 Logo 来源：`GENERATED_IMAGE` 可以作为海报成品进入素材包，但不能替代产品层或 Logo 层的可信来源证明。
+
 ## 可插拔供应商
 
 图片生成能力必须通过 `ImageGenerationProvider` 或等价适配器接入，不在页面、业务服务或数据库中写死某个模型或平台。

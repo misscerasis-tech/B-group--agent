@@ -129,11 +129,14 @@ describe("buildContentPackageExportFiles", () => {
       planItems: [],
     } as never);
 
+    const readiness = readText(files.find((file) => file.filename === "00-交付检查.txt")?.content);
     const readme = readText(files.find((file) => file.filename === "README-素材包说明.md")?.content);
     const manifest = JSON.parse(
       readText(files.find((file) => file.filename === "manifest.json")?.content),
     );
 
+    expect(readiness).toContain("可交付性");
+    expect(readiness).toContain("关联真实产品图和 Logo");
     expect(files.find((file) => file.filename === "01-素材包说明.pdf")?.content).toBeInstanceOf(
       Buffer,
     );

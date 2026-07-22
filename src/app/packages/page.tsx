@@ -10,6 +10,7 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { buildContentPackageReadiness } from "@/lib/content-package-readiness";
 import { listWorkspaceAssets } from "@/lib/data/assets";
 import { listWorkspaceContentPackages } from "@/lib/data/content-workspace";
 import { listProjects } from "@/lib/data/projects";
@@ -102,101 +103,147 @@ export default async function PackagesPage() {
 
         {packages.length > 0 ? (
           <section className="package-list" style={{ marginTop: 16 }}>
-            {packages.map((contentPackage) => (
-              <article className="package-card" key={contentPackage.id}>
-                <header>
-                  <div className="package-summary compact">
-                    <FileArchive size={20} aria-hidden="true" />
-                    <div>
-                      <strong>{contentPackage.name}</strong>
-                      <p>
-                        {contentPackage.project.name} · {contentPackage.period} ·{" "}
-                        {contentFrequencyLabels[contentPackage.frequency]}
-                      </p>
+            {packages.map((contentPackage) => {
+              const readiness = buildContentPackageReadiness(contentPackage);
+
+              return (
+                <article className="package-card" key={contentPackage.id}>
+                  <header>
+                    <div className="package-summary compact">
+                      <FileArchive size={20} aria-hidden="true" />
+                      <div>
+                        <strong>{contentPackage.name}</strong>
+                        <p>
+                          {contentPackage.project.name} · {contentPackage.period} ·{" "}
+                          {contentFrequencyLabels[contentPackage.frequency]}
+                        </p>
+                      </div>
                     </div>
+                    <StatusBadge
+                      label={contentPackageStatusLabels[contentPackage.status]}
+                      tone={contentPackage.status === "APPROVED" ? "success" : "neutral"}
+                    />
+                  </header>
+                  <p className="muted">{contentPackage.summary ?? "暂无素材包说明。"}</p>
+                  <div
+                    style={{
+                      borderTop: "1px solid var(--line)",
+                      display: "grid",
+                      gap: 10,
+                      paddingTop: 12,
+                    }}
+                  >
+                    <header>
+                      <strong>可交付性检查</strong>
+                      <StatusBadge
+                        label={contentPackageReadinessLabels[readiness.rating]}
+                        tone={readiness.rating === "READY_TO_EXPORT" ? "success" : "warning"}
+                      />
+                    </header>
+                    <div
+                      aria-label={`${readiness.packageName} 可交付性 ${readiness.score} 分`}
+                      style={{
+                        background: "#eef2f7",
+                        borderRadius: 999,
+                        height: 8,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          background:
+                            readiness.rating === "READY_TO_EXPORT" ? "#1f9d72" : "#f2a900",
+                          height: "100%",
+                          width: `${readiness.score}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="muted">{readiness.summary}</p>
+                    <ul className="clean-list">
+                      {readiness.signals.map((signal) => (
+                        <li key={signal.key}>
+                          {signal.label}：{signal.summary}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <StatusBadge
-                    label={contentPackageStatusLabels[contentPackage.status]}
-                    tone={contentPackage.status === "APPROVED" ? "success" : "neutral"}
-                  />
-                </header>
-                <p className="muted">{contentPackage.summary ?? "暂无素材包说明。"}</p>
-                <div className="pack-grid">
-                  {contentPackage.files.map((file) => (
-                    <div className="pack-file" key={file.id}>
-                      <FileText size={18} aria-hidden="true" />
-                      <span>
-                        {file.name}
-                        <small>
-                          {file.fileType} · {packageFileStatusLabels[file.status]}
-                          {file.asset ? ` · 已关联：${file.asset.name}` : ""}
-                        </small>
-                      </span>
-                      {!file.asset && attachableAssets.length > 0 ? (
-                        <form action={attachAssetToPackageFileAction} className="inline-form">
-                          <input name="fileId" type="hidden" value={file.id} />
-                          <select aria-label="选择关联素材" name="assetId" required>
-                            {attachableAssets.map((asset) => (
-                              <option key={asset.id} value={asset.id}>
-                                {asset.name}
-                              </option>
-                            ))}
-                          </select>
-                          <button className="button secondary" type="submit">
-                            关联素材
-                          </button>
-                        </form>
-                      ) : null}
-                      {file.asset?.storagePath ? (
-                        <Link
-                          className="button secondary"
-                          href={`/assets/${file.asset.id}/download`}
-                        >
-                          下载关联素材
-                        </Link>
-                      ) : null}
-                      <form action={updateContentPackageFileStatusAction} className="inline-form">
-                        <input name="fileId" type="hidden" value={file.id} />
-                        {file.status === "PLANNED" ? (
-                          <button
+                  <div className="pack-grid">
+                    {contentPackage.files.map((file) => (
+                      <div className="pack-file" key={file.id}>
+                        <FileText size={18} aria-hidden="true" />
+                        <span>
+                          {file.name}
+                          <small>
+                            {file.fileType} · {packageFileStatusLabels[file.status]}
+                            {file.asset ? ` · 已关联：${file.asset.name}` : ""}
+                          </small>
+                        </span>
+                        {!file.asset && attachableAssets.length > 0 ? (
+                          <form action={attachAssetToPackageFileAction} className="inline-form">
+                            <input name="fileId" type="hidden" value={file.id} />
+                            <select aria-label="选择关联素材" name="assetId" required>
+                              {attachableAssets.map((asset) => (
+                                <option key={asset.id} value={asset.id}>
+                                  {asset.name}
+                                </option>
+                              ))}
+                            </select>
+                            <button className="button secondary" type="submit">
+                              关联素材
+                            </button>
+                          </form>
+                        ) : null}
+                        {file.asset?.storagePath ? (
+                          <Link
                             className="button secondary"
-                            name="status"
-                            type="submit"
-                            value="GENERATED"
+                            href={`/assets/${file.asset.id}/download`}
                           >
-                            <PlayCircle size={16} aria-hidden="true" />
-                            已生成
-                          </button>
+                            下载关联素材
+                          </Link>
                         ) : null}
-                        {file.status !== "APPROVED" ? (
-                          <button className="button" name="status" type="submit" value="APPROVED">
-                            <CheckCircle2 size={16} aria-hidden="true" />
-                            通过
-                          </button>
-                        ) : null}
+                        <form action={updateContentPackageFileStatusAction} className="inline-form">
+                          <input name="fileId" type="hidden" value={file.id} />
+                          {file.status === "PLANNED" ? (
+                            <button
+                              className="button secondary"
+                              name="status"
+                              type="submit"
+                              value="GENERATED"
+                            >
+                              <PlayCircle size={16} aria-hidden="true" />
+                              已生成
+                            </button>
+                          ) : null}
+                          {file.status !== "APPROVED" ? (
+                            <button className="button" name="status" type="submit" value="APPROVED">
+                              <CheckCircle2 size={16} aria-hidden="true" />
+                              通过
+                            </button>
+                          ) : null}
+                        </form>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="download-preview">
+                    <Download size={18} aria-hidden="true" />
+                    <span>可下载包含 PDF、XLSX、DOCX、TXT、关联素材和 manifest 的 ZIP。</span>
+                    {contentPackage.status !== "APPROVED" ? (
+                      <form action={submitContentPackageForReviewAction} className="inline-form">
+                        <input name="contentPackageId" type="hidden" value={contentPackage.id} />
+                        <input name="returnTo" type="hidden" value="/packages" />
+                        <button className="button" type="submit">
+                          <CheckCircle2 size={16} aria-hidden="true" />
+                          提交审核
+                        </button>
                       </form>
-                    </div>
-                  ))}
-                </div>
-                <div className="download-preview">
-                  <Download size={18} aria-hidden="true" />
-                  <span>可下载包含 PDF、XLSX、DOCX、TXT、关联素材和 manifest 的 ZIP。</span>
-                  {contentPackage.status !== "APPROVED" ? (
-                    <form action={submitContentPackageForReviewAction} className="inline-form">
-                      <input name="contentPackageId" type="hidden" value={contentPackage.id} />
-                      <input name="returnTo" type="hidden" value="/packages" />
-                      <button className="button" type="submit">
-                        <CheckCircle2 size={16} aria-hidden="true" />
-                        提交审核
-                      </button>
-                    </form>
-                  ) : null}
-                  <Link className="button secondary" href={`/packages/${contentPackage.id}/export`}>
-                    下载素材包
-                  </Link>
-                </div>
-              </article>
-            ))}
+                    ) : null}
+                    <Link className="button secondary" href={`/packages/${contentPackage.id}/export`}>
+                      下载素材包
+                    </Link>
+                  </div>
+                </article>
+              );
+            })}
           </section>
         ) : (
           <section className="panel">
@@ -218,3 +265,9 @@ export default async function PackagesPage() {
     );
   }
 }
+
+const contentPackageReadinessLabels = {
+  READY_TO_EXPORT: "可下载复核",
+  NEEDS_WORK: "需要完善",
+  BLOCKED: "存在阻塞",
+};

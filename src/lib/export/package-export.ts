@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { buildContentPackageReadiness } from "@/lib/content-package-readiness";
 import { resolveLocalAssetPath } from "@/lib/data/assets";
 import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/workspace-scope";
@@ -82,6 +83,7 @@ export async function buildContentPackageZip(data: ContentPackageExportData) {
 
 export function buildContentPackageExportFiles(data: ContentPackageExportData): ZipFileInput[] {
   const { contentPackage, planItems } = data;
+  const readiness = buildContentPackageReadiness(contentPackage);
   const products = contentPackage.project.projectProducts.map(({ product }) => product);
   const strategy = contentPackage.strategy;
   const channels = strategy?.channels.length
@@ -150,6 +152,20 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
   ];
 
   return [
+    {
+      filename: "00-交付检查.txt",
+      content: [
+        `素材包：${readiness.packageName}`,
+        `可交付性：${readiness.score} 分`,
+        `状态：${readiness.rating}`,
+        `摘要：${readiness.summary}`,
+        "",
+        "检查项：",
+        ...readiness.signals.map(
+          (signal) => `- ${signal.label}：${signal.summary}；下一步：${signal.action}`,
+        ),
+      ].join("\n"),
+    },
     {
       filename: "01-素材包说明.pdf",
       content: buildSimplePdf({
