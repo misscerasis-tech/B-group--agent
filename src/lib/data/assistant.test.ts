@@ -1654,6 +1654,57 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("updates a matching content plan item due date from a Chinese agent command", async () => {
+    const planItem = {
+      id: "plan-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      strategyId: "strategy-1",
+      week: 2,
+      channel: "TikTok",
+      theme: "新品认知",
+      title: "开箱短视频",
+      deliverable: "短视频脚本",
+      dueDate: new Date("2026-08-07T00:00:00.000Z"),
+      status: "READY",
+      createdAt: new Date("2026-07-22T00:00:00.000Z"),
+    };
+    mocks.tx.contentPlanItem.count.mockResolvedValue(1);
+    mocks.tx.contentPlanItem.findFirst.mockResolvedValue(planItem);
+    mocks.tx.contentPlanItem.update.mockResolvedValue({
+      ...planItem,
+      dueDate: new Date("2026-08-10T00:00:00.000Z"),
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "第2周 TikTok 开箱短视频截止日期改到 2026-08-10。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.contentPlanItem.update).toHaveBeenCalledWith({
+      where: {
+        id: "plan-1",
+      },
+      data: {
+        dueDate: new Date("2026-08-10T00:00:00"),
+      },
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPlanItem",
+        entityId: "plan-1",
+        action: "agent_plan_item_due_date_updated",
+        summary: "内容计划截止日期改为 2026-08-10：第2周 · TikTok · 开箱",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("fails safely when a completion command cannot match a target", async () => {
     mocks.tx.reminder.count.mockResolvedValue(0);
 

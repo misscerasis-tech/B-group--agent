@@ -147,6 +147,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "plan_item_due_date",
+    category: "planning",
+    title: "调整内容计划截止日期",
+    example: "第2周 TikTok 开箱短视频截止日期改到 2026-08-10。",
+    writesTo: ["ContentPlanItem", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "calendar_gap_reminders",
     category: "planning",
     title: "将内容日历缺口生成提醒",

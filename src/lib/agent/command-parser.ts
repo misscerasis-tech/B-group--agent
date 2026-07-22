@@ -135,6 +135,16 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "update_plan_item_due_date";
+      value: {
+        dueDate: string;
+        keyword?: string;
+        week?: number;
+        channel?: string;
+      };
+      label: string;
+    }
+  | {
       type: "create_calendar_gap_reminders";
       value: {
         limit: number;
@@ -1326,6 +1336,62 @@ function parsePlanItemStatusUpdateOperation(text: string): ParsedAgentOperation 
   };
 }
 
+function parsePlanItemDueDateUpdateOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(计划|内容|视频|图文|脚本|海报|帖子|贴文)/.test(text) ||
+    !/(截止|交付时间|交付日期|排期日期|日期|due)/i.test(text) ||
+    !/(改到|改为|改成|调整到|调整为|设为|定在|延后到|提前到|截止到|截止至)/.test(text)
+  ) {
+    return null;
+  }
+
+  const dueDate = parsePlanDueDate(text);
+
+  if (!dueDate) {
+    return null;
+  }
+
+  const channel = CHANNELS.find((channelName) =>
+    text.toLowerCase().includes(channelName.toLowerCase()),
+  );
+  const week = parsePlanWeek(text) ?? undefined;
+  const keyword = extractPlanItemDueDateKeyword(text, [
+    "计划",
+    "内容计划",
+    "内容",
+    "视频",
+    "短视频",
+    "图文",
+    "脚本",
+    "海报",
+    "帖子",
+    "贴文",
+    ...(channel ? [channel] : []),
+  ]);
+  const value = {
+    dueDate,
+    ...(keyword ? { keyword } : {}),
+    ...(week ? { week } : {}),
+    ...(channel ? { channel } : {}),
+  };
+
+  if (!value.keyword && !value.week && !value.channel) {
+    return null;
+  }
+
+  const scope = [
+    value.week ? `第${value.week}周` : null,
+    value.channel,
+    value.keyword,
+  ].filter(Boolean);
+
+  return {
+    type: "update_plan_item_due_date",
+    value,
+    label: `内容计划截止日期改为 ${dueDate}：${scope.join(" · ")}`,
+  };
+}
+
 function parsePlanItemStatus(text: string): PlanItemStatus | null {
   if (/需审核|需要审核|待审核|进入审核|送审|待确认|复核/.test(text)) {
     return PlanItemStatus.REVIEW_NEEDED;
@@ -1369,6 +1435,22 @@ function extractPlanItemStatusKeyword(text: string, removableTerms: string[]) {
     .replace(/需审核|需要审核|待审核|审核|待确认|复核|送审/g, "")
     .replace(/可执行|ready|就绪|已准备|准备好|可以执行/gi, "")
     .replace(/草稿|待定|暂缓|暂停/g, "")
+    .replace(new RegExp(removableTerms.map(escapeRegExp).join("|"), "gi"), "")
+    .replace(/第\s*\d{1,2}\s*周/g, "")
+    .replace(/，|。|！|!|：|:|；|;|、/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return keyword.length >= 2 ? keyword.slice(0, 80) : null;
+}
+
+function extractPlanItemDueDateKeyword(text: string, removableTerms: string[]) {
+  const keyword = text
+    .replace(/请|麻烦|帮我|把|将|当前|这个|这个项目|项目/g, "")
+    .replace(/20\d{2}[-/]\d{1,2}[-/]\d{1,2}/g, "")
+    .replace(/20\d{2}年\d{1,2}月\d{1,2}日?/g, "")
+    .replace(/截止日期|交付时间|交付日期|排期日期|截止|日期|due/gi, "")
+    .replace(/改到|改为|改成|调整到|调整为|设为|定在|延后到|提前到|截止到|截止至/g, "")
     .replace(new RegExp(removableTerms.map(escapeRegExp).join("|"), "gi"), "")
     .replace(/第\s*\d{1,2}\s*周/g, "")
     .replace(/，|。|！|!|：|:|；|;|、/g, " ")
@@ -1721,6 +1803,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(calendarGapReminderOperation);
   }
 
+  const planItemDueDateUpdateOperation = parsePlanItemDueDateUpdateOperation(text);
+  if (planItemDueDateUpdateOperation) {
+    operations.push(planItemDueDateUpdateOperation);
+  }
+
   const planItemStatusUpdateOperation = parsePlanItemStatusUpdateOperation(text);
   if (planItemStatusUpdateOperation) {
     operations.push(planItemStatusUpdateOperation);
@@ -1779,6 +1866,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     (operation) =>
       operation.type === "create_plan_item" ||
       operation.type === "update_plan_item_status" ||
+      operation.type === "update_plan_item_due_date" ||
       operation.type === "complete_plan_item",
   );
   const hasCompleteWorkflowOperation = dedupedOperations.some(

@@ -465,6 +465,22 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts content plan due date update requests", () => {
+    const parsed = parseAgentCommand("第2周 TikTok 开箱短视频截止日期改到 2026-08-10。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "update_plan_item_due_date",
+      value: {
+        week: 2,
+        channel: "TikTok",
+        keyword: "开箱",
+        dueDate: "2026-08-10",
+      },
+      label: "内容计划截止日期改为 2026-08-10：第2周 · TikTok · 开箱",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("returns a low-confidence summary when no safe operation is detected", () => {
     const parsed = parseAgentCommand("帮我看看这个项目怎么样");
 
