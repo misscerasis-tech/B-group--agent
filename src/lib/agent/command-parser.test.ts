@@ -103,6 +103,21 @@ describe("parseAgentCommand", () => {
     });
   });
 
+  it("extracts product fact creation requests", () => {
+    const parsed = parseAgentCommand("新增产品事实：卖点=24小时保温。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_product_fact",
+      value: {
+        label: "核心卖点",
+        value: "24小时保温",
+        source: "B组 Agent 中文指令",
+      },
+      label: "新增产品事实：核心卖点=24小时保温",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts starter plan generation requests", () => {
     const parsed = parseAgentCommand("请生成首月计划和第一份素材包结构。");
 

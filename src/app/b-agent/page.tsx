@@ -192,6 +192,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                     <li>新增或删除客群：礼品购买者、学生用户、居家办公人群等</li>
                     <li>修改素材包频率：每周、每两周、每月</li>
                     <li>修改项目状态：暂停项目、恢复项目、归档项目或改回草稿</li>
+                    <li>补充产品事实：新增产品事实：卖点=24小时保温</li>
                     <li>创建项目提醒：提醒我提前确认奖品、规则、Logo 或素材来源</li>
                     <li>完成提醒：把抽奖规则提醒标记完成</li>
                     <li>录入渠道表现：记录 TikTok 本周曝光、点击、转化和花费</li>

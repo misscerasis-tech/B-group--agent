@@ -36,6 +36,15 @@ export type ParsedAgentOperation =
       severity: ReminderSeverity;
     }
   | {
+      type: "create_product_fact";
+      value: {
+        label: string;
+        value: string;
+        source: string;
+      };
+      label: string;
+    }
+  | {
       type: "complete_reminder";
       value: {
         keyword: string;
@@ -173,6 +182,24 @@ const DIRECTION_HINTS = [
   "节能生活",
 ];
 
+const PRODUCT_FACT_LABELS: Record<string, string> = {
+  产品名称: "产品名称",
+  名称: "产品名称",
+  核心卖点: "核心卖点",
+  卖点: "核心卖点",
+  规格参数: "规格参数",
+  产品参数: "规格参数",
+  规格: "规格参数",
+  参数: "规格参数",
+  使用场景: "使用场景",
+  场景: "使用场景",
+  目标人群: "目标人群",
+  人群: "目标人群",
+  视觉限制: "视觉限制",
+  合规注意: "合规注意",
+  合规: "合规注意",
+};
+
 function compactText(text: string) {
   return text.replace(/\s+/g, "");
 }
@@ -281,6 +308,37 @@ function parseReminderTitle(text: string) {
   }
 
   return title.slice(0, 80);
+}
+
+function parseProductFactOperation(text: string): ParsedAgentOperation | null {
+  if (!/(产品事实|事实|卖点|规格|参数|场景|人群|视觉限制|合规)/.test(text)) {
+    return null;
+  }
+
+  const match = text.match(
+    /(?:新增|添加|记录|补充)?(?:产品事实|事实)?\s*[:：]?\s*(产品名称|核心卖点|卖点|规格参数|产品参数|规格|参数|使用场景|场景|目标人群|人群|视觉限制|合规注意|合规)\s*[=＝:：]\s*([^，。；;]+)/,
+  );
+
+  if (!match?.[1] || !match[2]) {
+    return null;
+  }
+
+  const label = PRODUCT_FACT_LABELS[match[1]] ?? match[1];
+  const factValue = match[2].trim().slice(0, 160);
+
+  if (factValue.length < 2) {
+    return null;
+  }
+
+  return {
+    type: "create_product_fact",
+    value: {
+      label,
+      value: factValue,
+      source: "B组 Agent 中文指令",
+    },
+    label: `新增产品事实：${label}=${factValue}`,
+  };
 }
 
 function parseCompleteReminderOperation(text: string): ParsedAgentOperation | null {
@@ -813,6 +871,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     });
   }
 
+  const productFactOperation = parseProductFactOperation(text);
+  if (productFactOperation) {
+    operations.push(productFactOperation);
+  }
+
   const reminderCompletionOperation = parseCompleteReminderOperation(text);
   if (reminderCompletionOperation) {
     operations.push(reminderCompletionOperation);
@@ -922,6 +985,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const hasCompleteWorkflowOperation = dedupedOperations.some(
     (operation) =>
       operation.type === "complete_reminder" ||
+      operation.type === "create_product_fact" ||
       operation.type === "create_content_package" ||
       operation.type === "submit_content_package_review" ||
       operation.type === "decide_content_package_review",

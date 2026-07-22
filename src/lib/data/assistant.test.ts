@@ -32,6 +32,13 @@ const mocks = vi.hoisted(() => {
       findMany: vi.fn(),
       update: vi.fn(),
     },
+    projectProduct: {
+      count: vi.fn(),
+      findFirst: vi.fn(),
+    },
+    productFact: {
+      create: vi.fn(),
+    },
     contentPackage: {
       count: vi.fn(),
       create: vi.fn(),
@@ -289,6 +296,56 @@ describe("generateStarterPlan", () => {
         entityType: "ContentPlanItem",
         entityId: "plan-created-from-agent",
         action: "agent_plan_item_created",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("creates a product fact for the linked product from a Chinese agent command", async () => {
+    mocks.tx.projectProduct.count.mockResolvedValue(1);
+    mocks.tx.projectProduct.findFirst.mockResolvedValue({
+      projectId: "project-1",
+      productId: "product-1",
+      product: {
+        id: "product-1",
+        workspaceId: "workspace-1",
+        name: "Aurora Cup",
+      },
+    });
+    mocks.tx.productFact.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: "fact-created-from-agent",
+        ...data,
+      }),
+    );
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "新增产品事实：卖点=24小时保温。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.productFact.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        productId: "product-1",
+        label: "核心卖点",
+        value: "24小时保温",
+        source: "B组 Agent 中文指令",
+        confidence: 90,
+        status: "NEEDS_REVIEW",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ProductFact",
+        entityId: "fact-created-from-agent",
+        action: "agent_product_fact_created",
+        summary: "新增产品事实：核心卖点=24小时保温",
         actorUserId: "user-1",
       }),
     });

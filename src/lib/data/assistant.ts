@@ -6,6 +6,7 @@ import {
   PackageFileStatus,
   PlanItemStatus,
   Prisma,
+  ProductFactStatus,
   ProjectStatus,
   ReminderSeverity,
   ReminderStatus,
@@ -332,6 +333,7 @@ export async function submitAgentCommand(input: {
       const strategyOperations = parsed.operations.filter(isStrategyOperation);
       const projectOperations = parsed.operations.filter(isProjectOperation);
       const reminderOperations = parsed.operations.filter(isReminderOperation);
+      const productFactOperations = parsed.operations.filter(isProductFactOperation);
       const starterPlanOperations = parsed.operations.filter(isStarterPlanOperation);
       const metricsOperations = parsed.operations.filter(isMetricsOperation);
       const planItemOperations = parsed.operations.filter(isPlanItemOperation);
@@ -398,6 +400,13 @@ export async function submitAgentCommand(input: {
         userId: input.userId,
         projectId: project.id,
         operations: reminderOperations,
+      });
+
+      await applyProductFactOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: productFactOperations,
       });
 
       await applyMetricsOperations(tx, {
@@ -509,6 +518,7 @@ export async function applyPendingAgentOperation(input: {
     const strategyOperations = parsedOperations.filter(isStrategyOperation);
     const projectOperations = parsedOperations.filter(isProjectOperation);
     const reminderOperations = parsedOperations.filter(isReminderOperation);
+    const productFactOperations = parsedOperations.filter(isProductFactOperation);
     const starterPlanOperations = parsedOperations.filter(isStarterPlanOperation);
     const metricsOperations = parsedOperations.filter(isMetricsOperation);
     const planItemOperations = parsedOperations.filter(isPlanItemOperation);
@@ -613,6 +623,13 @@ export async function applyPendingAgentOperation(input: {
       operations: reminderOperations,
     });
 
+    await applyProductFactOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: productFactOperations,
+    });
+
     await applyMetricsOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -691,6 +708,7 @@ export async function applyPendingAgentOperation(input: {
         strategyChanged: strategyOperations.length > 0,
         projectChanged: projectOperations.length > 0,
         reminderChanged: reminderOperations.length > 0,
+        productFactChanged: productFactOperations.length > 0,
         starterPlanChanged: starterPlanOperations.length > 0,
         metricsChanged: metricsOperations.length > 0,
         planItemChanged: planItemOperations.length > 0,
@@ -882,6 +900,19 @@ async function findCompletionTargetWarnings(
         warnings.push(`未找到匹配「${operation.value.keyword ?? "最新素材包"}」的待审核素材包任务`);
       }
     }
+
+    if (operation.type === "create_product_fact") {
+      const linkedProductCount = await tx.projectProduct.count({
+        where: buildProjectProductWhere({
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+        }),
+      });
+
+      if (linkedProductCount === 0) {
+        warnings.push("当前项目还没有关联产品，无法写入产品事实");
+      }
+    }
   }
 
   return warnings;
@@ -897,7 +928,7 @@ function buildAgentConflictCheck(input: {
   completionTargetWarnings: string[];
 }) {
   const base = input.noSafeOperation
-    ? "未识别到足够明确的市场、渠道、频率、项目状态、提醒、内容计划或内容方向，未写入数据库。"
+    ? "未识别到足够明确的市场、渠道、频率、项目状态、产品事实、提醒、内容计划、素材包或审核动作，未写入数据库。"
     : input.completionTargetWarnings.length > 0
       ? `已识别到任务类指令，但${input.completionTargetWarnings.join("；")}，未写入数据库。`
     : input.requiresConfirmation
@@ -1330,6 +1361,68 @@ async function applyReminderOperations(
         action: "agent_reminder_created",
         summary: operation.label,
         after: reminderToJson(reminder),
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
+async function applyProductFactOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  if (input.operations.length === 0) {
+    return;
+  }
+
+  const projectProduct = await tx.projectProduct.findFirst({
+    where: buildProjectProductWhere({
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+    }),
+    include: {
+      product: true,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+
+  if (!projectProduct) {
+    return;
+  }
+
+  for (const operation of input.operations) {
+    if (operation.type !== "create_product_fact") {
+      continue;
+    }
+
+    const productFact = await tx.productFact.create({
+      data: {
+        workspaceId: input.workspaceId,
+        productId: projectProduct.productId,
+        label: operation.value.label,
+        value: operation.value.value,
+        source: operation.value.source,
+        confidence: 90,
+        status: ProductFactStatus.NEEDS_REVIEW,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ProductFact",
+        entityId: productFact.id,
+        action: "agent_product_fact_created",
+        summary: operation.label,
+        after: productFactToJson(productFact),
         actorUserId: input.userId,
       },
     });
@@ -1931,6 +2024,20 @@ function buildContentPackageReviewDecisionWhere(input: {
   return where;
 }
 
+function buildProjectProductWhere(input: { workspaceId: string; projectId: string }) {
+  return {
+    projectId: input.projectId,
+    project: {
+      workspaceId: input.workspaceId,
+      deletedAt: null,
+    },
+    product: {
+      workspaceId: input.workspaceId,
+      deletedAt: null,
+    },
+  } satisfies Prisma.ProjectProductWhereInput;
+}
+
 function describePlanItemCompletionValue(
   value: Extract<ParsedAgentOperation, { type: "complete_plan_item" }>["value"],
 ) {
@@ -1958,6 +2065,10 @@ function isProjectOperation(operation: ParsedAgentOperation) {
 
 function isReminderOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_reminder";
+}
+
+function isProductFactOperation(operation: ParsedAgentOperation) {
+  return operation.type === "create_product_fact";
 }
 
 function isStarterPlanOperation(operation: ParsedAgentOperation) {
@@ -2051,6 +2162,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         value,
         severity,
         label: label || `创建提醒：${value}`,
+      });
+      continue;
+    }
+
+    if (type === "create_product_fact" && isProductFactValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `新增产品事实：${value.label}=${value.value}`,
       });
       continue;
     }
@@ -2221,6 +2341,25 @@ function isPackageReviewDecisionValue(value: unknown): value is Extract<
   );
 }
 
+function isProductFactValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "create_product_fact" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    typeof record.label === "string" &&
+    record.label.trim().length > 0 &&
+    typeof record.value === "string" &&
+    record.value.trim().length > 0 &&
+    typeof record.source === "string"
+  );
+}
+
 function isReminderCompletionValue(value: unknown): value is Extract<
   ParsedAgentOperation,
   { type: "complete_reminder" }
@@ -2305,6 +2444,7 @@ function buildConfirmedAssistantReply(input: {
   strategyChanged: boolean;
   projectChanged: boolean;
   reminderChanged: boolean;
+  productFactChanged: boolean;
   starterPlanChanged: boolean;
   metricsChanged: boolean;
   planItemChanged: boolean;
@@ -2315,6 +2455,7 @@ function buildConfirmedAssistantReply(input: {
   planItemCompleted: boolean;
 }) {
   const starterPlanText = input.starterPlanChanged ? "，并生成首月计划和第一份素材包结构" : "";
+  const productFactText = input.productFactChanged ? "，并新增待复核产品事实" : "";
   const metricsText = input.metricsChanged ? "，并录入渠道表现指标" : "";
   const planItemText = input.planItemChanged ? "，并新增内容计划" : "";
   const contentPackageText = input.contentPackageChanged ? "，并创建素材包结构" : "";
@@ -2326,22 +2467,26 @@ function buildConfirmedAssistantReply(input: {
   if (input.strategyChanged && input.strategyWasConfirmed) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认写入策略草案${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认写入策略草案${projectText}${reminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认更新项目基础信息${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认更新项目基础信息${reminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderChanged) {
-    return `已按你的确认创建提醒${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建提醒${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.productFactChanged) {
+    return `已按你的确认新增待复核产品事实${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.starterPlanChanged) {
@@ -2445,6 +2590,26 @@ function reviewTaskToJson(reviewTask: {
     description: reviewTask.description,
     status: reviewTask.status,
     decisionNote: reviewTask.decisionNote,
+  };
+}
+
+function productFactToJson(fact: {
+  id: string;
+  productId: string;
+  label: string;
+  value: string;
+  source: string | null;
+  confidence: number;
+  status: ProductFactStatus;
+}) {
+  return {
+    id: fact.id,
+    productId: fact.productId,
+    label: fact.label,
+    value: fact.value,
+    source: fact.source,
+    confidence: fact.confidence,
+    status: fact.status,
   };
 }
 
