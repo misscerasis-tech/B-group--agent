@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
     contentPlanItem: {
       count: vi.fn(),
       create: vi.fn(),
+      findMany: vi.fn(),
     },
     contentPackage: {
       create: vi.fn(),
@@ -84,6 +85,7 @@ describe("generateStarterPlan", () => {
     mocks.tx.contentPlanItem.create.mockResolvedValue({
       id: "plan-1",
     });
+    mocks.tx.contentPlanItem.findMany.mockResolvedValue([]);
     mocks.tx.contentPackage.create.mockResolvedValue({
       id: "package-1",
     });
@@ -231,6 +233,51 @@ describe("generateStarterPlan", () => {
         entityType: "MetricsSnapshot",
         action: "agent_metrics_snapshot_created",
         actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("warns when a confirmed strategy change removes an active plan channel", async () => {
+    mocks.tx.projectStrategy.findFirst.mockResolvedValue({
+      id: "strategy-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      version: 1,
+      status: "CONFIRMED",
+      targetMarkets: ["巴西"],
+      audiences: ["礼品购买者"],
+      channels: ["LinkedIn"],
+      contentDirections: ["新品认知"],
+      packageFrequency: "WEEKLY",
+      positioning: "面向礼品购买者",
+      rationale: "已确认策略",
+      confirmedAt: new Date("2026-07-01T00:00:00.000Z"),
+    });
+    mocks.tx.contentPlanItem.findMany.mockResolvedValue([
+      {
+        channel: "LinkedIn",
+        week: 1,
+        title: "LinkedIn 产品故事长文",
+      },
+    ]);
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "不做 LinkedIn。",
+    });
+
+    expect(result.status).toBe("PENDING_CONFIRMATION");
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: "PENDING_CONFIRMATION",
+        conflictCheck: expect.stringContaining("应用后策略将没有任何投放渠道"),
+      }),
+    });
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        conflictCheck: expect.stringContaining("内容日历仍有 1 个未完成计划使用 LinkedIn"),
       }),
     });
   });

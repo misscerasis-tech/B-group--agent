@@ -26,6 +26,12 @@ type StrategyMutableFields = {
   packageFrequency: ContentFrequency;
 };
 
+type ActivePlanChannelUsage = {
+  channel: string;
+  title: string;
+  week: number;
+};
+
 export async function getAssistantState(workspaceId: string, projectId?: string) {
   const projects = await prisma.project.findMany({
     where: scopedWhere(workspaceId, {
@@ -255,18 +261,24 @@ export async function submitAgentCommand(input: {
     );
     const requiresConfirmation =
       strategy.status === StrategyStatus.CONFIRMED && hasConfirmationSensitiveOperation;
+    const activePlanChannelUsage = await findActivePlanChannelUsage(tx, {
+      workspaceId: input.workspaceId,
+      projectId: project.id,
+      operations: parsed.operations,
+    });
     const operationStatus = noSafeOperation
       ? AgentOperationStatus.FAILED
       : requiresConfirmation
         ? AgentOperationStatus.PENDING_CONFIRMATION
         : AgentOperationStatus.APPLIED;
-    const conflictCheck = noSafeOperation
-      ? "未识别到足够明确的市场、渠道、频率、项目状态、提醒或内容方向，未写入数据库。"
-      : requiresConfirmation
-        ? "当前策略已被人工确认为正式版本，需要二次确认后才能修改核心项目配置。"
-        : hasConfirmationSensitiveOperation
-          ? "当前策略仍为草案，可直接应用。"
-          : "该操作不改动正式策略，已直接写入项目工作台。";
+    const conflictCheck = buildAgentConflictCheck({
+      noSafeOperation,
+      requiresConfirmation,
+      hasConfirmationSensitiveOperation,
+      strategy,
+      operations: parsed.operations,
+      activePlanChannelUsage,
+    });
 
     await tx.agentMessage.create({
       data: {
@@ -623,6 +635,128 @@ export async function rejectPendingAgentOperation(input: {
 
     return updatedOperation;
   });
+}
+
+async function findActivePlanChannelUsage(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+): Promise<ActivePlanChannelUsage[]> {
+  const removedChannels = unique(
+    input.operations.flatMap((operation) =>
+      operation.type === "remove_channel" ? [operation.value] : [],
+    ),
+  );
+
+  if (removedChannels.length === 0) {
+    return [];
+  }
+
+  return tx.contentPlanItem.findMany({
+    where: scopedWhere(input.workspaceId, {
+      projectId: input.projectId,
+      channel: {
+        in: removedChannels,
+      },
+      status: {
+        not: PlanItemStatus.DONE,
+      },
+    }) as Prisma.ContentPlanItemWhereInput,
+    select: {
+      channel: true,
+      title: true,
+      week: true,
+    },
+    orderBy: [
+      {
+        week: "asc",
+      },
+      {
+        createdAt: "asc",
+      },
+    ],
+    take: 5,
+  });
+}
+
+function buildAgentConflictCheck(input: {
+  noSafeOperation: boolean;
+  requiresConfirmation: boolean;
+  hasConfirmationSensitiveOperation: boolean;
+  strategy: ProjectStrategyRecord;
+  operations: ParsedAgentOperation[];
+  activePlanChannelUsage: ActivePlanChannelUsage[];
+}) {
+  const base = input.noSafeOperation
+    ? "未识别到足够明确的市场、渠道、频率、项目状态、提醒或内容方向，未写入数据库。"
+    : input.requiresConfirmation
+      ? "当前策略已被人工确认为正式版本，需要二次确认后才能修改核心项目配置。"
+      : input.hasConfirmationSensitiveOperation
+        ? "当前策略仍为草案，可直接应用。"
+        : "该操作不改动正式策略，已直接写入项目工作台。";
+  const risks = input.noSafeOperation ? [] : buildAgentRiskMessages(input);
+
+  if (risks.length === 0) {
+    return base;
+  }
+
+  return `${base} 风险提示：${risks.join("；")}。`;
+}
+
+function buildAgentRiskMessages(input: {
+  strategy: ProjectStrategyRecord;
+  operations: ParsedAgentOperation[];
+  activePlanChannelUsage: ActivePlanChannelUsage[];
+}) {
+  const strategyOperations = input.operations.filter(isStrategyOperation);
+  const projectOperations = input.operations.filter(isProjectOperation);
+  const nextStrategy =
+    strategyOperations.length > 0
+      ? applyOperationsToStrategy(input.strategy, strategyOperations)
+      : strategyToJson(input.strategy);
+  const risks: string[] = [];
+
+  if (strategyOperations.length > 0 && nextStrategy.channels.length === 0) {
+    risks.push("应用后策略将没有任何投放渠道，请先新增至少一个渠道");
+  }
+
+  if (strategyOperations.length > 0 && nextStrategy.contentDirections.length === 0) {
+    risks.push("应用后内容方向为空，后续素材包会缺少主题主线");
+  }
+
+  if (input.activePlanChannelUsage.length > 0) {
+    const channelText = unique(input.activePlanChannelUsage.map((item) => item.channel)).join("、");
+    const example = input.activePlanChannelUsage[0];
+    risks.push(
+      `内容日历仍有 ${input.activePlanChannelUsage.length} 个未完成计划使用 ${channelText}，例如第${example.week}周「${example.title}」`,
+    );
+  }
+
+  if (
+    strategyOperations.some(
+      (operation) =>
+        operation.type === "set_package_frequency" &&
+        operation.value === ContentFrequency.MONTHLY &&
+        input.strategy.packageFrequency !== ContentFrequency.MONTHLY,
+    )
+  ) {
+    risks.push("素材包频率将降为每月一次，首月验证节奏可能变慢");
+  }
+
+  if (
+    projectOperations.some(
+      (operation) =>
+        operation.type === "set_project_status" &&
+        (operation.value === ProjectStatus.PAUSED || operation.value === ProjectStatus.ARCHIVED),
+    )
+  ) {
+    risks.push("暂停或归档项目会影响后续计划推进、素材包审核和提醒处理");
+  }
+
+  return risks;
 }
 
 export async function confirmProjectStrategy(input: {
