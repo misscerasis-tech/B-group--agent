@@ -263,6 +263,35 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
               </form>
 
               <div className="nl-command-box">
+                <PencilLine size={18} aria-hidden="true" />
+                <div>
+                  <strong>启动新项目</strong>
+                  <p>用中文 Brief 创建下一条增长工作线，提交后会自动切换到新项目。</p>
+                  <form action={kickoffProjectFromBriefAction} className="form compact">
+                    <label className="form-row">
+                      <span className="field-label">项目名称</span>
+                      <input name="projectName" placeholder="例如：日本母婴礼赠内容增长" required />
+                    </label>
+                    <label className="form-row">
+                      <span className="field-label">产品名称</span>
+                      <input name="productName" placeholder="例如：Aurora Cup 迷你保温杯" required />
+                    </label>
+                    <label className="form-row">
+                      <span className="field-label">中文启动 Brief</span>
+                      <textarea
+                        name="brief"
+                        placeholder="说明产品卖点、目标市场、客群、渠道、内容方向或素材包频率。"
+                        required
+                      />
+                    </label>
+                    <button className="button secondary" type="submit">
+                      创建并切换到新项目
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              <div className="nl-command-box">
                 <CheckCircle2 size={18} aria-hidden="true" />
                 <div>
                   <strong>常用流程按钮</strong>
