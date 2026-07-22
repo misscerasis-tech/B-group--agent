@@ -10,6 +10,7 @@
 
 - 增加 B 组工作助手开发分支 `feature/b-group-working-assistant`。
 - 增加 B 组固定启动脚本 `dev:b`，默认启动 3002 端口。
+- 增加 `/api/health` 健康检查接口，用于确认 Web 和数据库连接状态。
 - 更新 README 和架构文档，移除数据复盘与集成设置仍是占位的旧说明。
 - 更新 B 组能力拆分文档，使已落地能力和待补齐能力与当前实现一致。
 - `.env.example` 将默认 AI Provider 改为 `local-rule`，避免误认为当前版本绑定真实模型供应商。

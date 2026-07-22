@@ -33,6 +33,14 @@ npx pnpm@10.13.1 exec next dev -p 3003
 
 并打开 `http://127.0.0.1:3003/b-agent`。
 
+健康检查：
+
+```text
+http://127.0.0.1:3002/api/health
+```
+
+返回 `database: "ok"` 后再验收页面；如果返回 `unavailable`，先检查 Docker PostgreSQL 和 `.env`。
+
 ## 必验流程
 
 - 顶部可以在 `演示增长团队` 与 `欧洲增长演示团队` 之间切换，项目和产品数据不会串到另一个 Workspace。

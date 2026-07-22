@@ -151,6 +151,14 @@ npx pnpm@10.13.1 exec next dev -p 3003
 
 然后打开 `http://127.0.0.1:3003/b-agent`。
 
+健康检查：
+
+```text
+http://127.0.0.1:3002/api/health
+```
+
+如果页面打不开，先看该接口返回的 `database` 是否为 `ok`；如果是 `unavailable`，通常是 PostgreSQL/Docker 没有启动或 `.env` 的 `DATABASE_URL` 不正确。
+
 ## 演示用户
 
 第一阶段使用本地演示用户模拟登录：
