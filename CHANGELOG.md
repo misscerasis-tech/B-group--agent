@@ -40,7 +40,8 @@
 - 素材包文件项支持关联当前 Workspace 下已审核素材，关联后自动进入已生成状态并记录变更日志。
 - 素材包 ZIP 导出的 README 与 manifest 会展示已关联素材名称、类型、来源和校验信息。
 - 素材包 ZIP 导出的 manifest 增加策略、产品事实、内容计划、已审核素材和可交付性检查摘要，便于复盘和迁移核对。
-- 素材包 ZIP 导出升级为本地可交付文件包，包含基础 PDF、XLSX、DOCX、TXT、关联素材和 manifest。
+- 素材包 ZIP 导出增加 `manual-review-checklist.md`，并将项目级 Logo 与产品级真实产品图都纳入 manifest 和可交付性检查。
+- 素材包 ZIP 导出升级为本地可交付文件包，包含基础 PDF、XLSX、DOCX、TXT、关联素材、人工审核清单和 manifest。
 - 默认素材包文件清单补齐“海报文案 DOCX”，新建和 Agent 生成素材包均保持 11 项 V1 结构。
 - `/b-agent` 展示项目策略版本历史，便于查看确认后变更产生的新版本。
 - 增加 MetricsSnapshot 数据模型，数据复盘支持手动录入渠道表现并聚合曝光、点击、转化和花费。

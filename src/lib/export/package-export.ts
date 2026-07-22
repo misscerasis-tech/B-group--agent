@@ -18,6 +18,11 @@ export async function getContentPackageExportData(workspaceId: string, contentPa
     include: {
       project: {
         include: {
+          assets: {
+            orderBy: {
+              createdAt: "asc",
+            },
+          },
           projectProducts: {
             include: {
               product: {
@@ -84,9 +89,11 @@ export async function buildContentPackageZip(data: ContentPackageExportData) {
 export function buildContentPackageExportFiles(data: ContentPackageExportData): ZipFileInput[] {
   const { contentPackage, planItems } = data;
   const products = contentPackage.project.projectProducts.map(({ product }) => product);
-  const approvedAssets = products.flatMap((product) =>
-    product.assets.filter((asset) => asset.status === "APPROVED"),
-  );
+  const sourceAssets = [
+    ...contentPackage.project.assets,
+    ...products.flatMap((product) => product.assets),
+  ];
+  const approvedAssets = sourceAssets.filter((asset) => asset.status === "APPROVED");
   const readiness = buildContentPackageReadiness({
     ...contentPackage,
     sourceAssets: approvedAssets,
@@ -189,6 +196,7 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
   );
   const manifestApprovedAssets = approvedAssets.map((asset) => ({
     id: asset.id,
+    projectId: asset.projectId,
     productId: asset.productId,
     name: asset.name,
     kind: asset.kind,
@@ -211,6 +219,17 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
       blocking: signal.blocking,
     })),
   };
+  const manualReviewChecklist = buildManualReviewChecklist({
+    packageName: contentPackage.name,
+    projectName: contentPackage.project.name,
+    period: contentPackage.period,
+    markets,
+    channels,
+    contentDirections,
+    productFacts: manifestProductFacts,
+    approvedAssets: manifestApprovedAssets,
+    readiness: manifestReadiness,
+  });
 
   return [
     {
@@ -346,6 +365,10 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
       ].join("\n"),
     },
     {
+      filename: "manual-review-checklist.md",
+      content: manualReviewChecklist,
+    },
+    {
       filename: "content-calendar.csv",
       content: toCsv(calendarRows),
     },
@@ -430,6 +453,7 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
             "09-设计Brief.pdf",
             "10-品牌与合规检查.pdf",
             "README-素材包说明.md",
+            "manual-review-checklist.md",
             "content-calendar.csv",
             "platform-copy.txt",
             "hashtags.txt",
@@ -524,6 +548,91 @@ function productFactHighlights(
         .map((fact) => fact.value),
     ),
   ).slice(0, 4);
+}
+
+function buildManualReviewChecklist(input: {
+  packageName: string;
+  projectName: string;
+  period: string;
+  markets: string[];
+  channels: string[];
+  contentDirections: string[];
+  productFacts: Array<{
+    productName: string;
+    label: string;
+    value: string;
+    source: string | null;
+    status: string;
+  }>;
+  approvedAssets: Array<{
+    name: string;
+    kind: string;
+    source: string;
+    status: string;
+    originalFilename: string | null;
+    checksum: string | null;
+  }>;
+  readiness: {
+    score: number;
+    rating: string;
+    summary: string;
+    signals: Array<{
+      label: string;
+      summary: string;
+      action: string;
+      blocking: boolean;
+    }>;
+  };
+}) {
+  const blockingSignals = input.readiness.signals.filter((signal) => signal.blocking);
+
+  return [
+    `# ${input.packageName} 人工审核清单`,
+    "",
+    `项目：${input.projectName}`,
+    `周期：${input.period}`,
+    `目标市场：${input.markets.join("、")}`,
+    `渠道：${input.channels.join("、") || "待补充"}`,
+    `内容方向：${input.contentDirections.join("、") || "待补充"}`,
+    `交付体检：${input.readiness.score} 分 / ${input.readiness.rating}`,
+    input.readiness.summary,
+    "",
+    "## 发布前必须确认",
+    "- [ ] 产品图来源真实可信，且没有被图片模型重绘或替换。",
+    "- [ ] 官方 Logo 来源已确认，未被模型改写、拉伸或错色。",
+    "- [ ] 产品名称、规格参数、卖点、适用场景与已确认产品事实一致。",
+    "- [ ] 抽奖、促销、免责声明、价格和平台合规要求已由人工复核。",
+    "- [ ] 海报文字来自排版层或文案文件，不依赖图片模型生成正文。",
+    "",
+    "## 产品事实核对",
+    input.productFacts.length > 0
+      ? list(
+          input.productFacts.map(
+            (fact) =>
+              `${fact.productName} · ${fact.label}：${fact.value}（${fact.status}${
+                fact.source ? ` / ${fact.source}` : ""
+              }）`,
+          ),
+        )
+      : "- 暂无产品事实，请先在产品大脑补齐并确认。",
+    "",
+    "## 已审核素材核对",
+    input.approvedAssets.length > 0
+      ? list(
+          input.approvedAssets.map(
+            (asset) =>
+              `${asset.name}（${asset.kind} / ${asset.source} / ${asset.status}${
+                asset.originalFilename ? ` / ${asset.originalFilename}` : ""
+              }${asset.checksum ? ` / ${asset.checksum}` : ""}）`,
+          ),
+        )
+      : "- 暂无已审核素材，请先上传真实产品图和官方 Logo 并通过审核。",
+    "",
+    "## 当前阻塞项",
+    blockingSignals.length > 0
+      ? list(blockingSignals.map((signal) => `${signal.label}：${signal.summary}；下一步：${signal.action}`))
+      : "- 暂无阻塞项，可进入人工终审。",
+  ].join("\n");
 }
 
 function safeExportName(value: string) {

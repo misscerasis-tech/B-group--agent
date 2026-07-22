@@ -74,6 +74,26 @@ describe("buildContentPackageExportFiles", () => {
           createdAt: new Date("2026-07-01T00:00:00.000Z"),
           updatedAt: new Date("2026-07-01T00:00:00.000Z"),
           deletedAt: null,
+          assets: [
+            {
+              id: "asset-logo-1",
+              workspaceId: "workspace-1",
+              projectId: "project-1",
+              productId: null,
+              name: "官方 Logo",
+              kind: "LOGO",
+              source: "USER_UPLOAD",
+              status: "APPROVED",
+              mimeType: "image/png",
+              sizeBytes: 2048,
+              storagePath: "storage/assets/workspace-1/logo.png",
+              originalFilename: "logo.png",
+              checksum: "logo-checksum",
+              metadata: {},
+              createdAt: new Date("2026-07-01T00:00:00.000Z"),
+              updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+            },
+          ],
           projectProducts: [
             {
               projectId: "project-1",
@@ -102,7 +122,26 @@ describe("buildContentPackageExportFiles", () => {
                     updatedAt: new Date("2026-07-01T00:00:00.000Z"),
                   },
                 ],
-                assets: [],
+                assets: [
+                  {
+                    id: "asset-product-image-1",
+                    workspaceId: "workspace-1",
+                    projectId: null,
+                    productId: "product-1",
+                    name: "真实产品图",
+                    kind: "PRODUCT_IMAGE",
+                    source: "USER_UPLOAD",
+                    status: "APPROVED",
+                    mimeType: "image/png",
+                    sizeBytes: 4096,
+                    storagePath: "storage/assets/workspace-1/product.png",
+                    originalFilename: "product.png",
+                    checksum: "product-checksum",
+                    metadata: {},
+                    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+                    updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+                  },
+                ],
               },
             },
           ],
@@ -160,12 +199,15 @@ describe("buildContentPackageExportFiles", () => {
 
     const readiness = readText(files.find((file) => file.filename === "00-交付检查.txt")?.content);
     const readme = readText(files.find((file) => file.filename === "README-素材包说明.md")?.content);
+    const manualReview = readText(
+      files.find((file) => file.filename === "manual-review-checklist.md")?.content,
+    );
     const manifest = JSON.parse(
       readText(files.find((file) => file.filename === "manifest.json")?.content),
     );
 
     expect(readiness).toContain("可交付性");
-    expect(readiness).toContain("关联真实产品图和 Logo");
+    expect(readiness).toContain("已关联审核通过的产品视觉和官方 Logo");
     expect(files.find((file) => file.filename === "01-素材包说明.pdf")?.content).toBeInstanceOf(
       Buffer,
     );
@@ -177,9 +219,14 @@ describe("buildContentPackageExportFiles", () => {
     );
     expect(files.map((file) => file.filename)).toContain("08-海报文案.docx");
     expect(files.map((file) => file.filename)).toContain("10-品牌与合规检查.pdf");
+    expect(files.map((file) => file.filename)).toContain("manual-review-checklist.md");
     expect(readme).toContain("模板化海报图片 -> 模板化海报 4:5");
+    expect(manualReview).toContain("发布前必须确认");
+    expect(manualReview).toContain("官方 Logo");
+    expect(manualReview).toContain("真实产品图");
     expect(manifest.schemaVersion).toBe("b-agent-content-package.v1");
     expect(manifest.generatedFiles).toContain("02-内容排期.xlsx");
+    expect(manifest.generatedFiles).toContain("manual-review-checklist.md");
     expect(manifest.strategy).toMatchObject({
       channels: ["TikTok"],
       targetMarkets: ["巴西"],
@@ -202,6 +249,20 @@ describe("buildContentPackageExportFiles", () => {
       rating: expect.any(String),
       score: expect.any(Number),
     });
+    expect(manifest.approvedAssets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "asset-logo-1",
+          projectId: "project-1",
+          kind: "LOGO",
+        }),
+        expect.objectContaining({
+          id: "asset-product-image-1",
+          productId: "product-1",
+          kind: "PRODUCT_IMAGE",
+        }),
+      ]),
+    );
     expect(manifest.files[0].asset).toMatchObject({
       id: "asset-1",
       name: "模板化海报 4:5",
@@ -238,6 +299,7 @@ describe("buildContentPackageExportFiles", () => {
           createdAt: new Date("2026-07-01T00:00:00.000Z"),
           updatedAt: new Date("2026-07-01T00:00:00.000Z"),
           deletedAt: null,
+          assets: [],
           projectProducts: [],
         },
         files: [
