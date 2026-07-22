@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   createContentPackage,
+  submitContentPackageForReview,
   updateContentPackageFileStatus,
 } from "@/lib/data/content-workspace";
 import { parseContentFrequency, parsePackageFileStatus } from "@/lib/status";
@@ -59,4 +60,23 @@ export async function updateContentPackageFileStatusAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/recaps");
   redirect("/packages");
+}
+
+export async function submitContentPackageForReviewAction(formData: FormData) {
+  const context = await getWorkspaceContext();
+  const contentPackageId = readRequiredText(formData, "contentPackageId", "素材包");
+  const returnTo = String(formData.get("returnTo") ?? "/packages");
+
+  await submitContentPackageForReview({
+    workspaceId: context.currentWorkspace.id,
+    userId: context.user.id,
+    contentPackageId,
+  });
+
+  revalidatePath("/packages");
+  revalidatePath("/reviews");
+  revalidatePath("/b-agent");
+  revalidatePath("/dashboard");
+  revalidatePath("/recaps");
+  redirect(returnTo.startsWith("/") ? returnTo : "/packages");
 }

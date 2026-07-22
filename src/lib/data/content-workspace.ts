@@ -358,6 +358,71 @@ export async function updateContentPackageFileStatus(input: {
   });
 }
 
+export async function submitContentPackageForReview(input: {
+  workspaceId: string;
+  userId: string;
+  contentPackageId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const contentPackage = await tx.contentPackage.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        id: input.contentPackageId,
+        status: {
+          not: ContentPackageStatus.ARCHIVED,
+        },
+      }) as Prisma.ContentPackageWhereInput,
+      include: {
+        project: true,
+        files: true,
+      },
+    });
+
+    if (!contentPackage) {
+      throw new Error("未找到当前 Workspace 下可提交审核的素材包。");
+    }
+
+    const updatedContentPackage = await tx.contentPackage.update({
+      where: {
+        id: contentPackage.id,
+      },
+      data: {
+        status: ContentPackageStatus.REVIEW_NEEDED,
+      },
+    });
+
+    const taskCreated = await createTaskIfMissing(tx, {
+      workspaceId: input.workspaceId,
+      projectId: contentPackage.projectId,
+      subjectType: ReviewSubjectType.CONTENT_PACKAGE,
+      subjectId: contentPackage.id,
+      title: `审核素材包：${contentPackage.name}`,
+      description: `${contentPackage.project.name} · ${contentPackage.files.length} 个文件项 · ${contentPackage.summary ?? "待补充素材包说明"}`,
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: contentPackage.projectId,
+        entityType: "ContentPackage",
+        entityId: contentPackage.id,
+        action: "content_package_submitted_for_review",
+        summary: `提交素材包审核：${contentPackage.name}`,
+        before: {
+          status: contentPackage.status,
+        },
+        after: {
+          status: updatedContentPackage.status,
+          reviewTaskCreated: taskCreated > 0,
+          fileCount: contentPackage.files.length,
+        },
+        actorUserId: input.userId,
+      },
+    });
+
+    return updatedContentPackage;
+  });
+}
+
 export async function listWorkspaceReminders(workspaceId: string) {
   return prisma.reminder.findMany({
     where: scopedWhere(workspaceId),

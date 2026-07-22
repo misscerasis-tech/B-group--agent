@@ -19,6 +19,7 @@ import {
   rejectPendingAgentOperationAction,
   submitAgentCommandAction,
 } from "@/app/actions/agent-actions";
+import { submitContentPackageForReviewAction } from "@/app/actions/package-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -471,6 +472,32 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                       <div className="download-preview">
                         <Download size={18} aria-hidden="true" />
                         <span>后续阶段接入真实 PDF/XLSX/DOCX/TXT/PNG/ZIP 文件生成。</span>
+                        {state.contentPackages[0].status !== "APPROVED" ? (
+                          <form
+                            action={submitContentPackageForReviewAction}
+                            className="inline-form"
+                          >
+                            <input
+                              name="contentPackageId"
+                              type="hidden"
+                              value={state.contentPackages[0].id}
+                            />
+                            <input
+                              name="returnTo"
+                              type="hidden"
+                              value={`/b-agent?projectId=${selectedProject.id}`}
+                            />
+                            <button className="button" type="submit">
+                              提交审核
+                            </button>
+                          </form>
+                        ) : null}
+                        <Link
+                          className="button secondary"
+                          href={`/packages/${state.contentPackages[0].id}/export`}
+                        >
+                          下载 ZIP 清单
+                        </Link>
                       </div>
                     </>
                   ) : (

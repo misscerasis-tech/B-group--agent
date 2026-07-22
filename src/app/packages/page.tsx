@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CheckCircle2, Download, FileArchive, FileText, PlayCircle } from "lucide-react";
 import {
   createContentPackageAction,
+  submitContentPackageForReviewAction,
   updateContentPackageFileStatusAction,
 } from "@/app/actions/package-actions";
 import { AppShell } from "@/components/app-shell";
@@ -150,6 +151,16 @@ export default async function PackagesPage() {
                 <div className="download-preview">
                   <Download size={18} aria-hidden="true" />
                   <span>可下载包含说明、排期、文案、Brief、合规检查和 manifest 的 ZIP。</span>
+                  {contentPackage.status !== "APPROVED" ? (
+                    <form action={submitContentPackageForReviewAction} className="inline-form">
+                      <input name="contentPackageId" type="hidden" value={contentPackage.id} />
+                      <input name="returnTo" type="hidden" value="/packages" />
+                      <button className="button" type="submit">
+                        <CheckCircle2 size={16} aria-hidden="true" />
+                        提交审核
+                      </button>
+                    </form>
+                  ) : null}
                   <Link className="button secondary" href={`/packages/${contentPackage.id}/export`}>
                     下载 ZIP 清单
                   </Link>

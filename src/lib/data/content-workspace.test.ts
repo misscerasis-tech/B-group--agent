@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { createContentPackage } from "./content-workspace";
+import { createContentPackage, submitContentPackageForReview } from "./content-workspace";
 
 const mocks = vi.hoisted(() => {
   const tx = {
@@ -11,9 +11,15 @@ const mocks = vi.hoisted(() => {
     },
     contentPackage: {
       create: vi.fn(),
+      findFirst: vi.fn(),
+      update: vi.fn(),
     },
     contentPackageFile: {
       createMany: vi.fn(),
+    },
+    reviewTask: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
     },
     changeLog: {
       create: vi.fn(),
@@ -133,5 +139,106 @@ describe("createContentPackage", () => {
 
     expect(mocks.tx.contentPackage.create).not.toHaveBeenCalled();
     expect(mocks.tx.contentPackageFile.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("submitContentPackageForReview", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
+  });
+
+  it("marks a package as review needed and creates a pending review task", async () => {
+    mocks.tx.contentPackage.findFirst.mockResolvedValue({
+      id: "package-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      name: "8 月第 1 周 TikTok 素材包",
+      status: "DRAFT",
+      summary: "首周素材包结构。",
+      project: {
+        id: "project-1",
+        name: "巴西新品上市",
+      },
+      files: [
+        {
+          id: "file-1",
+          name: "素材包说明 PDF",
+        },
+      ],
+    });
+    mocks.tx.contentPackage.update.mockResolvedValue({
+      id: "package-1",
+      status: "REVIEW_NEEDED",
+    });
+    mocks.tx.reviewTask.findFirst.mockResolvedValue(null);
+    mocks.tx.reviewTask.create.mockResolvedValue({
+      id: "review-1",
+    });
+    mocks.tx.changeLog.create.mockResolvedValue({
+      id: "log-1",
+    });
+
+    await submitContentPackageForReview({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      contentPackageId: "package-1",
+    });
+
+    expect(mocks.tx.contentPackage.findFirst).toHaveBeenCalledWith({
+      where: {
+        workspaceId: "workspace-1",
+        id: "package-1",
+        status: {
+          not: "ARCHIVED",
+        },
+      },
+      include: {
+        project: true,
+        files: true,
+      },
+    });
+    expect(mocks.tx.contentPackage.update).toHaveBeenCalledWith({
+      where: {
+        id: "package-1",
+      },
+      data: {
+        status: "REVIEW_NEEDED",
+      },
+    });
+    expect(mocks.tx.reviewTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        subjectType: "CONTENT_PACKAGE",
+        subjectId: "package-1",
+        status: "PENDING",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPackage",
+        entityId: "package-1",
+        action: "content_package_submitted_for_review",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("rejects packages outside the current workspace", async () => {
+    mocks.tx.contentPackage.findFirst.mockResolvedValue(null);
+
+    await expect(
+      submitContentPackageForReview({
+        workspaceId: "workspace-1",
+        userId: "user-1",
+        contentPackageId: "package-from-another-workspace",
+      }),
+    ).rejects.toThrow("未找到当前 Workspace 下可提交审核的素材包");
+
+    expect(mocks.tx.contentPackage.update).not.toHaveBeenCalled();
+    expect(mocks.tx.reviewTask.create).not.toHaveBeenCalled();
   });
 });
