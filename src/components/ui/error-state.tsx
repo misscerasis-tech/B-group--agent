@@ -16,7 +16,7 @@ export function ErrorState({ title = "无法加载数据", message }: ErrorState
         PostgreSQL 已运行，并执行数据库迁移和 seed。
       </p>
       <p className="muted">
-        数据库排障可打开 `/api/health`；如果 3002 被其他小组占用，请改用 3003 启动 B 组。
+        排障页可打开 `/setup`，机器可读检查可打开 `/api/health`；如果 3002 被其他小组占用，请改用 3003 启动 B 组。
       </p>
     </div>
   );

@@ -37,10 +37,11 @@ npx pnpm@10.13.1 exec next dev -p 3003
 健康检查：
 
 ```text
+http://127.0.0.1:3002/setup
 http://127.0.0.1:3002/api/health
 ```
 
-返回 `database: "ok"` 后再验收页面；如果返回 `unavailable`，先检查 Docker PostgreSQL 和 `.env`。
+`/setup` 应显示中文诊断和下一步建议；`/api/health` 返回 `database.status: "ok"` 后再验收页面。如果返回 `unavailable`，先检查 Docker PostgreSQL 和 `.env`。
 
 ## 必验流程
 

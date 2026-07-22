@@ -11,7 +11,7 @@
 - 本机 Node.js 与 pnpm 可用。
 - 当前机器未检测到 `docker` 命令；本地 PostgreSQL 仍需要用户安装并启动 Docker Desktop，或提供可用的外部 PostgreSQL `DATABASE_URL`。
 - 当前 3002 端口曾被其他进程占用；B 组推荐使用 `npx pnpm@10.13.1 run dev:b`，若端口冲突则改用 `npx pnpm@10.13.1 exec next dev -p 3003`。
-- `/api/health` 可用于确认 Web 进程和数据库连接状态。
+- `/setup` 可用于查看中文本地运行诊断，`/api/health` 可用于确认 Web 进程、环境变量和数据库连接状态。
 - `npx pnpm@10.13.1 run doctor` 可检查当前目录、Git 分支、Node、pnpm、Docker、`.env` 和 3002 端口占用。
 
 ## 已推送能力概览
@@ -32,6 +32,7 @@
 - 今日工作台按待确认变更、审核、素材、策略、素材包和近期计划生成行动队列。
 - 今日工作台和项目详情会计算项目就绪度，给出缺口摘要和下一步动作。
 - 项目详情支持把体检缺口一键生成项目提醒，且不会重复创建同标题开放提醒。
+- `/setup` 中文诊断页和增强版 `/api/health` 会提示数据库、环境变量和 AI Provider 降级状态。
 - 数据复盘单条/批量指标录入、CTR、点击转化率、单次转化成本和可下载复盘快照。
 - 飞书占位连接、占位测试、停用旧连接和迁移记录。
 - 图片生成产品主体锁定护栏测试。
@@ -51,9 +52,9 @@ DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?sc
 
 最近一次测试结果：
 
-- Test Files：`20 passed`
-- Tests：`60 passed`
-- Build：通过，包含 `/api/health`、`/b-agent`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
+- Test Files：`21 passed`
+- Tests：`63 passed`
+- Build：通过，包含 `/setup`、`/api/health`、`/b-agent`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
 
 ## 仍需人工完成
 

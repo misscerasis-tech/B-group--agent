@@ -164,10 +164,11 @@ npx pnpm@10.13.1 exec next dev -p 3003
 健康检查：
 
 ```text
+http://127.0.0.1:3002/setup
 http://127.0.0.1:3002/api/health
 ```
 
-如果页面打不开，先看该接口返回的 `database` 是否为 `ok`；如果是 `unavailable`，通常是 PostgreSQL/Docker 没有启动或 `.env` 的 `DATABASE_URL` 不正确。
+如果页面打不开，优先打开 `/setup` 查看中文排障建议；机器可读状态可看 `/api/health`。如果 `database.status` 是 `unavailable`，通常是 PostgreSQL/Docker 没有启动或 `.env` 的 `DATABASE_URL` 不正确。
 
 ## 演示用户
 
