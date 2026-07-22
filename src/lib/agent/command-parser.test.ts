@@ -603,8 +603,23 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts read-only project summary requests", () => {
+    const parsed = parseAgentCommand("帮我看看这个项目现在怎么样，下一步该做什么？");
+
+    expect(parsed.operations).toEqual([
+      {
+        type: "summarize_project",
+        value: {
+          scope: "current_project",
+        },
+        label: "总结当前项目状态和下一步",
+      },
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("returns a low-confidence summary when no safe operation is detected", () => {
-    const parsed = parseAgentCommand("帮我看看这个项目怎么样");
+    const parsed = parseAgentCommand("帮我写一句很燃的口号");
 
     expect(parsed.operations).toHaveLength(0);
     expect(parsed.confidence).toBe("low");

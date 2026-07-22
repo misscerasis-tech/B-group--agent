@@ -45,6 +45,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "project_summary",
+    category: "project",
+    title: "查看项目简报",
+    example: "帮我看看这个项目现在怎么样，下一步该做什么？",
+    writesTo: ["AgentConversation", "AgentOperation"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "strategy_channels",
     category: "strategy",
     title: "新增或删除渠道",

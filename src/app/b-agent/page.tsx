@@ -250,13 +250,13 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                       key={message.id}
                     >
                       <span>{message.role === "USER" ? "用户" : "B组 Agent"}</span>
-                      <p>{message.content}</p>
+                      <p style={{ whiteSpace: "pre-line" }}>{message.content}</p>
                     </div>
                   ))
                 ) : (
                   <div className="chat-bubble agent">
                     <span>B组 Agent</span>
-                    <p>
+                    <p style={{ whiteSpace: "pre-line" }}>
                       请用中文告诉我市场、渠道、生成频率或内容方向。我会先做结构化解析，再写入当前项目。
                     </p>
                   </div>

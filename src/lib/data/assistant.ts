@@ -796,12 +796,23 @@ export async function submitAgentCommand(input: {
       }
     }
 
+    const assistantReply =
+      operationStatus === AgentOperationStatus.APPLIED &&
+      parsed.operations.some(isProjectSummaryOperation)
+        ? await buildProjectSummaryReply(tx, {
+            workspaceId: input.workspaceId,
+            projectId: project.id,
+          })
+        : operationStatus === AgentOperationStatus.APPLIED && projectSwitchTarget
+          ? `已切换到「${projectSwitchTarget.name}」。接下来你可以继续用中文调整这个项目的产品事实、策略、计划、素材包、审核或提醒。`
+          : buildAssistantReply(parsed.summary, operationStatus, conflictCheck);
+
     await tx.agentMessage.create({
       data: {
         workspaceId: input.workspaceId,
         conversationId: operationConversation.id,
         role: AgentMessageRole.ASSISTANT,
-        content: buildAssistantReply(parsed.summary, operationStatus, conflictCheck),
+        content: assistantReply,
       },
     });
 
@@ -972,6 +983,137 @@ function normalizeProjectSwitchKeyword(value: string) {
     .replace(/(当前|这个|那个|b组|B组|项目|工作台|页面|详情)/g, "")
     .replace(/\s+/g, "")
     .trim();
+}
+
+async function buildProjectSummaryReply(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    projectId: string;
+  },
+) {
+  const project = await tx.project.findFirst({
+    where: scopedWhere(input.workspaceId, {
+      id: input.projectId,
+      deletedAt: null,
+    }),
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      projectProducts: {
+        select: {
+          productId: true,
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    return "我没有在当前 Workspace 找到这个项目，暂时无法生成项目简报。";
+  }
+
+  const health = buildProjectHealthSummary(
+    await collectProjectHealthInput(tx, input.workspaceId, project),
+  );
+  const [strategy, upcomingPlanItems, latestPackage, openReminders] = await Promise.all([
+    tx.projectStrategy.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        projectId: project.id,
+        status: {
+          not: StrategyStatus.ARCHIVED,
+        },
+      }) as Prisma.ProjectStrategyWhereInput,
+      orderBy: [
+        {
+          version: "desc",
+        },
+        {
+          updatedAt: "desc",
+        },
+      ],
+    }),
+    tx.contentPlanItem.findMany({
+      where: scopedWhere(input.workspaceId, {
+        projectId: project.id,
+        status: {
+          not: PlanItemStatus.DONE,
+        },
+      }) as Prisma.ContentPlanItemWhereInput,
+      orderBy: [
+        {
+          dueDate: "asc",
+        },
+        {
+          createdAt: "asc",
+        },
+      ],
+      take: 3,
+    }),
+    tx.contentPackage.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        projectId: project.id,
+      }),
+      orderBy: {
+        updatedAt: "desc",
+      },
+    }),
+    tx.reminder.findMany({
+      where: scopedWhere(input.workspaceId, {
+        projectId: project.id,
+        status: ReminderStatus.OPEN,
+      }) as Prisma.ReminderWhereInput,
+      orderBy: [
+        {
+          severity: "desc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+      take: 3,
+    }),
+  ]);
+  const strategyLine = strategy
+    ? `策略：v${strategy.version} ${strategyStatusText(strategy.status)}，市场 ${listInline(
+        strategy.targetMarkets,
+      )}，渠道 ${listInline(strategy.channels)}，素材包频率 ${frequencyText(
+        strategy.packageFrequency,
+      )}。`
+    : "策略：还没有策略草案，请先让 Agent 根据产品事实推荐一版。";
+  const planLine =
+    upcomingPlanItems.length > 0
+      ? `近期计划：${upcomingPlanItems
+          .map(
+            (item) =>
+              `第${item.week}周 ${item.channel}「${item.title}」${item.dueDate ? `，截止 ${formatDateOnly(item.dueDate)}` : ""}`,
+          )
+          .join("；")}。`
+      : "近期计划：没有未完成计划，可以生成首月计划或新增下一条内容计划。";
+  const packageLine = latestPackage
+    ? `最新素材包：${latestPackage.name}（${latestPackage.period}，${contentPackageStatusText(
+        latestPackage.status,
+      )}）。`
+    : "最新素材包：还没有素材包结构，建议先生成首月计划和第一份素材包。";
+  const reminderLine =
+    openReminders.length > 0
+      ? `开放提醒：${openReminders.map((reminder) => reminder.title).join("；")}。`
+      : "开放提醒：当前项目没有待处理提醒。";
+  const nextActionLine =
+    health.nextActions.length > 0
+      ? `建议下一步：${health.nextActions.map((action) => action.action).join("；")}。`
+      : "建议下一步：基础链路已较完整，可以进入素材审核、导出和数据复盘。";
+
+  return [
+    `我看了一下「${project.name}」：项目状态是 ${projectStatusText(
+      project.status,
+    )}，就绪度 ${health.score} 分，${projectHealthRatingText(health.rating)}。${health.summary}`,
+    strategyLine,
+    planLine,
+    packageLine,
+    reminderLine,
+    nextActionLine,
+  ].join("\n");
 }
 
 export async function applyPendingAgentOperation(input: {
@@ -5287,6 +5429,12 @@ function isProjectSwitchOperation(
   return operation.type === "switch_project";
 }
 
+function isProjectSummaryOperation(
+  operation: ParsedAgentOperation,
+): operation is Extract<ParsedAgentOperation, { type: "summarize_project" }> {
+  return operation.type === "summarize_project";
+}
+
 function isStrategyRecommendationOperation(operation: ParsedAgentOperation) {
   return operation.type === "recommend_strategy";
 }
@@ -6511,6 +6659,67 @@ function productToJson(product: {
     description: product.description,
     status: product.status,
   };
+}
+
+function projectStatusText(status: ProjectStatus) {
+  const labels: Record<ProjectStatus, string> = {
+    DRAFT: "草稿",
+    ACTIVE: "进行中",
+    PAUSED: "暂停",
+    ARCHIVED: "已归档",
+  };
+
+  return labels[status];
+}
+
+function strategyStatusText(status: StrategyStatus) {
+  const labels: Record<StrategyStatus, string> = {
+    DRAFT: "策略草案",
+    CONFIRMED: "正式策略",
+    ARCHIVED: "已归档",
+  };
+
+  return labels[status];
+}
+
+function frequencyText(frequency: ContentFrequency) {
+  const labels: Record<ContentFrequency, string> = {
+    WEEKLY: "每周一次",
+    BIWEEKLY: "每两周一次",
+    MONTHLY: "每月一次",
+  };
+
+  return labels[frequency];
+}
+
+function contentPackageStatusText(status: ContentPackageStatus) {
+  const labels: Record<ContentPackageStatus, string> = {
+    DRAFT: "草稿",
+    GENERATED: "已生成",
+    REVIEW_NEEDED: "需审核",
+    APPROVED: "已通过",
+    ARCHIVED: "已归档",
+  };
+
+  return labels[status];
+}
+
+function projectHealthRatingText(rating: ReturnType<typeof buildProjectHealthSummary>["rating"]) {
+  const labels: Record<ReturnType<typeof buildProjectHealthSummary>["rating"], string> = {
+    READY: "可进入执行",
+    NEEDS_ATTENTION: "需要补齐",
+    BLOCKED: "存在阻塞",
+  };
+
+  return labels[rating];
+}
+
+function listInline(values: string[]) {
+  return values.length > 0 ? values.join("、") : "待补充";
+}
+
+function formatDateOnly(date: Date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function operationToJson(operation: {

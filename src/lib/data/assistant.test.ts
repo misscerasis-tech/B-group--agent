@@ -82,6 +82,7 @@ const mocks = vi.hoisted(() => {
       count: vi.fn(),
       create: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       update: vi.fn(),
     },
     reviewTask: {
@@ -160,6 +161,7 @@ describe("generateStarterPlan", () => {
     mocks.tx.reminder.create.mockResolvedValue({
       id: "reminder-1",
     });
+    mocks.tx.reminder.findMany.mockResolvedValue([]);
     mocks.tx.changeLog.create.mockResolvedValue({
       id: "log-1",
     });
@@ -553,6 +555,86 @@ describe("generateStarterPlan", () => {
       }),
     });
     expect(mocks.tx.project.update).not.toHaveBeenCalled();
+  });
+
+  it("replies with a read-only current project summary from a Chinese agent command", async () => {
+    mocks.tx.project.findFirst
+      .mockResolvedValueOnce({
+        id: "project-1",
+        workspaceId: "workspace-1",
+        name: "巴西新品首月增长",
+        description: "项目说明",
+        status: "ACTIVE",
+      })
+      .mockResolvedValueOnce({
+        id: "project-1",
+        name: "巴西新品首月增长",
+        status: "ACTIVE",
+        projectProducts: [
+          {
+            productId: "product-1",
+          },
+        ],
+      });
+    mocks.tx.productFact.count.mockResolvedValueOnce(2).mockResolvedValueOnce(0);
+    mocks.tx.projectStrategy.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    mocks.tx.contentPlanItem.count.mockResolvedValueOnce(4).mockResolvedValueOnce(3);
+    mocks.tx.contentPackage.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    mocks.tx.reviewTask.count.mockResolvedValue(1);
+    mocks.tx.asset.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    mocks.tx.metricsSnapshot.count.mockResolvedValue(1);
+    mocks.tx.reminder.count.mockResolvedValue(1);
+    mocks.tx.contentPlanItem.findMany.mockResolvedValue([
+      {
+        id: "plan-1",
+        week: 1,
+        channel: "TikTok",
+        title: "开箱短视频",
+        dueDate: new Date("2026-08-07T00:00:00.000Z"),
+      },
+    ]);
+    mocks.tx.contentPackage.findFirst.mockResolvedValue({
+      id: "package-1",
+      name: "首月第一份素材包",
+      period: "2026-08 第1周",
+      status: "DRAFT",
+    });
+    mocks.tx.reminder.findMany.mockResolvedValue([
+      {
+        id: "reminder-1",
+        title: "确认 Logo 来源",
+      },
+    ]);
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "帮我看看这个项目现在怎么样，下一步该做什么？",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        status: "APPLIED",
+        summary: "总结当前项目状态和下一步",
+      }),
+    });
+    expect(mocks.tx.agentMessage.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        role: "ASSISTANT",
+        content: expect.stringContaining("就绪度"),
+      }),
+    });
+    expect(mocks.tx.agentMessage.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        content: expect.stringContaining("首月第一份素材包"),
+      }),
+    });
+    expect(mocks.tx.changeLog.create).not.toHaveBeenCalled();
   });
 
   it("creates and links a new product to the current project from a Chinese agent command", async () => {

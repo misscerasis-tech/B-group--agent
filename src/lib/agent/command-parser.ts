@@ -54,6 +54,13 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "summarize_project";
+      value: {
+        scope: "current_project";
+      };
+      label: string;
+    }
+  | {
       type: "recommend_strategy";
       value: {
         basis: "product_facts";
@@ -583,6 +590,24 @@ function extractProjectSwitchKeyword(text: string) {
     .trim();
 
   return keyword.length >= 2 ? keyword.slice(0, 80) : null;
+}
+
+function parseProjectSummaryOperation(text: string): ParsedAgentOperation | null {
+  if (!/(项目|进展|状态|风险|下一步|今天|工作台)/.test(text)) {
+    return null;
+  }
+
+  if (!/(总结|概览|简报|看看|诊断|体检|怎么样|下一步|今天.*做|该做什么|要做什么)/.test(text)) {
+    return null;
+  }
+
+  return {
+    type: "summarize_project",
+    value: {
+      scope: "current_project",
+    },
+    label: "总结当前项目状态和下一步",
+  };
 }
 
 function hasProjectKickoffIntent(text: string) {
@@ -2366,6 +2391,14 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     }
   }
 
+  if (operations.length === 0) {
+    const projectSummaryOperation = parseProjectSummaryOperation(text);
+
+    if (projectSummaryOperation) {
+      operations.push(projectSummaryOperation);
+    }
+  }
+
   const dedupedOperations = Array.from(
     new Map(operations.map((operation) => [operationKey(operation), operation])).values(),
   );
@@ -2392,6 +2425,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "confirm_product_facts" ||
       operation.type === "kickoff_project" ||
       operation.type === "switch_project" ||
+      operation.type === "summarize_project" ||
       operation.type === "recommend_strategy" ||
       operation.type === "create_content_package" ||
       operation.type === "update_content_package_status" ||
