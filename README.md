@@ -137,10 +137,18 @@ npx pnpm@10.13.1 run db:seed
 启动 Web：
 
 ```bash
-npx pnpm@10.13.1 exec next dev -p 3002
+npx pnpm@10.13.1 run dev:b
 ```
 
 打开 `http://127.0.0.1:3002/b-agent`。
+
+如果 3002 已被 A 组或其他服务占用，改用一个空闲端口：
+
+```bash
+npx pnpm@10.13.1 exec next dev -p 3003
+```
+
+然后打开 `http://127.0.0.1:3003/b-agent`。
 
 ## 演示用户
 

@@ -16,7 +16,7 @@ npx pnpm@10.13.1 install
 npx pnpm@10.13.1 run docker:up
 npx pnpm@10.13.1 run db:migrate
 npx pnpm@10.13.1 run db:seed
-npx pnpm@10.13.1 exec next dev -p 3002
+npx pnpm@10.13.1 run dev:b
 ```
 
 打开：
@@ -24,6 +24,14 @@ npx pnpm@10.13.1 exec next dev -p 3002
 ```text
 http://127.0.0.1:3002/b-agent
 ```
+
+如果 3002 已被其他小组服务占用，使用：
+
+```bash
+npx pnpm@10.13.1 exec next dev -p 3003
+```
+
+并打开 `http://127.0.0.1:3003/b-agent`。
 
 ## 必验流程
 

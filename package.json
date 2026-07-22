@@ -5,6 +5,7 @@
   "packageManager": "pnpm@10.13.1",
   "scripts": {
     "dev": "next dev",
+    "dev:b": "next dev -p 3002",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -41,4 +42,3 @@
     "seed": "tsx prisma/seed.ts"
   }
 }
-
