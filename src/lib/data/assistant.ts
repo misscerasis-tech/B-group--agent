@@ -11,7 +11,8 @@ import {
   ReminderStatus,
   StrategyStatus,
 } from "@prisma/client";
-import { parseAgentCommand, type ParsedAgentOperation } from "@/lib/agent/command-parser";
+import type { ParsedAgentOperation } from "@/lib/agent/command-parser";
+import { getConfiguredAgentTextProvider } from "@/lib/agent/provider";
 import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/workspace-scope";
 
@@ -241,7 +242,13 @@ export async function submitAgentCommand(input: {
 
     const conversation = await ensureConversation(tx, input.workspaceId, project.id);
     const strategy = await ensureProjectStrategy(tx, input.workspaceId, project.id);
-    const parsed = parseAgentCommand(text);
+    const agentProvider = getConfiguredAgentTextProvider();
+    const parsed = await agentProvider.parseCommand({
+      workspaceId: input.workspaceId,
+      projectId: project.id,
+      text,
+      locale: "zh-CN",
+    });
     const noSafeOperation = parsed.operations.length === 0;
     const hasConfirmationSensitiveOperation = parsed.operations.some(
       isConfirmationSensitiveOperation,

@@ -139,6 +139,7 @@ V1 目标素材包：
 
 - `ProductFact` 保存产品事实，并支持人工确认。
 - `ProjectStrategy` 保存市场、客群、渠道、内容方向和素材包频率。
+- `AgentTextProvider` 负责把中文指令转换为结构化操作，当前实现为 `local-rule`，后续 GPT 只作为新 Provider 接入。
 - `AgentOperation` 保存中文指令转换后的结构化操作。
 - `ChangeLog` 保存手工 CRUD、策略确认、指令应用、事实生成、计划生成、素材和提醒记录。
 - `Asset` 保存真实产品图、官方 Logo、资料和参考图，并带审核状态、文件校验和上传限制。
@@ -154,7 +155,7 @@ V1 目标素材包：
 
 ## 仍待补齐能力
 
-- 真实 GPT 顾问式追问、事实抽取和策略推荐。
+- 真实 GPT 顾问式追问、事实抽取和策略推荐 Provider。
 - PDF、XLSX、DOCX、TXT、PNG、ZIP 真实文件生成。
 - 真实产品图 + 官方 Logo 的实际模板渲染输出。
 - 外部平台表现数据导入和总结。
