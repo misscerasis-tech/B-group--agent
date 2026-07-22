@@ -88,7 +88,20 @@ describe("buildContentPackageExportFiles", () => {
                 createdAt: new Date("2026-07-01T00:00:00.000Z"),
                 updatedAt: new Date("2026-07-01T00:00:00.000Z"),
                 deletedAt: null,
-                facts: [],
+                facts: [
+                  {
+                    id: "fact-1",
+                    workspaceId: "workspace-1",
+                    productId: "product-1",
+                    label: "核心卖点",
+                    value: "24 小时保温",
+                    source: "官方资料",
+                    confidence: 92,
+                    status: "CONFIRMED",
+                    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+                    updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+                  },
+                ],
                 assets: [],
               },
             },
@@ -126,7 +139,23 @@ describe("buildContentPackageExportFiles", () => {
           },
         ],
       },
-      planItems: [],
+      planItems: [
+        {
+          id: "plan-1",
+          workspaceId: "workspace-1",
+          projectId: "project-1",
+          strategyId: "strategy-1",
+          week: 1,
+          channel: "TikTok",
+          theme: "世界杯",
+          title: "开箱短视频",
+          deliverable: "短视频脚本",
+          dueDate: new Date("2026-08-07T00:00:00.000Z"),
+          status: "READY",
+          createdAt: new Date("2026-07-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+        },
+      ],
     } as never);
 
     const readiness = readText(files.find((file) => file.filename === "00-交付检查.txt")?.content);
@@ -151,6 +180,28 @@ describe("buildContentPackageExportFiles", () => {
     expect(readme).toContain("模板化海报图片 -> 模板化海报 4:5");
     expect(manifest.schemaVersion).toBe("b-agent-content-package.v1");
     expect(manifest.generatedFiles).toContain("02-内容排期.xlsx");
+    expect(manifest.strategy).toMatchObject({
+      channels: ["TikTok"],
+      targetMarkets: ["巴西"],
+      version: 1,
+    });
+    expect(manifest.productFacts[0]).toMatchObject({
+      productName: "Aurora Cup",
+      label: "核心卖点",
+      value: "24 小时保温",
+      status: "CONFIRMED",
+    });
+    expect(manifest.planItems[0]).toMatchObject({
+      week: 1,
+      dueDate: "2026-08-07",
+      channel: "TikTok",
+      title: "开箱短视频",
+      status: "READY",
+    });
+    expect(manifest.readiness).toMatchObject({
+      rating: expect.any(String),
+      score: expect.any(Number),
+    });
     expect(manifest.files[0].asset).toMatchObject({
       id: "asset-1",
       name: "模板化海报 4:5",

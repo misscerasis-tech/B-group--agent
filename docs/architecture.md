@@ -109,7 +109,7 @@ Agent 创建提醒时可解析明确日期并写入 `Reminder.dueAt`；提醒截
 
 提醒关闭分为 `DONE` 和 `DISMISSED`：完成代表待办已处理，忽略代表确认暂不处理。Agent 对话和提醒中心写入同一套状态，便于后续飞书通知同步。
 
-当前素材包导出使用服务端本地 ZIP 生成器，输出基础 PDF、XLSX、DOCX、TXT、关联素材文件和 manifest。素材包可由 Agent 按当前 Workspace 和项目归档或恢复草稿，并写入变更日志。导出查询必须按当前 Workspace 限制；后续精排 PDF、复杂 XLSX、正式 DOCX、PNG 海报或对象存储打包可以逐个替换同一导出入口。
+当前素材包导出使用服务端本地 ZIP 生成器，输出基础 PDF、XLSX、DOCX、TXT、关联素材文件和 manifest。manifest 记录策略、产品事实、内容计划、已审核素材和可交付性检查摘要，便于复盘、迁移核对和后续飞书沉淀。素材包可由 Agent 按当前 Workspace 和项目归档或恢复草稿，并写入变更日志。导出查询必须按当前 Workspace 限制；后续精排 PDF、复杂 XLSX、正式 DOCX、PNG 海报或对象存储打包可以逐个替换同一导出入口。
 
 素材包海报文件项可以关联已审核的 `GENERATED_IMAGE` Asset。Agent 对话只负责把当前项目范围内的最新模板海报挂到素材包文件项，不调用图片模型，也不会绕过真实产品图和官方 Logo 的审核要求。
 

@@ -153,6 +153,64 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
     "产品名称、参数和卖点与产品事实一致。",
     "抽奖、促销和免责声明已人工审核。",
   ];
+  const manifestStrategy = strategy
+    ? {
+        id: strategy.id,
+        version: strategy.version,
+        status: strategy.status,
+        targetMarkets: strategy.targetMarkets,
+        audiences: strategy.audiences,
+        channels: strategy.channels,
+        contentDirections: strategy.contentDirections,
+        packageFrequency: strategy.packageFrequency,
+      }
+    : null;
+  const manifestPlanItems = planItems.map((item) => ({
+    id: item.id,
+    week: item.week,
+    dueDate: item.dueDate ? item.dueDate.toISOString().slice(0, 10) : null,
+    channel: item.channel,
+    theme: item.theme,
+    title: item.title,
+    deliverable: item.deliverable,
+    status: item.status,
+  }));
+  const manifestProductFacts = products.flatMap((product) =>
+    product.facts.map((fact) => ({
+      productId: product.id,
+      productName: product.name,
+      factId: fact.id,
+      label: fact.label,
+      value: fact.value,
+      source: fact.source,
+      confidence: fact.confidence,
+      status: fact.status,
+    })),
+  );
+  const manifestApprovedAssets = approvedAssets.map((asset) => ({
+    id: asset.id,
+    productId: asset.productId,
+    name: asset.name,
+    kind: asset.kind,
+    source: asset.source,
+    status: asset.status,
+    mimeType: asset.mimeType,
+    originalFilename: asset.originalFilename,
+    checksum: asset.checksum,
+  }));
+  const manifestReadiness = {
+    score: readiness.score,
+    rating: readiness.rating,
+    summary: readiness.summary,
+    signals: readiness.signals.map((signal) => ({
+      key: signal.key,
+      label: signal.label,
+      status: signal.status,
+      summary: signal.summary,
+      action: signal.action,
+      blocking: signal.blocking,
+    })),
+  };
 
   return [
     {
@@ -355,6 +413,11 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
           projectId: contentPackage.projectId,
           strategyId: contentPackage.strategyId,
           exportedAt: new Date().toISOString(),
+          strategy: manifestStrategy,
+          productFacts: manifestProductFacts,
+          planItems: manifestPlanItems,
+          approvedAssets: manifestApprovedAssets,
+          readiness: manifestReadiness,
           generatedFiles: [
             "01-素材包说明.pdf",
             "02-内容排期.xlsx",
