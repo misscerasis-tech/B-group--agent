@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { AlertTriangle, Bell } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import {
+  createProactiveRemindersAction,
+  resolveReminderAction,
+} from "@/app/actions/reminder-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -33,9 +37,17 @@ export default async function RemindersPage() {
               基于项目状态、计划缺口、活动风险和素材包状态沉淀提醒；飞书未来只是通知出口。
             </p>
           </div>
-          <Link className="button" href="/b-agent">
-            回到 Agent 工作台
-          </Link>
+          <div className="hero-actions">
+            <form action={createProactiveRemindersAction} className="inline-form">
+              <button className="button" type="submit">
+                <RefreshCw size={16} aria-hidden="true" />
+                生成主动提醒
+              </button>
+            </form>
+            <Link className="button secondary" href="/b-agent">
+              回到 Agent 工作台
+            </Link>
+          </div>
         </section>
 
         {reminders.length > 0 ? (
@@ -62,7 +74,27 @@ export default async function RemindersPage() {
                     </div>
                   </header>
                   <p>{reminder.description ?? "暂无提醒说明。"}</p>
-                  <small>{reminder.project ? `项目：${reminder.project.name}` : "Workspace 级提醒"}</small>
+                  <small>
+                    {reminder.project ? `项目：${reminder.project.name}` : "Workspace 级提醒"}
+                  </small>
+                  {reminder.status === "OPEN" ? (
+                    <form action={resolveReminderAction} className="inline-form">
+                      <input name="reminderId" type="hidden" value={reminder.id} />
+                      <button className="button secondary" name="status" type="submit" value="DONE">
+                        <CheckCircle2 size={16} aria-hidden="true" />
+                        标记完成
+                      </button>
+                      <button
+                        className="button secondary"
+                        name="status"
+                        type="submit"
+                        value="DISMISSED"
+                      >
+                        <XCircle size={16} aria-hidden="true" />
+                        忽略
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
               </article>
             ))}

@@ -3,6 +3,8 @@ import {
   ContentPackageStatus,
   Prisma,
   ProductFactStatus,
+  ReminderSeverity,
+  ReminderStatus,
   ReviewSubjectType,
   ReviewTaskStatus,
   StrategyStatus,
@@ -13,6 +15,8 @@ import { scopedWhere } from "@/lib/workspace-scope";
 type ReviewDecision =
   | typeof ReviewTaskStatus.APPROVED
   | typeof ReviewTaskStatus.CHANGES_REQUESTED;
+
+type ReminderResolution = typeof ReminderStatus.DONE | typeof ReminderStatus.DISMISSED;
 
 export async function listWorkspacePlanItems(workspaceId: string) {
   return prisma.contentPlanItem.findMany({
@@ -69,6 +73,220 @@ export async function listWorkspaceReminders(workspaceId: string) {
         createdAt: "desc",
       },
     ],
+  });
+}
+
+export async function createProactiveReminders(input: { workspaceId: string; userId: string }) {
+  return prisma.$transaction(async (tx) => {
+    const [projects, pendingReviews, draftStrategies, packageReviews, riskyPlanItems] =
+      await Promise.all([
+        tx.project.findMany({
+          where: scopedWhere(input.workspaceId, {
+            deletedAt: null,
+          }),
+          include: {
+            projectProducts: {
+              include: {
+                product: {
+                  include: {
+                    assets: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: {
+            updatedAt: "desc",
+          },
+        }),
+        tx.reviewTask.findMany({
+          where: scopedWhere(input.workspaceId, {
+            status: ReviewTaskStatus.PENDING,
+          }) as Prisma.ReviewTaskWhereInput,
+        }),
+        tx.projectStrategy.findMany({
+          where: scopedWhere(input.workspaceId, {
+            status: StrategyStatus.DRAFT,
+          }) as Prisma.ProjectStrategyWhereInput,
+          include: {
+            project: true,
+          },
+        }),
+        tx.contentPackage.findMany({
+          where: scopedWhere(input.workspaceId, {
+            status: {
+              in: [ContentPackageStatus.DRAFT, ContentPackageStatus.REVIEW_NEEDED],
+            },
+          }),
+          include: {
+            project: true,
+          },
+        }),
+        tx.contentPlanItem.findMany({
+          where: scopedWhere(input.workspaceId, {
+            OR: [
+              {
+                title: {
+                  contains: "抽奖",
+                },
+              },
+              {
+                deliverable: {
+                  contains: "活动",
+                },
+              },
+              {
+                theme: {
+                  contains: "礼品",
+                },
+              },
+            ],
+          }) as Prisma.ContentPlanItemWhereInput,
+          include: {
+            project: true,
+          },
+        }),
+      ]);
+
+    let createdCount = 0;
+
+    for (const project of projects) {
+      const assets = project.projectProducts.flatMap(({ product }) => product.assets);
+      const approvedProductImage = assets.some(
+        (asset) => asset.kind === "PRODUCT_IMAGE" && asset.status === AssetStatus.APPROVED,
+      );
+      const approvedLogo = assets.some(
+        (asset) => asset.kind === "LOGO" && asset.status === AssetStatus.APPROVED,
+      );
+
+      if (!approvedProductImage) {
+        createdCount += await createReminderIfMissing(tx, {
+          workspaceId: input.workspaceId,
+          projectId: project.id,
+          title: "缺少已审核真实产品图",
+          description:
+            "正式海报和素材包必须引用已审核真实产品图，不能让图片模型重新生成产品主体。",
+          severity: ReminderSeverity.CRITICAL,
+        });
+      }
+
+      if (!approvedLogo) {
+        createdCount += await createReminderIfMissing(tx, {
+          workspaceId: input.workspaceId,
+          projectId: project.id,
+          title: "缺少已审核官方 Logo",
+          description: "正式视觉的 Logo Layer 必须引用官方 Logo Asset，并经过人工来源检查。",
+          severity: ReminderSeverity.WARNING,
+        });
+      }
+    }
+
+    for (const strategy of draftStrategies) {
+      createdCount += await createReminderIfMissing(tx, {
+        workspaceId: input.workspaceId,
+        projectId: strategy.projectId,
+        title: `策略草案待确认：${strategy.project.name}`,
+        description: "策略没有确认前，不应作为正式素材包生成依据。",
+        severity: ReminderSeverity.WARNING,
+      });
+    }
+
+    for (const contentPackage of packageReviews) {
+      createdCount += await createReminderIfMissing(tx, {
+        workspaceId: input.workspaceId,
+        projectId: contentPackage.projectId,
+        title: `素材包待审核：${contentPackage.name}`,
+        description: "发布或下载前需要检查平台比例、产品素材来源、品牌和合规要求。",
+        severity: ReminderSeverity.WARNING,
+      });
+    }
+
+    for (const planItem of riskyPlanItems) {
+      createdCount += await createReminderIfMissing(tx, {
+        workspaceId: input.workspaceId,
+        projectId: planItem.projectId,
+        title: `活动规则需提前确认：${planItem.title}`,
+        description: "计划中包含抽奖、礼品或活动类内容，发布前需要确认奖品、规则和免责声明。",
+        severity: ReminderSeverity.WARNING,
+      });
+    }
+
+    const pendingReviewsByProject = groupByProjectId(pendingReviews);
+
+    for (const [projectId, count] of pendingReviewsByProject) {
+      createdCount += await createReminderIfMissing(tx, {
+        workspaceId: input.workspaceId,
+        projectId,
+        title: "存在待处理审核任务",
+        description: `当前项目还有 ${count} 条审核任务未处理，建议先进入审核中心完成确认。`,
+        severity: ReminderSeverity.INFO,
+      });
+    }
+
+    if (createdCount > 0) {
+      await tx.changeLog.create({
+        data: {
+          workspaceId: input.workspaceId,
+          entityType: "Reminder",
+          entityId: input.workspaceId,
+          action: "proactive_reminders_created",
+          summary: `生成 ${createdCount} 条主动提醒。`,
+          actorUserId: input.userId,
+        },
+      });
+    }
+
+    return {
+      createdCount,
+    };
+  });
+}
+
+export async function resolveReminder(input: {
+  workspaceId: string;
+  userId: string;
+  reminderId: string;
+  status: ReminderResolution;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const reminder = await tx.reminder.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        id: input.reminderId,
+        status: ReminderStatus.OPEN,
+      }) as Prisma.ReminderWhereInput,
+    });
+
+    if (!reminder) {
+      throw new Error("未找到待处理的提醒。");
+    }
+
+    const updatedReminder = await tx.reminder.update({
+      where: {
+        id: reminder.id,
+      },
+      data: {
+        status: input.status,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: reminder.projectId,
+        entityType: "Reminder",
+        entityId: reminder.id,
+        action: input.status === ReminderStatus.DONE ? "reminder_done" : "reminder_dismissed",
+        summary:
+          input.status === ReminderStatus.DONE
+            ? `完成提醒：${reminder.title}`
+            : `忽略提醒：${reminder.title}`,
+        before: reminderToJson(reminder),
+        after: reminderToJson(updatedReminder),
+        actorUserId: input.userId,
+      },
+    });
+
+    return updatedReminder;
   });
 }
 
@@ -468,5 +686,70 @@ function reviewTaskToJson(reviewTask: {
     status: reviewTask.status,
     reviewerUserId: reviewTask.reviewerUserId,
     decisionNote: reviewTask.decisionNote,
+  };
+}
+
+async function createReminderIfMissing(
+  tx: Prisma.TransactionClient,
+  data: {
+    workspaceId: string;
+    projectId?: string | null;
+    title: string;
+    description: string;
+    severity: ReminderSeverity;
+  },
+) {
+  const existingReminder = await tx.reminder.findFirst({
+    where: {
+      workspaceId: data.workspaceId,
+      projectId: data.projectId ?? null,
+      title: data.title,
+      status: ReminderStatus.OPEN,
+    },
+  });
+
+  if (existingReminder) {
+    return 0;
+  }
+
+  await tx.reminder.create({
+    data: {
+      workspaceId: data.workspaceId,
+      projectId: data.projectId,
+      title: data.title,
+      description: data.description,
+      severity: data.severity,
+      status: ReminderStatus.OPEN,
+    },
+  });
+
+  return 1;
+}
+
+function groupByProjectId(items: Array<{ projectId: string | null }>) {
+  const groups = new Map<string | null, number>();
+
+  for (const item of items) {
+    groups.set(item.projectId, (groups.get(item.projectId) ?? 0) + 1);
+  }
+
+  return groups;
+}
+
+function reminderToJson(reminder: {
+  id: string;
+  projectId: string | null;
+  title: string;
+  description: string | null;
+  severity: ReminderSeverity;
+  status: ReminderStatus;
+}) {
+  return {
+    id: reminder.id,
+    projectId: reminder.projectId,
+    title: reminder.title,
+    description: reminder.description,
+    severity: reminder.severity,
+    status: reminder.status,
   };
 }

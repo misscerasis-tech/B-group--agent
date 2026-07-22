@@ -84,7 +84,7 @@ B 组工作助手已新增：
 - `ContentPlanItem`：首月内容计划项。
 - `ContentPackage` 与 `ContentPackageFile`：素材包结构和文件状态。
 - `ReviewTask`：策略、素材包、素材和产品事实的 Web-first 审核任务。
-- `Reminder`：基于项目风险和缺口生成的提醒。
+- `Reminder`：基于项目风险、计划缺口、审核状态和素材来源生成的主动提醒。
 - `AgentConversation` 与 `AgentMessage`：项目级 Agent 对话。
 - `AgentOperation`：自然语言转换后的结构化操作。
 - `ChangeLog`：人工确认、指令应用和生成动作的变更记录。
