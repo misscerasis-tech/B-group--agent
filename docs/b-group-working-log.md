@@ -20,6 +20,7 @@
 - 数据库驱动的 `/b-agent` 工作台：中文对话 + 结构化项目工作台。
 - Workspace 创建、切换和多 Workspace 数据隔离。
 - 项目、产品、产品事实、策略、计划、素材包、审核、提醒、复盘和集成占位数据模型。
+- Agent 中文可执行能力目录集中维护标题、示例、写入表和人工审核要求，`/b-agent` 页面从该目录渲染指令提示。
 - `AgentTextProvider` 文本 Agent 抽象；当前 `local-rule` 支持市场、渠道、客群、内容方向、素材包频率、项目状态、产品事实新增、提醒创建、提醒完成、计划完成、指定周期素材包创建、素材包提交审核和素材包审核决策。
 - B 组 Agent 支持用中文录入渠道表现指标，并写入数据复盘和变更日志。
 - B 组 Agent 支持用中文新增内容日历计划项，并写入变更日志。
@@ -65,8 +66,8 @@ DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?sc
 
 最近一次测试结果：
 
-- Test Files：`24 passed`
-- Tests：`86 passed`
+- Test Files：`25 passed`
+- Tests：`88 passed`
 - Build：通过，包含 `/setup`、`/api/health`、`/b-agent`、`/workspace/export`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
 
 ## 仍需人工完成

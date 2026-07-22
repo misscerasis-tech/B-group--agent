@@ -141,6 +141,7 @@ V1 目标素材包：
 - 产品大脑可从产品说明、粘贴资料或已关联的文本型产品资料 Asset 生成待确认事实。
 - `ProjectStrategy` 保存市场、客群、渠道、内容方向和素材包频率。
 - `AgentTextProvider` 负责把中文指令转换为结构化操作，当前实现为 `local-rule`，后续 GPT 只作为新 Provider 接入。
+- `agentCommandCapabilities` 集中维护 Agent 可执行能力、中文示例、写入表和人工审核要求，作为页面提示和未来 GPT 工具目录基础。
 - `AgentOperation` 保存中文指令转换后的结构化操作。
 - `ChangeLog` 保存手工 CRUD、策略确认、指令应用、事实生成、计划生成、素材和提醒记录。
 - `Asset` 保存真实产品图、官方 Logo、资料和参考图，并带审核状态、文件校验和上传限制。

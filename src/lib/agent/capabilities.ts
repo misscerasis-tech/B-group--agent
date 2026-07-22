@@ -1,0 +1,136 @@
+export type AgentCapabilityCategory =
+  | "strategy"
+  | "product_brain"
+  | "planning"
+  | "content_package"
+  | "review"
+  | "reminder"
+  | "recap";
+
+export type AgentCommandCapability = {
+  key: string;
+  category: AgentCapabilityCategory;
+  title: string;
+  example: string;
+  writesTo: string[];
+  requiresExplicitHumanReview: boolean;
+};
+
+export const agentCommandCapabilities: AgentCommandCapability[] = [
+  {
+    key: "strategy_channels",
+    category: "strategy",
+    title: "新增或删除渠道",
+    example: "巴西不做 LinkedIn，新增 TikTok，下个月每周生成一次素材包。",
+    writesTo: ["ProjectStrategy", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
+    key: "strategy_audiences",
+    category: "strategy",
+    title: "新增或删除客群",
+    example: "不要学生用户，新增礼品购买者，本月不做小抽奖。",
+    writesTo: ["ProjectStrategy", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
+    key: "project_status",
+    category: "strategy",
+    title: "修改项目状态",
+    example: "暂停这个项目，新增 TikTok。",
+    writesTo: ["Project", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
+    key: "product_fact_create",
+    category: "product_brain",
+    title: "补充产品事实",
+    example: "新增产品事实：卖点=24小时保温。",
+    writesTo: ["ProductFact", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
+    key: "reminder_create",
+    category: "reminder",
+    title: "创建项目提醒",
+    example: "提醒我提前确认巴西抽奖奖品和活动规则。",
+    writesTo: ["Reminder", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
+    key: "reminder_complete",
+    category: "reminder",
+    title: "完成项目提醒",
+    example: "把抽奖规则提醒标记完成。",
+    writesTo: ["Reminder", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
+    key: "metrics_create",
+    category: "recap",
+    title: "录入渠道表现",
+    example: "记录 2026-07 第3周 TikTok 曝光10000 点击600 转化24 花费1234.56 元。",
+    writesTo: ["MetricsSnapshot", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
+    key: "plan_item_create",
+    category: "planning",
+    title: "新增内容计划",
+    example: "第2周 TikTok 做一条开箱短视频，主题新品认知，交付短视频脚本，截止 2026-08-07，可执行。",
+    writesTo: ["ContentPlanItem", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
+    key: "plan_item_complete",
+    category: "planning",
+    title: "完成内容计划",
+    example: "第2周 TikTok 开箱短视频已完成。",
+    writesTo: ["ContentPlanItem", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
+    key: "content_package_create",
+    category: "content_package",
+    title: "创建素材包结构",
+    example: "为 2026-08 第1周创建 TikTok 素材包。",
+    writesTo: ["ContentPackage", "ContentPackageFile", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
+    key: "content_package_submit_review",
+    category: "review",
+    title: "提交素材包审核",
+    example: "提交最新素材包审核。",
+    writesTo: ["ContentPackage", "ReviewTask", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
+    key: "content_package_decide_review",
+    category: "review",
+    title: "处理素材包审核",
+    example: "最新素材包审核通过，或最新素材包要求修改。",
+    writesTo: ["ContentPackage", "ReviewTask", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
+    key: "starter_plan",
+    category: "planning",
+    title: "生成首月计划",
+    example: "请生成首月计划和第一份素材包结构。",
+    writesTo: ["ContentPlanItem", "ContentPackage", "ContentPackageFile", "Reminder", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
+    key: "market_detection",
+    category: "strategy",
+    title: "识别目标市场",
+    example: "蒙古市场先做 Facebook 和 Instagram。",
+    writesTo: ["ProjectStrategy", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+];
+
+export function getAgentCommandCapabilitiesByCategory(category: AgentCapabilityCategory) {
+  return agentCommandCapabilities.filter((capability) => capability.category === category);
+}
