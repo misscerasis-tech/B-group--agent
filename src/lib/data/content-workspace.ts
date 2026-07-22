@@ -1,6 +1,7 @@
 import {
   AssetStatus,
   ContentPackageStatus,
+  PackageFileStatus,
   PlanItemStatus,
   Prisma,
   ProductFactStatus,
@@ -105,6 +106,83 @@ export async function listWorkspaceContentPackages(workspaceId: string) {
     orderBy: {
       updatedAt: "desc",
     },
+  });
+}
+
+export async function updateContentPackageFileStatus(input: {
+  workspaceId: string;
+  userId: string;
+  fileId: string;
+  status: PackageFileStatus;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const packageFile = await tx.contentPackageFile.findFirst({
+      where: {
+        id: input.fileId,
+        contentPackage: {
+          workspaceId: input.workspaceId,
+        },
+      },
+      include: {
+        contentPackage: {
+          include: {
+            project: true,
+          },
+        },
+      },
+    });
+
+    if (!packageFile) {
+      throw new Error("未找到当前 Workspace 下的素材包文件项。");
+    }
+
+    const updatedFile = await tx.contentPackageFile.update({
+      where: {
+        id: packageFile.id,
+      },
+      data: {
+        status: input.status,
+      },
+    });
+
+    const siblingFiles = await tx.contentPackageFile.findMany({
+      where: {
+        contentPackageId: packageFile.contentPackageId,
+      },
+    });
+    const nextPackageStatus = inferContentPackageStatus(siblingFiles);
+
+    if (packageFile.contentPackage.status !== ContentPackageStatus.ARCHIVED) {
+      await tx.contentPackage.update({
+        where: {
+          id: packageFile.contentPackageId,
+        },
+        data: {
+          status: nextPackageStatus,
+        },
+      });
+    }
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: packageFile.contentPackage.projectId,
+        entityType: "ContentPackageFile",
+        entityId: packageFile.id,
+        action: "package_file_status_updated",
+        summary: `更新素材包文件状态：${packageFile.contentPackage.name} · ${packageFile.name}`,
+        before: {
+          status: packageFile.status,
+        },
+        after: {
+          status: updatedFile.status,
+          contentPackageStatus: nextPackageStatus,
+        },
+        actorUserId: input.userId,
+      },
+    });
+
+    return updatedFile;
   });
 }
 
@@ -804,4 +882,16 @@ function reminderToJson(reminder: {
     severity: reminder.severity,
     status: reminder.status,
   };
+}
+
+function inferContentPackageStatus(files: Array<{ status: PackageFileStatus }>) {
+  if (files.length > 0 && files.every((file) => file.status === PackageFileStatus.APPROVED)) {
+    return ContentPackageStatus.APPROVED;
+  }
+
+  if (files.some((file) => file.status !== PackageFileStatus.PLANNED)) {
+    return ContentPackageStatus.GENERATED;
+  }
+
+  return ContentPackageStatus.DRAFT;
 }

@@ -83,7 +83,7 @@ B 组工作助手已新增：
 - `ProductFact`：产品事实，区分草稿、已确认、需复核。
 - `ProjectStrategy`：项目策略，支持目标市场、客群、渠道、内容方向、素材包频率、确认状态和版本记录。
 - `ContentPlanItem`：首月内容计划项，支持在内容日历中推进状态并写入变更日志。
-- `ContentPackage` 与 `ContentPackageFile`：素材包结构和文件状态。
+- `ContentPackage` 与 `ContentPackageFile`：素材包结构和文件状态，文件项推进会自动更新素材包整体状态。
 - `ReviewTask`：策略、素材包、素材和产品事实的 Web-first 审核任务。
 - `Reminder`：基于项目风险、计划缺口、审核状态和素材来源生成的主动提醒。
 - `MetricsSnapshot`：按项目、周期和渠道保存手动录入或未来导入的表现数据。

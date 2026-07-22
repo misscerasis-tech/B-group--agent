@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Download, FileArchive, FileText } from "lucide-react";
+import { CheckCircle2, Download, FileArchive, FileText, PlayCircle } from "lucide-react";
+import { updateContentPackageFileStatusAction } from "@/app/actions/package-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -73,6 +74,26 @@ export default async function PackagesPage() {
                           {file.fileType} · {packageFileStatusLabels[file.status]}
                         </small>
                       </span>
+                      <form action={updateContentPackageFileStatusAction} className="inline-form">
+                        <input name="fileId" type="hidden" value={file.id} />
+                        {file.status === "PLANNED" ? (
+                          <button
+                            className="button secondary"
+                            name="status"
+                            type="submit"
+                            value="GENERATED"
+                          >
+                            <PlayCircle size={16} aria-hidden="true" />
+                            已生成
+                          </button>
+                        ) : null}
+                        {file.status !== "APPROVED" ? (
+                          <button className="button" name="status" type="submit" value="APPROVED">
+                            <CheckCircle2 size={16} aria-hidden="true" />
+                            通过
+                          </button>
+                        ) : null}
+                      </form>
                     </div>
                   ))}
                 </div>

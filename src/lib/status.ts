@@ -206,3 +206,11 @@ export function parsePlanItemStatus(value: FormDataEntryValue | null): PlanItemS
 
   return "READY";
 }
+
+export function parsePackageFileStatus(value: FormDataEntryValue | null): PackageFileStatus {
+  if (value === "GENERATED" || value === "APPROVED") {
+    return value;
+  }
+
+  return "PLANNED";
+}
