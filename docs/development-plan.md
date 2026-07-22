@@ -100,6 +100,7 @@
 验收：
 
 - Seed 后可以打开 `/b-agent` 看到真实项目数据。
+- Seed 后素材库包含可下载的 SVG 示例产品图、Logo 和模板海报，演示素材包已关联海报 Asset。
 - Seed 后可以通过顶部 Workspace 切换验证不同 Workspace 的项目和产品隔离。
 - 顶部 Workspace 区域可以创建新的 Workspace，并自动切换过去。
 - 输入“巴西不做 LinkedIn，新增 TikTok，下个月每周生成一次素材包。”可以生成结构化操作并写入策略。

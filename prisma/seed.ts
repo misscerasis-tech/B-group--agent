@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import {
   AgentMessageRole,
   AgentOperationStatus,
@@ -25,6 +28,7 @@ import {
 } from "@prisma/client";
 
 const prisma = new PrismaClient();
+const LOCAL_ASSET_ROOT = "storage/assets";
 
 async function main() {
   const user = await prisma.user.upsert({
@@ -301,6 +305,7 @@ async function main() {
     ["demo-package-file-caption", "发布配文 TXT", "TXT"],
     ["demo-package-file-poster", "模板化海报图片", "PNG"],
     ["demo-package-file-brief", "设计 Brief PDF", "PDF"],
+    ["demo-package-file-compliance", "品牌与合规检查 PDF", "PDF"],
     ["demo-package-file-zip", "最终 ZIP 打包下载", "ZIP"],
   ];
 
@@ -530,6 +535,13 @@ async function main() {
     },
   });
 
+  const productImageFile = await writeSeedAssetFile(
+    workspace.id,
+    "seed-aurora-product.svg",
+    buildSeedProductSvg(),
+  );
+  const logoFile = await writeSeedAssetFile(workspace.id, "seed-aurora-logo.svg", buildSeedLogoSvg());
+
   const productImageAsset = await prisma.asset.upsert({
     where: { id: "demo-asset-aurora-product-image" },
     update: {
@@ -540,13 +552,15 @@ async function main() {
       kind: AssetKind.PRODUCT_IMAGE,
       source: AssetSource.IMPORTED,
       status: AssetStatus.APPROVED,
-      mimeType: "image/png",
-      originalFilename: "aurora-cup-product.png",
-      storagePath: null,
+      mimeType: "image/svg+xml",
+      sizeBytes: productImageFile.sizeBytes,
+      originalFilename: "seed-aurora-product.svg",
+      storagePath: productImageFile.storagePath,
+      checksum: productImageFile.checksum,
       metadata: {
         visualRole: "Product Layer",
         productSubjectLocked: true,
-        note: "Seed 示例记录，不包含真实文件；正式使用时由用户上传。",
+        note: "Seed 示例素材，用于本地演示模板化合成；正式使用时由用户上传真实产品图。",
       },
     },
     create: {
@@ -558,12 +572,15 @@ async function main() {
       kind: AssetKind.PRODUCT_IMAGE,
       source: AssetSource.IMPORTED,
       status: AssetStatus.APPROVED,
-      mimeType: "image/png",
-      originalFilename: "aurora-cup-product.png",
+      mimeType: "image/svg+xml",
+      sizeBytes: productImageFile.sizeBytes,
+      storagePath: productImageFile.storagePath,
+      originalFilename: "seed-aurora-product.svg",
+      checksum: productImageFile.checksum,
       metadata: {
         visualRole: "Product Layer",
         productSubjectLocked: true,
-        note: "Seed 示例记录，不包含真实文件；正式使用时由用户上传。",
+        note: "Seed 示例素材，用于本地演示模板化合成；正式使用时由用户上传真实产品图。",
       },
     },
   });
@@ -579,12 +596,14 @@ async function main() {
       source: AssetSource.IMPORTED,
       status: AssetStatus.APPROVED,
       mimeType: "image/svg+xml",
-      originalFilename: "aurora-logo.svg",
-      storagePath: null,
+      sizeBytes: logoFile.sizeBytes,
+      originalFilename: "seed-aurora-logo.svg",
+      storagePath: logoFile.storagePath,
+      checksum: logoFile.checksum,
       metadata: {
         visualRole: "Logo Layer",
         productSubjectLocked: true,
-        note: "Seed 示例记录，不包含真实文件；正式使用时由用户上传。",
+        note: "Seed 示例素材，用于本地演示模板化合成；正式使用时由用户上传官方 Logo。",
       },
     },
     create: {
@@ -597,11 +616,14 @@ async function main() {
       source: AssetSource.IMPORTED,
       status: AssetStatus.APPROVED,
       mimeType: "image/svg+xml",
-      originalFilename: "aurora-logo.svg",
+      sizeBytes: logoFile.sizeBytes,
+      storagePath: logoFile.storagePath,
+      originalFilename: "seed-aurora-logo.svg",
+      checksum: logoFile.checksum,
       metadata: {
         visualRole: "Logo Layer",
         productSubjectLocked: true,
-        note: "Seed 示例记录，不包含真实文件；正式使用时由用户上传。",
+        note: "Seed 示例素材，用于本地演示模板化合成；正式使用时由用户上传官方 Logo。",
       },
     },
   });
@@ -652,19 +674,68 @@ async function main() {
     },
   });
 
+  const posterFile = await writeSeedAssetFile(
+    workspace.id,
+    "seed-aurora-template-poster.svg",
+    buildSeedPosterSvg(),
+  );
+  const posterAsset = await prisma.asset.upsert({
+    where: { id: "demo-asset-aurora-template-poster" },
+    update: {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      productId: product.id,
+      name: "Aurora Cup 模板化海报 4:5",
+      kind: AssetKind.GENERATED_IMAGE,
+      source: AssetSource.GENERATED,
+      status: AssetStatus.APPROVED,
+      mimeType: "image/svg+xml",
+      sizeBytes: posterFile.sizeBytes,
+      storagePath: posterFile.storagePath,
+      originalFilename: "seed-aurora-template-poster.svg",
+      checksum: posterFile.checksum,
+      metadata: {
+        generationMode: ImageGenerationMode.TEMPLATE_COMPOSITION,
+        productSubjectLocked: true,
+        sourceAssetIds: [productImageAsset.id, logoAsset.id],
+      },
+    },
+    create: {
+      id: "demo-asset-aurora-template-poster",
+      workspaceId: workspace.id,
+      projectId: project.id,
+      productId: product.id,
+      name: "Aurora Cup 模板化海报 4:5",
+      kind: AssetKind.GENERATED_IMAGE,
+      source: AssetSource.GENERATED,
+      status: AssetStatus.APPROVED,
+      mimeType: "image/svg+xml",
+      sizeBytes: posterFile.sizeBytes,
+      storagePath: posterFile.storagePath,
+      originalFilename: "seed-aurora-template-poster.svg",
+      checksum: posterFile.checksum,
+      metadata: {
+        generationMode: ImageGenerationMode.TEMPLATE_COMPOSITION,
+        productSubjectLocked: true,
+        sourceAssetIds: [productImageAsset.id, logoAsset.id],
+      },
+    },
+  });
+
   await prisma.imageGenerationJob.upsert({
     where: { id: "demo-image-job-template-poster" },
     update: {
       workspaceId: workspace.id,
       projectId: project.id,
       providerConfigId: openAiImageProvider.id,
+      resultAssetId: posterAsset.id,
       provider: "template-composer",
       model: "local-template-v1",
       promptVersion: "poster-template-v1",
       sourceAssetIds: [productImageAsset.id, logoAsset.id],
       generationMode: ImageGenerationMode.TEMPLATE_COMPOSITION,
       aspectRatio: "4:5",
-      status: ImageGenerationStatus.QUEUED,
+      status: ImageGenerationStatus.SUCCEEDED,
       error: null,
     },
     create: {
@@ -672,13 +743,23 @@ async function main() {
       workspaceId: workspace.id,
       projectId: project.id,
       providerConfigId: openAiImageProvider.id,
+      resultAssetId: posterAsset.id,
       provider: "template-composer",
       model: "local-template-v1",
       promptVersion: "poster-template-v1",
       sourceAssetIds: [productImageAsset.id, logoAsset.id],
       generationMode: ImageGenerationMode.TEMPLATE_COMPOSITION,
       aspectRatio: "4:5",
-      status: ImageGenerationStatus.QUEUED,
+      status: ImageGenerationStatus.SUCCEEDED,
+    },
+  });
+
+  await prisma.contentPackageFile.update({
+    where: { id: "demo-package-file-poster" },
+    data: {
+      assetId: posterAsset.id,
+      status: PackageFileStatus.GENERATED,
+      notes: `已关联素材：${posterAsset.name}`,
     },
   });
 
@@ -891,6 +972,70 @@ async function main() {
       status: PlanItemStatus.READY,
     },
   });
+}
+
+async function writeSeedAssetFile(workspaceId: string, filename: string, content: string) {
+  const relativeDir = path.join(LOCAL_ASSET_ROOT, workspaceId);
+  const absoluteDir = path.join(process.cwd(), relativeDir);
+  const storagePath = path.join(relativeDir, filename);
+
+  await mkdir(absoluteDir, { recursive: true });
+  await writeFile(path.join(absoluteDir, filename), content, "utf8");
+
+  return {
+    storagePath,
+    sizeBytes: Buffer.byteLength(content, "utf8"),
+    checksum: createHash("sha256").update(content).digest("hex"),
+  };
+}
+
+function buildSeedProductSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1200" viewBox="0 0 900 1200" role="img" aria-label="Aurora Cup seed product image">
+  <rect width="900" height="1200" fill="#f8fafc"/>
+  <g id="product-body" transform="translate(250 140)">
+    <rect x="110" y="40" width="180" height="70" rx="32" fill="#1d2433"/>
+    <rect x="80" y="92" width="240" height="790" rx="84" fill="#dfe7ef" stroke="#1d2433" stroke-width="18"/>
+    <rect x="115" y="150" width="170" height="90" rx="38" fill="#ffffff" stroke="#6fb1a5" stroke-width="12"/>
+    <text x="200" y="205" text-anchor="middle" font-family="Arial" font-size="42" font-weight="700" fill="#1d2433">36C</text>
+    <path d="M 105 720 C 150 760 250 760 295 720" fill="none" stroke="#f0b35a" stroke-width="18" stroke-linecap="round"/>
+  </g>
+</svg>`;
+}
+
+function buildSeedLogoSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="180" viewBox="0 0 600 180" role="img" aria-label="Aurora Cup seed logo">
+  <rect width="600" height="180" rx="24" fill="#1d2433"/>
+  <circle cx="88" cy="90" r="42" fill="#6fb1a5"/>
+  <text x="155" y="108" font-family="Arial" font-size="56" font-weight="700" fill="#ffffff">Aurora Cup</text>
+</svg>`;
+}
+
+function buildSeedPosterSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350" role="img" aria-label="Aurora Cup seed poster">
+  <g id="background-layer">
+    <rect width="1080" height="1350" fill="#f7f8fb"/>
+    <rect x="76" y="76" width="928" height="1198" fill="#ffffff" stroke="#d9dee8" stroke-width="3"/>
+  </g>
+  <g id="decoration-layer">
+    <path d="M 76 1228 H 1004" stroke="#6fb1a5" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 76 1255 H 790" stroke="#f0b35a" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <g id="logo-layer">
+    <rect x="76" y="80" width="218" height="66" rx="14" fill="#1d2433"/>
+    <text x="100" y="124" font-family="Arial" font-size="28" font-weight="700" fill="#ffffff">Aurora Cup</text>
+  </g>
+  <g id="text-layer" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" fill="#1d2433">
+    <text x="76" y="380" font-size="64" font-weight="700">新品内容增长素材</text>
+    <text x="76" y="465" font-size="36" fill="#4b5565">真实产品图 + 官方 Logo 分层合成</text>
+    <text x="76" y="535" font-size="32" fill="#657083">比例 4:5 · Product Layer 已锁定真实素材</text>
+  </g>
+  <g id="product-layer" data-product-subject-locked="true" data-allow-repaint="false" data-allow-geometry-change="false">
+    <rect x="690" y="310" width="190" height="70" rx="32" fill="#1d2433"/>
+    <rect x="650" y="380" width="270" height="660" rx="90" fill="#dfe7ef" stroke="#1d2433" stroke-width="18"/>
+    <rect x="698" y="450" width="174" height="96" rx="36" fill="#ffffff" stroke="#6fb1a5" stroke-width="12"/>
+    <text x="785" y="512" text-anchor="middle" font-family="Arial" font-size="42" font-weight="700" fill="#1d2433">36C</text>
+  </g>
+</svg>`;
 }
 
 main()
