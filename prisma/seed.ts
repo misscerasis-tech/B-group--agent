@@ -729,6 +729,168 @@ async function main() {
       summary: "演示迁移记录：未来换绑飞书组织时，通知群和沉淀位置必须重新选择并留痕。",
     },
   });
+
+  const europeWorkspace = await prisma.workspace.upsert({
+    where: { slug: "demo-europe-growth-team" },
+    update: {
+      name: "欧洲增长演示团队",
+      deletedAt: null,
+    },
+    create: {
+      name: "欧洲增长演示团队",
+      slug: "demo-europe-growth-team",
+    },
+  });
+
+  await prisma.workspaceMember.upsert({
+    where: {
+      workspaceId_userId: {
+        workspaceId: europeWorkspace.id,
+        userId: user.id,
+      },
+    },
+    update: {
+      role: WorkspaceRole.ADMIN,
+    },
+    create: {
+      workspaceId: europeWorkspace.id,
+      userId: user.id,
+      role: WorkspaceRole.ADMIN,
+    },
+  });
+
+  const europeProduct = await prisma.product.upsert({
+    where: { id: "demo-product-luna-lamp" },
+    update: {
+      workspaceId: europeWorkspace.id,
+      name: "Luna Lamp 护眼台灯",
+      description: "面向欧洲居家办公和学生用户的护眼台灯，强调柔光、节能和桌面美学。",
+      status: ProductStatus.ACTIVE,
+      deletedAt: null,
+    },
+    create: {
+      id: "demo-product-luna-lamp",
+      workspaceId: europeWorkspace.id,
+      name: "Luna Lamp 护眼台灯",
+      description: "面向欧洲居家办公和学生用户的护眼台灯，强调柔光、节能和桌面美学。",
+      status: ProductStatus.ACTIVE,
+    },
+  });
+
+  const europeProject = await prisma.project.upsert({
+    where: { id: "demo-project-europe-home-office" },
+    update: {
+      workspaceId: europeWorkspace.id,
+      name: "欧洲居家办公内容测试",
+      description: "围绕 Instagram 与 Pinterest 的居家办公场景内容测试。",
+      status: ProjectStatus.ACTIVE,
+      deletedAt: null,
+    },
+    create: {
+      id: "demo-project-europe-home-office",
+      workspaceId: europeWorkspace.id,
+      name: "欧洲居家办公内容测试",
+      description: "围绕 Instagram 与 Pinterest 的居家办公场景内容测试。",
+      status: ProjectStatus.ACTIVE,
+    },
+  });
+
+  await prisma.projectProduct.upsert({
+    where: {
+      projectId_productId: {
+        projectId: europeProject.id,
+        productId: europeProduct.id,
+      },
+    },
+    update: {},
+    create: {
+      projectId: europeProject.id,
+      productId: europeProduct.id,
+    },
+  });
+
+  await prisma.productFact.upsert({
+    where: { id: "demo-europe-fact-selling-points" },
+    update: {
+      workspaceId: europeWorkspace.id,
+      productId: europeProduct.id,
+      label: "核心卖点",
+      value: "柔光护眼、节能、适合居家办公和学生桌面",
+      confidence: 86,
+      source: "seed",
+      status: ProductFactStatus.CONFIRMED,
+    },
+    create: {
+      id: "demo-europe-fact-selling-points",
+      workspaceId: europeWorkspace.id,
+      productId: europeProduct.id,
+      label: "核心卖点",
+      value: "柔光护眼、节能、适合居家办公和学生桌面",
+      confidence: 86,
+      source: "seed",
+      status: ProductFactStatus.CONFIRMED,
+    },
+  });
+
+  const europeStrategy = await prisma.projectStrategy.upsert({
+    where: { id: "demo-europe-strategy-v1" },
+    update: {
+      workspaceId: europeWorkspace.id,
+      projectId: europeProject.id,
+      version: 1,
+      status: StrategyStatus.CONFIRMED,
+      targetMarkets: ["德国", "法国"],
+      audiences: ["居家办公人群", "学生用户", "桌面美学爱好者"],
+      channels: ["Instagram", "Pinterest"],
+      contentDirections: ["桌面改造", "护眼学习", "节能生活"],
+      packageFrequency: ContentFrequency.BIWEEKLY,
+      positioning: "把护眼台灯从功能照明转译成居家办公桌面升级。",
+      rationale: "Instagram 做视觉种草，Pinterest 做长尾收藏和灵感搜索。",
+      confirmedAt: new Date("2026-07-01T00:00:00.000Z"),
+    },
+    create: {
+      id: "demo-europe-strategy-v1",
+      workspaceId: europeWorkspace.id,
+      projectId: europeProject.id,
+      version: 1,
+      status: StrategyStatus.CONFIRMED,
+      targetMarkets: ["德国", "法国"],
+      audiences: ["居家办公人群", "学生用户", "桌面美学爱好者"],
+      channels: ["Instagram", "Pinterest"],
+      contentDirections: ["桌面改造", "护眼学习", "节能生活"],
+      packageFrequency: ContentFrequency.BIWEEKLY,
+      positioning: "把护眼台灯从功能照明转译成居家办公桌面升级。",
+      rationale: "Instagram 做视觉种草，Pinterest 做长尾收藏和灵感搜索。",
+      confirmedAt: new Date("2026-07-01T00:00:00.000Z"),
+    },
+  });
+
+  await prisma.contentPlanItem.upsert({
+    where: { id: "demo-europe-plan-week-1" },
+    update: {
+      workspaceId: europeWorkspace.id,
+      projectId: europeProject.id,
+      strategyId: europeStrategy.id,
+      week: 1,
+      channel: "Instagram",
+      theme: "桌面改造",
+      title: "居家办公桌面对比图文",
+      deliverable: "轮播文案、方图海报、Hashtags",
+      status: PlanItemStatus.READY,
+    },
+    create: {
+      id: "demo-europe-plan-week-1",
+      workspaceId: europeWorkspace.id,
+      projectId: europeProject.id,
+      strategyId: europeStrategy.id,
+      week: 1,
+      channel: "Instagram",
+      theme: "桌面改造",
+      title: "居家办公桌面对比图文",
+      deliverable: "轮播文案、方图海报、Hashtags",
+      status: PlanItemStatus.READY,
+    },
+  });
 }
 
 main()

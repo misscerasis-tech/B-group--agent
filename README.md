@@ -143,9 +143,9 @@ npx pnpm@10.13.1 exec next dev -p 3002
 第一阶段使用本地演示用户模拟登录：
 
 - 邮箱：`demo@example.com`
-- Workspace：`演示增长团队`
+- Workspace：`演示增长团队`、`欧洲增长演示团队`
 
-演示用户由 `prisma/seed.ts` 创建。页面不会把用户 ID 散落写死，而是通过统一 Workspace 上下文读取当前演示用户。
+演示用户由 `prisma/seed.ts` 创建。页面不会把用户 ID 散落写死，而是通过统一 Workspace 上下文读取当前演示用户。顶部 Workspace 切换可用于验证项目、产品、策略、计划和指标不会跨 Workspace 混在一起。
 
 ## 第一阶段页面
 
