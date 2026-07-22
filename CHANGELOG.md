@@ -99,6 +99,7 @@
 - `/b-agent` 待审核任务支持直接通过、要求修改或取消，服务端按当前 Workspace 和项目限制处理范围。
 - `/b-agent` 主动提醒区支持直接完成或忽略开放提醒，处理后留在当前项目工作台并写入变更日志。
 - `/b-agent` 素材包预览文案更新为当前可下载基础 ZIP 交付包，避免误导为仍是占位。
+- `/b-agent` 素材包预览增加交付体检，复用素材包中心同一套可交付性评分、阻塞项和下一步动作。
 - 增加 `smoke` 冒烟检查脚本，可检查 `/setup`、`/api/health`、`/b-agent` 和 `/dashboard` 是否在指定端口响应。
 - 新增 `prisma.config.ts`，将 Prisma seed 配置从弃用的 `package.json#prisma` 迁移到 Prisma 配置文件。
 - 增加 `AgentTextProvider` 抽象，当前通过 `local-rule` Provider 解析中文指令，未来真实 GPT 接入不需要改业务写入路径。

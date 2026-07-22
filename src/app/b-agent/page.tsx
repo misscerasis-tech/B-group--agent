@@ -31,6 +31,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { agentCommandCapabilities } from "@/lib/agent/capabilities";
+import { buildContentPackageReadiness } from "@/lib/content-package-readiness";
 import { getAssistantState } from "@/lib/data/assistant";
 import { loadWorkspaceContextSafe } from "@/lib/page-context";
 import {
@@ -78,6 +79,12 @@ const quickAgentCommands = [
   },
 ];
 
+const contentPackageReadinessLabels = {
+  READY_TO_EXPORT: "可下载复核",
+  NEEDS_WORK: "需要完善",
+  BLOCKED: "存在阻塞",
+};
+
 type BAgentPageProps = {
   searchParams: Promise<{
     projectId?: string;
@@ -107,6 +114,13 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
   try {
     const state = await getAssistantState(context.currentWorkspace.id, projectId);
     const selectedProject = state.selectedProject;
+    const latestContentPackage = state.contentPackages[0] ?? null;
+    const latestPackageReadiness = latestContentPackage
+      ? buildContentPackageReadiness({
+          ...latestContentPackage,
+          sourceAssets: state.assets,
+        })
+      : null;
 
     return (
       <AppShell
@@ -527,25 +541,78 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                   <div className="section-title-row">
                     <h3>5. 素材包预览</h3>
                     <StatusBadge
-                      label={state.contentPackages[0] ? "结构已保存" : "待生成"}
-                      tone={state.contentPackages[0] ? "success" : "warning"}
+                      label={latestContentPackage ? "结构已保存" : "待生成"}
+                      tone={latestContentPackage ? "success" : "warning"}
                     />
                   </div>
-                  {state.contentPackages[0] ? (
+                  {latestContentPackage ? (
                     <>
                       <div className="package-summary">
                         <FileArchive size={20} aria-hidden="true" />
                         <div>
-                          <strong>{state.contentPackages[0].name}</strong>
+                          <strong>{latestContentPackage.name}</strong>
                           <p>
-                            {state.contentPackages[0].period} ·{" "}
-                            {contentFrequencyLabels[state.contentPackages[0].frequency]} ·{" "}
-                            {contentPackageStatusLabels[state.contentPackages[0].status]}
+                            {latestContentPackage.period} ·{" "}
+                            {contentFrequencyLabels[latestContentPackage.frequency]} ·{" "}
+                            {contentPackageStatusLabels[latestContentPackage.status]}
                           </p>
                         </div>
                       </div>
+                      {latestPackageReadiness ? (
+                        <div
+                          style={{
+                            borderTop: "1px solid var(--line)",
+                            display: "grid",
+                            gap: 10,
+                            paddingTop: 12,
+                          }}
+                        >
+                          <header>
+                            <strong>交付体检</strong>
+                            <StatusBadge
+                              label={contentPackageReadinessLabels[latestPackageReadiness.rating]}
+                              tone={
+                                latestPackageReadiness.rating === "READY_TO_EXPORT"
+                                  ? "success"
+                                  : "warning"
+                              }
+                            />
+                          </header>
+                          <div
+                            aria-label={`${latestPackageReadiness.packageName} 可交付性 ${latestPackageReadiness.score} 分`}
+                            style={{
+                              background: "#eef2f7",
+                              borderRadius: 999,
+                              height: 8,
+                              overflow: "hidden",
+                            }}
+                          >
+                            <div
+                              style={{
+                                background:
+                                  latestPackageReadiness.rating === "READY_TO_EXPORT"
+                                    ? "#1f9d72"
+                                    : "#f2a900",
+                                height: "100%",
+                                width: `${latestPackageReadiness.score}%`,
+                              }}
+                            />
+                          </div>
+                          <p className="muted">{latestPackageReadiness.summary}</p>
+                          <ul className="clean-list">
+                            {latestPackageReadiness.signals.map((signal) => (
+                              <li key={signal.key}>
+                                {signal.label}：{signal.summary}
+                                <small>
+                                  {signal.blocking ? "阻塞" : "非阻塞"} · 下一步：{signal.action}
+                                </small>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                       <div className="pack-grid">
-                        {state.contentPackages[0].files.map((file) => (
+                        {latestContentPackage.files.map((file) => (
                           <div className="pack-file" key={file.id}>
                             <FileText size={18} aria-hidden="true" />
                             <span>
@@ -558,7 +625,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                       <div className="download-preview">
                         <Download size={18} aria-hidden="true" />
                         <span>当前可下载基础 PDF/XLSX/DOCX/TXT/ZIP 交付包，正式精排和平台规格继续迭代。</span>
-                        {state.contentPackages[0].status !== "APPROVED" ? (
+                        {latestContentPackage.status !== "APPROVED" ? (
                           <form
                             action={submitContentPackageForReviewAction}
                             className="inline-form"
@@ -566,7 +633,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                             <input
                               name="contentPackageId"
                               type="hidden"
-                              value={state.contentPackages[0].id}
+                              value={latestContentPackage.id}
                             />
                             <input
                               name="returnTo"
@@ -580,7 +647,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                         ) : null}
                         <Link
                           className="button secondary"
-                          href={`/packages/${state.contentPackages[0].id}/export`}
+                          href={`/packages/${latestContentPackage.id}/export`}
                         >
                           下载素材包
                         </Link>

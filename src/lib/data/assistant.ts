@@ -188,6 +188,14 @@ export async function getAssistantState(workspaceId: string, projectId?: string)
       }),
       include: {
         files: {
+          include: {
+            asset: {
+              select: {
+                kind: true,
+                status: true,
+              },
+            },
+          },
           orderBy: {
             createdAt: "asc",
           },
