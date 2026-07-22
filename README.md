@@ -2,7 +2,7 @@
 
 AI 内容增长 Agent 是一个独立 Web 系统，面向新品品牌和多产品团队，作为“AI 内容增长负责人”辅助完成市场判断、内容策略、素材生成、审核提醒和数据复盘。
 
-当前仓库状态：第一阶段 Foundation 正在 `feature/phase-1-foundation` 分支实现，目标是形成可运行、可测试、可扩展的中文后台系统骨架。
+当前仓库状态：B 组正在 `feature/b-group-working-assistant` 分支推进，从静态演示模板升级为可本地读写数据的中文内容增长工作助手。
 
 ## 产品原则
 
@@ -74,8 +74,21 @@ AI 内容增长 Agent 是一个独立 Web 系统，面向新品品牌和多产�
 ## 当前版本
 
 - 初始化版本：`v0.0.1-initial`
-- 当前阶段：`feature/phase-1-foundation`
-- 下一稳定版本目标：`v0.1.0-foundation`
+- 当前 B 组工作分支：`feature/b-group-working-assistant`
+- 当前 B 组远程仓库：`https://github.com/misscerasis-tech/B-group--agent.git`
+- 下一稳定版本目标：验收后再合并 `main` 并创建阶段 Tag。
+
+## 当前 B 组已具备能力
+
+- `/b-agent` 为 B 组正式工作入口。
+- 左侧中文 Agent 对话可以提交本地规则型中文指令。
+- 指令可转换为结构化操作，并真实写入项目策略或进入待确认状态。
+- 右侧项目工作台读取数据库中的产品事实、市场策略、首月计划、素材包结构、提醒和变更日志。
+- 产品大脑支持从产品说明生成初始产品事实、手动新增事实、确认全部事实。
+- 内容日历、素材包中心、审核中心、提醒中心已读取数据库，不再只是占位。
+- 今日工作台展示项目、产品、计划、素材包、提醒和最近变更。
+
+本阶段仍不接入真实 GPT、图片生成 API、飞书、外部社媒平台或第三方登录。
 
 ## 本地开发
 
@@ -115,10 +128,10 @@ npx pnpm@10.13.1 run db:seed
 启动 Web：
 
 ```bash
-npx pnpm@10.13.1 run dev
+npx pnpm@10.13.1 exec next dev -p 3002
 ```
 
-打开 `http://localhost:3000`。
+打开 `http://127.0.0.1:3002/b-agent`。
 
 ## 演示用户
 
@@ -144,13 +157,18 @@ npx pnpm@10.13.1 run dev
 - 数据复盘
 - 集成设置
 
-第一阶段具备基础操作的页面：
+当前具备基础操作或真实数据展示的页面：
 
 - 今日工作台。
 - 项目中心。
 - 产品大脑。
+- B组 Agent。
+- 内容日历。
+- 素材包。
+- 审核中心。
+- 提醒中心。
 
-其他页面先建立路由和占位说明。
+数据复盘、集成设置当前仍是占位说明，后续继续接入真实数据。
 
 ## AI赛 ABC 三组入口
 
@@ -159,7 +177,7 @@ npx pnpm@10.13.1 run dev
 - `/agent`：分组选择入口。
 - `/a-agent`：A 组 Agent 独立入口。
 - `/b-agent`：B 组 AI 内容增长 Agent 独立入口。
-- `/c-agent`：C 组 Agent 独立入口。
+- `/c-agent`：C 组 CES 项目推进 Agent 独立入口。
 
 当前仓库当前分支以 B 组为主。详细规则见 `docs/group-routing.md`。
 
@@ -178,3 +196,19 @@ https://github.com/misscerasis-tech/B-group--agent.git
 ```
 
 能力拆分和后续计划见 `docs/b-group-capability-plan.md`。
+
+## C 组 CES 项目推进 Agent
+
+C 组入口：
+
+```text
+/c-agent
+```
+
+C 组定位为 CES 项目启动与推进工作助手。用户输入真实项目启动指令后，系统会生成 CES 项目总控、WBS、v1/v2/v3 节奏、计划疏漏检查、待 Owner 验证问题和飞书动作队列。
+
+详细规则见：
+
+- `docs/c-group-ces-project-agent.md`
+- `docs/c-group-feishu-contract.md`
+- `docs/c-group-owner-confirmation-checklist.md`

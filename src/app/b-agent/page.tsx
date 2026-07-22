@@ -1,264 +1,522 @@
 import Link from "next/link";
 import {
+  AlertTriangle,
   CalendarDays,
   CheckCircle2,
   ClipboardCheck,
   Download,
   FileArchive,
-  FileSpreadsheet,
   FileText,
-  Image as ImageIcon,
   Layers,
   MessageSquareText,
   PencilLine,
-  Sparkles,
   Target,
 } from "lucide-react";
+import {
+  applyPendingAgentOperationAction,
+  confirmProjectStrategyAction,
+  generateStarterPlanAction,
+  submitAgentCommandAction,
+} from "@/app/actions/agent-actions";
+import { AppShell } from "@/components/app-shell";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { getAssistantState } from "@/lib/data/assistant";
+import { loadWorkspaceContextSafe } from "@/lib/page-context";
+import {
+  agentOperationStatusLabels,
+  contentFrequencyLabels,
+  contentPackageStatusLabels,
+  packageFileStatusLabels,
+  planItemStatusLabels,
+  productFactStatusLabels,
+  projectStatusLabels,
+  reminderSeverityLabels,
+  strategyStatusLabels,
+} from "@/lib/status";
 
-const chatMessages = [
-  {
-    role: "user",
-    text: "我们要给一款智能温显保温杯做巴西市场首月内容增长，产品图和官方 Logo 已经有了。",
-  },
-  {
-    role: "agent",
-    text: "我先提取产品事实：智能温显、长效保温、通勤和礼品场景。正式视觉将只使用你上传的真实产品图和官方 Logo。",
-  },
-  {
-    role: "user",
-    text: "巴西不做 LinkedIn，新增 TikTok，下个月每周生成一次素材包。",
-  },
-  {
-    role: "agent",
-    text: "已转换为结构化操作：删除 LinkedIn，新增 TikTok，素材包频率改为每周一次。该修改与正式策略不冲突，等待你确认。",
-  },
-];
+export const dynamic = "force-dynamic";
 
-const productFacts = [
-  ["产品名称", "Aurora Cup 智能温显保温杯"],
-  ["核心卖点", "温度显示、24 小时保温、防漏便携、礼品属性"],
-  ["目标场景", "通勤、健身、办公桌、节日礼赠"],
-  ["视觉限制", "产品图和 Logo 必须来自已审核真实素材，禁止 AI 重绘产品"],
-];
+type BAgentPageProps = {
+  searchParams: Promise<{
+    projectId?: string;
+  }>;
+};
 
-const strategyItems = [
-  {
-    title: "推荐市场",
-    value: "巴西一线与新一线城市",
-    reason: "礼品、通勤和短视频种草场景更容易形成首月声量。",
-  },
-  {
-    title: "核心客群",
-    value: "20-35 岁通勤人群、健身用户、礼品购买者",
-    reason: "产品卖点可以同时覆盖自用和送礼两种转化路径。",
-  },
-  {
-    title: "平台组合",
-    value: "TikTok + Instagram + Facebook",
-    reason: "TikTok 做发现，Instagram 做视觉背书，Facebook 做活动扩散。",
-  },
-  {
-    title: "内容方向",
-    value: "温度可视化、通勤效率、节日礼赠、小抽奖活动",
-    reason: "把技术点翻译成生活场景，降低新品理解成本。",
-  },
-];
+export default async function BAgentPage({ searchParams }: BAgentPageProps) {
+  const { projectId } = await searchParams;
+  const { context, error } = await loadWorkspaceContextSafe();
 
-const operations = [
-  "删除渠道：LinkedIn",
-  "新增渠道：TikTok",
-  "素材包频率：下个月每周一次",
-  "冲突检查：不冲突，等待人工确认",
-];
-
-const monthlyPlan = [
-  ["第1周", "新品认知", "温显功能短视频、产品首图海报、Instagram Reels"],
-  ["第2周", "场景种草", "通勤/健身场景内容、Facebook 互动贴"],
-  ["第3周", "礼品转化", "节日礼赠文案、套装优惠海报、小抽奖规则草案"],
-  ["第4周", "复盘加码", "高表现内容二创、FAQ 内容、下月优化建议"],
-];
-
-const contentPackFiles = [
-  { name: "素材包说明 PDF", icon: FileText },
-  { name: "内容排期 XLSX", icon: FileSpreadsheet },
-  { name: "平台文案 DOCX", icon: FileText },
-  { name: "Hashtags TXT", icon: FileText },
-  { name: "TikTok 视频脚本 DOCX", icon: FileText },
-  { name: "模板化海报图片", icon: ImageIcon },
-  { name: "设计 Brief PDF", icon: Layers },
-  { name: "最终 ZIP 打包下载", icon: FileArchive },
-];
-
-export default function BAgentPage() {
-  return (
-    <main className="b-agent-page">
-      <section className="b-agent-demo-hero">
-        <div>
-          <p className="eyebrow">B组 · AI 内容增长 Agent</p>
-          <h1>左侧中文对话，右侧结构化项目工作台</h1>
-          <p>
-            这不是聊天页，而是能把中文需求转成项目事实、策略、计划和素材包任务的增长负责人演示台。
-            当前使用模拟数据，后续再接真实 AI、文件生成和飞书通知。
-          </p>
-        </div>
-        <div className="demo-status-panel">
-          <Sparkles size={22} aria-hidden="true" />
-          <strong>演示链路已拆清</strong>
-          <span>产品事实 → 策略推荐 → 人工确认 → 首月计划 → 素材包预览</span>
-        </div>
-      </section>
-
-      <section className="agent-demo-shell" aria-label="B组 Agent 演示工作台">
-        <aside className="conversation-pane">
-          <div className="pane-heading">
-            <MessageSquareText size={20} aria-hidden="true" />
-            <div>
-              <h2>AI 顾问对话</h2>
-              <p>中文输入会被转成结构化操作。</p>
-            </div>
-          </div>
-
-          <div className="chat-thread">
-            {chatMessages.map((message, index) => (
-              <div className={`chat-bubble ${message.role}`} key={`${message.role}-${index}`}>
-                <span>{message.role === "user" ? "用户" : "B组 Agent"}</span>
-                <p>{message.text}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="nl-command-box">
-            <PencilLine size={18} aria-hidden="true" />
-            <div>
-              <strong>自然语言变更摘要</strong>
-              <ul>
-                {operations.map((operation) => (
-                  <li key={operation}>{operation}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </aside>
-
-        <section className="workbench-pane">
-          <div className="pane-heading">
-            <Target size={20} aria-hidden="true" />
-            <div>
-              <h2>结构化项目工作台</h2>
-              <p>所有结论先是草稿，人工确认后才成为正式策略。</p>
-            </div>
-          </div>
-
-          <div className="workbench-grid">
-            <section className="workbench-section facts">
-              <div className="section-title-row">
-                <h3>1. 产品事实提取</h3>
-                <span className="status-pill success">已确认</span>
-              </div>
-              <dl className="fact-list">
-                {productFacts.map(([label, value]) => (
-                  <div key={label}>
-                    <dt>{label}</dt>
-                    <dd>{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-
-            <section className="workbench-section strategy">
-              <div className="section-title-row">
-                <h3>2. 策略推荐</h3>
-                <span className="status-pill warning">待人工确认</span>
-              </div>
-              <div className="strategy-grid">
-                {strategyItems.map((item) => (
-                  <article className="strategy-row" key={item.title}>
-                    <strong>{item.title}</strong>
-                    <span>{item.value}</span>
-                    <p>{item.reason}</p>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="workbench-section approval">
-              <div className="section-title-row">
-                <h3>3. 人工确认</h3>
-                <span className="status-pill neutral">演示状态</span>
-              </div>
-              <div className="approval-line">
-                <CheckCircle2 size={20} aria-hidden="true" />
-                <p>
-                  确认后将保存为“巴西首月内容增长策略 v1”，并锁定 TikTok、Instagram、Facebook
-                  作为首月渠道组合。
-                </p>
-              </div>
-              <div className="demo-buttons" aria-label="演示按钮">
-                <button className="button" type="button">
-                  确认正式策略
-                </button>
-                <button className="button secondary" type="button">
-                  继续用中文修改
-                </button>
-              </div>
-            </section>
-
-            <section className="workbench-section plan">
-              <div className="section-title-row">
-                <h3>4. 首月内容计划</h3>
-                <span className="status-pill success">已生成草案</span>
-              </div>
-              <div className="month-plan">
-                {monthlyPlan.map(([week, theme, output]) => (
-                  <article className="plan-row" key={week}>
-                    <CalendarDays size={18} aria-hidden="true" />
-                    <div>
-                      <strong>
-                        {week} · {theme}
-                      </strong>
-                      <p>{output}</p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="workbench-section package">
-              <div className="section-title-row">
-                <h3>5. 第一份素材包预览</h3>
-                <span className="status-pill neutral">模拟生成</span>
-              </div>
-              <div className="pack-grid">
-                {contentPackFiles.map((file) => {
-                  const Icon = file.icon;
-
-                  return (
-                    <div className="pack-file" key={file.name}>
-                      <Icon size={18} aria-hidden="true" />
-                      <span>{file.name}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="download-preview">
-                <Download size={18} aria-hidden="true" />
-                <span>后续阶段接入真实 PDF/XLSX/DOCX/TXT/ZIP 生成。</span>
-              </div>
-            </section>
+  if (!context) {
+    return (
+      <AppShell activePath="/b-agent" context={null} contextError={error} returnTo="/b-agent">
+        <section className="page-header">
+          <div>
+            <h2>B组 Agent 工作台</h2>
+            <p className="muted">
+              当前页面已升级为数据库驱动。启动 PostgreSQL、运行 migration 和 seed 后即可保存真实项目数据。
+            </p>
           </div>
         </section>
-      </section>
+        <ErrorState message={error ?? "无法加载演示 Workspace。"} />
+      </AppShell>
+    );
+  }
 
-      <section className="demo-footer-panel">
-        <ClipboardCheck size={20} aria-hidden="true" />
-        <p>
-          B 组比赛演示建议从这条链路讲起：中文输入产品 → AI 提取事实 → 人工确认事实 →
-          AI 推荐市场与渠道 → 中文修改策略 → 确认正式策略 → 生成首月计划和素材包预览。
-        </p>
-        <Link className="button secondary" href="/agent">
-          返回 ABC 入口
-        </Link>
-      </section>
-    </main>
+  try {
+    const state = await getAssistantState(context.currentWorkspace.id, projectId);
+    const selectedProject = state.selectedProject;
+
+    return (
+      <AppShell
+        activePath="/b-agent"
+        context={context}
+        returnTo={selectedProject ? `/b-agent?projectId=${selectedProject.id}` : "/b-agent"}
+      >
+        <section className="page-header">
+          <div>
+            <p className="eyebrow">B组 · AI 内容增长 Agent</p>
+            <h2>中文对话驱动的项目增长工作台</h2>
+            <p className="muted">
+              左侧输入中文需求，右侧沉淀产品事实、策略、首月计划、素材包、提醒和变更日志。
+            </p>
+          </div>
+
+          {state.projects.length > 0 ? (
+            <form action="/b-agent" className="project-switcher">
+              <label className="field-label compact" htmlFor="projectId">
+                当前项目
+              </label>
+              <select defaultValue={selectedProject?.id} id="projectId" name="projectId">
+                {state.projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              <button className="button secondary" type="submit">
+                切换
+              </button>
+            </form>
+          ) : null}
+        </section>
+
+        {!selectedProject ? (
+          <section className="panel">
+            <EmptyState
+              title="还没有可工作的项目"
+              description="先到项目中心创建项目并关联产品，B 组 Agent 才能开始保存事实、策略和计划。"
+            />
+            <div className="hero-actions">
+              <Link className="button" href="/projects">
+                创建项目
+              </Link>
+              <Link className="button secondary" href="/brain">
+                创建产品
+              </Link>
+            </div>
+          </section>
+        ) : (
+          <section className="agent-demo-shell working" aria-label="B组 Agent 工作台">
+            <aside className="conversation-pane">
+              <div className="pane-heading">
+                <MessageSquareText size={20} aria-hidden="true" />
+                <div>
+                  <h3>AI 顾问对话</h3>
+                  <p>本阶段使用本地规则型 Agent，后续可替换真实 GPT。</p>
+                </div>
+              </div>
+
+              <div className="project-mini-card">
+                <strong>{selectedProject.name}</strong>
+                <StatusBadge
+                  label={projectStatusLabels[selectedProject.status]}
+                  tone={selectedProject.status === "ACTIVE" ? "success" : "neutral"}
+                />
+                <p>{selectedProject.description ?? "暂无项目说明"}</p>
+              </div>
+
+              <div className="chat-thread">
+                {(state.conversation?.messages ?? []).length > 0 ? (
+                  state.conversation?.messages.map((message) => (
+                    <div
+                      className={`chat-bubble ${message.role === "USER" ? "user" : "agent"}`}
+                      key={message.id}
+                    >
+                      <span>{message.role === "USER" ? "用户" : "B组 Agent"}</span>
+                      <p>{message.content}</p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="chat-bubble agent">
+                    <span>B组 Agent</span>
+                    <p>
+                      请用中文告诉我市场、渠道、生成频率或内容方向。我会先做结构化解析，再写入当前项目。
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <form action={submitAgentCommandAction} className="assistant-command-form">
+                <input name="projectId" type="hidden" value={selectedProject.id} />
+                <label className="form-row">
+                  <span className="field-label">给 B 组 Agent 的中文指令</span>
+                  <textarea
+                    name="command"
+                    placeholder="例如：巴西不做 LinkedIn，新增 TikTok，下个月每周生成一次素材包。"
+                    required
+                  />
+                </label>
+                <button className="button" type="submit">
+                  执行中文指令
+                </button>
+              </form>
+
+              <div className="nl-command-box">
+                <PencilLine size={18} aria-hidden="true" />
+                <div>
+                  <strong>当前可执行的本地指令</strong>
+                  <ul>
+                    <li>新增或删除渠道：TikTok、Instagram、Facebook、LinkedIn 等</li>
+                    <li>修改素材包频率：每周、每两周、每月</li>
+                    <li>识别市场：巴西、蒙古、美国、日本、东南亚等</li>
+                    <li>追加内容方向：世界杯、那达慕、黑五、通勤、礼赠等</li>
+                  </ul>
+                </div>
+              </div>
+            </aside>
+
+            <section className="workbench-pane">
+              <div className="pane-heading">
+                <Target size={20} aria-hidden="true" />
+                <div>
+                  <h3>结构化项目工作台</h3>
+                  <p>所有核心数据保存在独立 Web 系统，并带 Workspace 隔离。</p>
+                </div>
+              </div>
+
+              <section className="workbench-grid">
+                <div className="workbench-section facts">
+                  <div className="section-title-row">
+                    <h3>1. 产品事实</h3>
+                    <StatusBadge
+                      label={state.productFacts.length > 0 ? "已读取" : "待录入"}
+                      tone={state.productFacts.length > 0 ? "success" : "warning"}
+                    />
+                  </div>
+                  {state.linkedProducts.length > 0 ? (
+                    <div className="fact-groups">
+                      {state.linkedProducts.map((product) => {
+                        const facts = state.productFacts.filter(
+                          (fact) => fact.productId === product.id,
+                        );
+
+                        return (
+                          <article className="fact-group" key={product.id}>
+                            <header>
+                              <strong>{product.name}</strong>
+                              <Link href={`/brain/products/${product.id}`}>编辑产品</Link>
+                            </header>
+                            {facts.length > 0 ? (
+                              <dl className="fact-list">
+                                {facts.map((fact) => (
+                                  <div key={fact.id}>
+                                    <dt>{fact.label}</dt>
+                                    <dd>
+                                      {fact.value}
+                                      <small>
+                                        {productFactStatusLabels[fact.status]} · 置信度{" "}
+                                        {fact.confidence}%
+                                      </small>
+                                    </dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            ) : (
+                              <p className="muted">这个产品还没有结构化事实。</p>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <EmptyState title="未关联产品" description="先在项目详情中关联产品。" />
+                  )}
+                </div>
+
+                <div className="workbench-section strategy">
+                  <div className="section-title-row">
+                    <h3>2. 市场与内容策略</h3>
+                    {state.strategy ? (
+                      <StatusBadge
+                        label={strategyStatusLabels[state.strategy.status]}
+                        tone={state.strategy.status === "CONFIRMED" ? "success" : "warning"}
+                      />
+                    ) : (
+                      <StatusBadge label="待生成" tone="warning" />
+                    )}
+                  </div>
+
+                  {state.strategy ? (
+                    <>
+                      <div className="strategy-grid">
+                        <StrategyField label="推荐市场" values={state.strategy.targetMarkets} />
+                        <StrategyField label="核心客群" values={state.strategy.audiences} />
+                        <StrategyField label="平台渠道" values={state.strategy.channels} />
+                        <StrategyField label="内容方向" values={state.strategy.contentDirections} />
+                        <article className="strategy-row">
+                          <strong>素材包频率</strong>
+                          <span>{contentFrequencyLabels[state.strategy.packageFrequency]}</span>
+                          <p>{state.strategy.rationale ?? "暂无策略依据。"}</p>
+                        </article>
+                        <article className="strategy-row">
+                          <strong>定位说明</strong>
+                          <span>{state.strategy.positioning ?? "待补充"}</span>
+                          <p>确认后成为正式策略；正式策略后续变更需要二次确认。</p>
+                        </article>
+                      </div>
+
+                      {state.strategy.status === "DRAFT" ? (
+                        <form action={confirmProjectStrategyAction} className="inline-form">
+                          <input name="projectId" type="hidden" value={selectedProject.id} />
+                          <input name="strategyId" type="hidden" value={state.strategy.id} />
+                          <button className="button" type="submit">
+                            确认正式策略
+                          </button>
+                        </form>
+                      ) : null}
+                    </>
+                  ) : (
+                    <EmptyState
+                      title="还没有策略草案"
+                      description="在左侧输入中文指令后，系统会自动创建策略草案。"
+                    />
+                  )}
+                </div>
+
+                <div className="workbench-section approval">
+                  <div className="section-title-row">
+                    <h3>3. 待确认操作</h3>
+                    <StatusBadge
+                      label={`${state.recentOperations.filter((item) => item.status === "PENDING_CONFIRMATION").length} 条待确认`}
+                      tone={
+                        state.recentOperations.some(
+                          (item) => item.status === "PENDING_CONFIRMATION",
+                        )
+                          ? "warning"
+                          : "neutral"
+                      }
+                    />
+                  </div>
+                  <div className="operation-list">
+                    {state.recentOperations.length > 0 ? (
+                      state.recentOperations.map((operation) => (
+                        <article className="operation-item" key={operation.id}>
+                          <header>
+                            <strong>{operation.summary}</strong>
+                            <StatusBadge
+                              label={agentOperationStatusLabels[operation.status]}
+                              tone={
+                                operation.status === "APPLIED"
+                                  ? "success"
+                                  : operation.status === "PENDING_CONFIRMATION"
+                                    ? "warning"
+                                    : "neutral"
+                              }
+                            />
+                          </header>
+                          <p>{operation.conflictCheck ?? operation.rawText}</p>
+                          {operation.status === "PENDING_CONFIRMATION" ? (
+                            <form action={applyPendingAgentOperationAction} className="inline-form">
+                              <input name="operationId" type="hidden" value={operation.id} />
+                              <input name="projectId" type="hidden" value={selectedProject.id} />
+                              <button className="button" type="submit">
+                                确认并应用
+                              </button>
+                            </form>
+                          ) : null}
+                        </article>
+                      ))
+                    ) : (
+                      <EmptyState title="暂无操作记录" description="提交中文指令后会在这里留下记录。" />
+                    )}
+                  </div>
+                </div>
+
+                <div className="workbench-section plan">
+                  <div className="section-title-row">
+                    <h3>4. 首月计划</h3>
+                    <StatusBadge
+                      label={state.planItems.length > 0 ? "已生成" : "待生成"}
+                      tone={state.planItems.length > 0 ? "success" : "warning"}
+                    />
+                  </div>
+                  {state.planItems.length > 0 ? (
+                    <div className="month-plan">
+                      {state.planItems.map((item) => (
+                        <article className="plan-row" key={item.id}>
+                          <CalendarDays size={18} aria-hidden="true" />
+                          <div>
+                            <strong>
+                              第{item.week}周 · {item.theme}
+                            </strong>
+                            <p>
+                              {item.channel} · {item.title} · {item.deliverable}
+                            </p>
+                            <small>{planItemStatusLabels[item.status]}</small>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <form action={generateStarterPlanAction} className="form">
+                      <input name="projectId" type="hidden" value={selectedProject.id} />
+                      <p className="muted">可基于当前策略生成首月计划和第一份素材包结构。</p>
+                      <button className="button" type="submit">
+                        生成首月计划
+                      </button>
+                    </form>
+                  )}
+                </div>
+
+                <div className="workbench-section package">
+                  <div className="section-title-row">
+                    <h3>5. 素材包预览</h3>
+                    <StatusBadge
+                      label={state.contentPackages[0] ? "结构已保存" : "待生成"}
+                      tone={state.contentPackages[0] ? "success" : "warning"}
+                    />
+                  </div>
+                  {state.contentPackages[0] ? (
+                    <>
+                      <div className="package-summary">
+                        <FileArchive size={20} aria-hidden="true" />
+                        <div>
+                          <strong>{state.contentPackages[0].name}</strong>
+                          <p>
+                            {state.contentPackages[0].period} ·{" "}
+                            {contentFrequencyLabels[state.contentPackages[0].frequency]} ·{" "}
+                            {contentPackageStatusLabels[state.contentPackages[0].status]}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="pack-grid">
+                        {state.contentPackages[0].files.map((file) => (
+                          <div className="pack-file" key={file.id}>
+                            <FileText size={18} aria-hidden="true" />
+                            <span>
+                              {file.name}
+                              <small>{packageFileStatusLabels[file.status]}</small>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="download-preview">
+                        <Download size={18} aria-hidden="true" />
+                        <span>后续阶段接入真实 PDF/XLSX/DOCX/TXT/PNG/ZIP 文件生成。</span>
+                      </div>
+                    </>
+                  ) : (
+                    <EmptyState title="暂无素材包" description="生成首月计划后会创建素材包结构。" />
+                  )}
+                </div>
+
+                <div className="workbench-section risks">
+                  <div className="section-title-row">
+                    <h3>6. 主动提醒</h3>
+                    <StatusBadge
+                      label={`${state.reminders.length} 条`}
+                      tone={state.reminders.length > 0 ? "warning" : "neutral"}
+                    />
+                  </div>
+                  {state.reminders.length > 0 ? (
+                    <div className="reminder-list">
+                      {state.reminders.map((reminder) => (
+                        <article className="reminder-item" key={reminder.id}>
+                          <AlertTriangle size={18} aria-hidden="true" />
+                          <div>
+                            <strong>
+                              {reminder.title} · {reminderSeverityLabels[reminder.severity]}
+                            </strong>
+                            <p>{reminder.description ?? "暂无说明"}</p>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState title="暂无提醒" description="后续会基于时间、状态和风险主动生成提醒。" />
+                  )}
+                </div>
+
+                <div className="workbench-section change-log">
+                  <div className="section-title-row">
+                    <h3>7. 变更日志</h3>
+                    <ClipboardCheck size={18} aria-hidden="true" />
+                  </div>
+                  {state.changeLogs.length > 0 ? (
+                    <div className="change-log-list">
+                      {state.changeLogs.map((log) => (
+                        <article className="change-log-item" key={log.id}>
+                          <CheckCircle2 size={16} aria-hidden="true" />
+                          <div>
+                            <strong>{log.summary}</strong>
+                            <p>
+                              {log.action} · {formatDate(log.createdAt)}
+                            </p>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState title="暂无变更日志" description="确认策略或执行指令后会自动记录。" />
+                  )}
+                </div>
+
+                <div className="workbench-section visual-policy">
+                  <div className="section-title-row">
+                    <h3>8. 图片与海报原则</h3>
+                    <Layers size={18} aria-hidden="true" />
+                  </div>
+                  <ul className="clean-list">
+                    <li>V1 使用真实产品图和官方 Logo 做模板化合成。</li>
+                    <li>产品层和 Logo 层必须引用已审核 Asset，禁止 AI 静默替换。</li>
+                    <li>AI 图片供应商以后按 Workspace 配置，当前不绑定任何模型。</li>
+                    <li>海报层级预留：背景层、产品层、文字层、Logo 层、装饰层。</li>
+                  </ul>
+                </div>
+              </section>
+            </section>
+          </section>
+        )}
+      </AppShell>
+    );
+  } catch (assistantError) {
+    return (
+      <AppShell activePath="/b-agent" context={context} contextError={error} returnTo="/b-agent">
+        <ErrorState
+          message={assistantError instanceof Error ? assistantError.message : "无法加载 B 组 Agent。"}
+        />
+      </AppShell>
+    );
+  }
+}
+
+function StrategyField({ label, values }: { label: string; values: string[] }) {
+  return (
+    <article className="strategy-row">
+      <strong>{label}</strong>
+      <span>{values.length > 0 ? values.join(" + ") : "待补充"}</span>
+      <p>{values.length > 0 ? "已进入结构化策略，可被中文指令继续调整。" : "等待输入。"}</p>
+    </article>
   );
+}
+
+function formatDate(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }

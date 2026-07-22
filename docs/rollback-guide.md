@@ -56,6 +56,37 @@ git branch -D feature/phase-1-foundation
 git switch -c rollback/v0.0.1-initial v0.0.1-initial
 ```
 
+## 回滚 B 组 Working Assistant 分支
+
+当前 B 组工作助手在 `feature/b-group-working-assistant` 分支开发。如果尚未合并 `main`，回滚到本次开发前的 B 组演示分支：
+
+```bash
+git switch feature/b-group-agent-plan
+```
+
+如果只想丢弃本地工作助手分支，先确认没有需要保留的未提交修改：
+
+```bash
+git status
+git branch -D feature/b-group-working-assistant
+```
+
+如果分支已推送到 GitHub，但尚未验收，不要直接删除远程分支；保留它作为审阅记录，或创建新的修复分支。
+
+本阶段新增数据库迁移：
+
+```text
+prisma/migrations/20260722000000_b_group_working_assistant/migration.sql
+```
+
+如果迁移只在本地开发库执行过，最简单的恢复方式是重建本地数据库并重新执行旧版本迁移和 seed。
+
+如果迁移已在共享数据库执行，必须先备份数据库，再根据目标 commit 判断：
+
+- 应用回到 `feature/b-group-agent-plan` 或更早版本时，新表可暂时保留，但旧应用不会读取它们。
+- 若必须彻底回退数据库结构，需要在备份确认后删除新增表和枚举，或直接恢复迁移前备份。
+- 不得在没有备份的情况下删除 `AgentOperation`、`ChangeLog`、`ProjectStrategy`、`ContentPackage` 等业务记录。
+
 ## 使用 Git Tag 恢复
 
 查看 Tag：

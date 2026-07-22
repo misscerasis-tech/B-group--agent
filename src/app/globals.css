@@ -151,6 +151,18 @@ select {
   gap: 8px;
 }
 
+.project-switcher {
+  display: grid;
+  min-width: min(380px, 100%);
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.project-switcher .field-label {
+  grid-column: 1 / -1;
+}
+
 .content {
   padding: 28px;
 }
@@ -616,6 +628,10 @@ textarea {
   align-items: start;
 }
 
+.agent-demo-shell.working {
+  grid-template-columns: minmax(340px, 0.36fr) minmax(0, 0.64fr);
+}
+
 .conversation-pane,
 .workbench-pane,
 .demo-footer-panel {
@@ -632,6 +648,21 @@ textarea {
   gap: 16px;
 }
 
+.project-mini-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 12px;
+}
+
+.project-mini-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .pane-heading {
   display: flex;
   align-items: flex-start;
@@ -641,6 +672,11 @@ textarea {
 .pane-heading h2 {
   margin: 0;
   font-size: 20px;
+}
+
+.pane-heading h3 {
+  margin: 0;
+  font-size: 18px;
 }
 
 .pane-heading p {
@@ -704,6 +740,16 @@ textarea {
   margin: 0;
   padding-left: 18px;
   color: var(--muted);
+}
+
+.assistant-command-form {
+  display: grid;
+  gap: 10px;
+}
+
+.assistant-command-form textarea {
+  min-height: 132px;
+  line-height: 1.65;
 }
 
 .workbench-grid {
@@ -784,6 +830,37 @@ textarea {
   line-height: 1.6;
 }
 
+.fact-list dd small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.fact-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.fact-group {
+  display: grid;
+  gap: 10px;
+}
+
+.fact-group header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fact-group header a {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .strategy-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -836,6 +913,50 @@ textarea {
   gap: 10px;
 }
 
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.operation-list,
+.reminder-list,
+.change-log-list {
+  display: grid;
+  gap: 10px;
+}
+
+.operation-item,
+.reminder-item,
+.change-log-item,
+.package-summary {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 11px;
+}
+
+.operation-item {
+  display: grid;
+  gap: 8px;
+}
+
+.operation-item header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.operation-item p,
+.reminder-item p,
+.change-log-item p,
+.package-summary p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .month-plan {
   display: grid;
   gap: 9px;
@@ -855,6 +976,14 @@ textarea {
   line-height: 1.6;
 }
 
+.plan-row small {
+  display: inline-flex;
+  margin-top: 6px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .pack-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -870,6 +999,25 @@ textarea {
   padding: 10px;
 }
 
+.pack-file span {
+  display: grid;
+  gap: 3px;
+}
+
+.pack-file small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.package-summary,
+.reminder-item,
+.change-log-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
 .download-preview {
   color: var(--muted);
 }
@@ -877,6 +1025,86 @@ textarea {
 .demo-footer-panel {
   align-items: center;
   justify-content: space-between;
+}
+
+.calendar-board,
+.package-list,
+.reminder-board,
+.review-list {
+  display: grid;
+  gap: 12px;
+}
+
+.calendar-card,
+.package-card,
+.reminder-card,
+.review-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.calendar-card,
+.reminder-card,
+.review-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.calendar-card header,
+.package-card header,
+.reminder-card header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.calendar-card p,
+.calendar-card small,
+.reminder-card p,
+.reminder-card small,
+.review-item p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.calendar-card small,
+.reminder-card small {
+  display: block;
+}
+
+.package-card {
+  display: grid;
+  gap: 12px;
+}
+
+.package-summary.compact {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.tag-grid.compact {
+  gap: 6px;
+}
+
+.review-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.review-item {
+  align-items: center;
+}
+
+.review-item div {
+  flex: 1;
+  min-width: 0;
 }
 
 @media (max-width: 920px) {
@@ -904,6 +1132,10 @@ textarea {
     flex-direction: column;
   }
 
+  .project-switcher {
+    grid-template-columns: 1fr;
+  }
+
   .grid.two,
   .grid.three,
   .grid.four,
@@ -916,6 +1148,10 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .review-board {
+    grid-template-columns: 1fr;
+  }
+
   .conversation-pane {
     position: static;
   }
@@ -925,6 +1161,13 @@ textarea {
   }
 
   .demo-footer-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .calendar-card header,
+  .package-card header,
+  .reminder-card header {
     align-items: stretch;
     flex-direction: column;
   }

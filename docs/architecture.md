@@ -7,7 +7,7 @@ AI 内容增长 Agent 是独立 Web 系统，不依赖飞书作为业务底座�
 ## 推荐技术栈
 
 - 前端与 Web API：Next.js App Router + TypeScript。
-- UI：Tailwind CSS + shadcn/ui，本地化中文界面。
+- UI：当前使用原生 CSS + lucide-react 图标构建中文后台界面；后续如引入 Tailwind 或 shadcn/ui，必须保持既有后台信息密度和中文交互习惯。
 - 数据库：PostgreSQL。
 - ORM 与迁移：Prisma，所有结构变化必须通过迁移文件提交。
 - 后台任务：独立 Worker 进程，优先使用 PostgreSQL 队列方案，后续可替换为 Redis/BullMQ。
@@ -25,6 +25,16 @@ AI 内容增长 Agent 是独立 Web 系统，不依赖飞书作为业务底座�
 - 本地演示用户模拟登录。
 - 服务端 Workspace 上下文与数据隔离。
 - 中文后台工作台页面。
+
+当前 B 组工作助手分支继续落地：
+
+- `/b-agent` 使用数据库读取项目、产品事实、策略、计划、素材包、提醒和变更日志。
+- 中文指令先由本地规则型解析器处理，不调用真实 GPT。
+- 解析后的结构化操作保存为 `AgentOperation`。
+- 策略仍为草案时，安全操作可直接应用到 `ProjectStrategy`。
+- 策略已被人工确认后，后续操作进入 `PENDING_CONFIRMATION`，由用户确认后再写入正式策略。
+- 所有操作写入 `ChangeLog`，保证可追踪和可回滚。
+- 内容日历、素材包中心、审核中心、提醒中心从同一套 Workspace 数据读取。
 
 ## 分层设计
 
@@ -52,9 +62,9 @@ Optional Connectors: Feishu, AI Providers, Analytics Sources
 - 数据复盘与指标沉淀。
 - Workspace 级飞书连接与迁移记录。
 
-## 第一阶段核心数据模型
+## 核心数据模型
 
-第一阶段实现：
+Foundation 已实现：
 
 - `User`
 - `Workspace`
@@ -67,15 +77,23 @@ Optional Connectors: Feishu, AI Providers, Analytics Sources
 
 除 `User` 这类全局身份表外，核心业务表必须带有 `workspace_id` 或等价字段。第一阶段 Prisma 字段为 `workspaceId`，数据库迁移中对应列为 `"workspaceId"`。
 
-后续预留：
+B 组工作助手已新增：
+
+- `ProductFact`：产品事实，区分草稿、已确认、需复核。
+- `ProjectStrategy`：项目策略，支持目标市场、客群、渠道、内容方向、素材包频率和确认状态。
+- `ContentPlanItem`：首月内容计划项。
+- `ContentPackage` 与 `ContentPackageFile`：素材包结构和文件状态。
+- `Reminder`：基于项目风险和缺口生成的提醒。
+- `AgentConversation` 与 `AgentMessage`：项目级 Agent 对话。
+- `AgentOperation`：自然语言转换后的结构化操作。
+- `ChangeLog`：人工确认、指令应用和生成动作的变更记录。
+
+仍预留：
 
 - `Asset`
 - `ImageGenerationJob`
 - `ImageGenerationProviderConfig`
-- `ContentPlan`
-- `ContentPackage`
 - `ReviewTask`
-- `Reminder`
 - `MetricsSnapshot`
 - `IntegrationConnection`
 - `FeishuConnection`
@@ -99,6 +117,8 @@ Optional Connectors: Feishu, AI Providers, Analytics Sources
 5. 系统按计划生成内容包和海报合成任务。
 6. 人工审核后发布或下载。
 7. 系统沉淀数据，进入复盘和下一轮建议。
+
+当前实现采用“本地规则型 Agent → 结构化操作 → 服务端事务写入”的可替换路径。未来接入 GPT 时，只替换解析和建议生成 Provider，项目策略、确认、计划、素材包、提醒、变更日志等业务数据结构保持稳定。
 
 ## 飞书连接架构
 

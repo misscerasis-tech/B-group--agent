@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { AlertTriangle, ClipboardCheck } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getDashboardSummary } from "@/lib/data/dashboard";
 import { loadWorkspaceContextSafe } from "@/lib/page-context";
-import { productStatusLabels, projectStatusLabels } from "@/lib/status";
+import { productStatusLabels, projectStatusLabels, reminderSeverityLabels } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
@@ -29,15 +30,15 @@ export default async function DashboardPage() {
           <div>
             <h2>今日工作台</h2>
             <p className="muted">
-              当前 Workspace：{context.currentWorkspace.name}。这里先展示项目、产品和下一步事项。
+              当前 Workspace：{context.currentWorkspace.name}。每天从项目、计划、素材包和提醒开始。
             </p>
           </div>
-          <Link className="button" href="/projects">
-            进入项目中心
+          <Link className="button" href="/b-agent">
+            打开 B组 Agent
           </Link>
         </section>
 
-        <section className="grid three">
+        <section className="grid four">
           <div className="panel stat">
             <span className="muted">项目总数</span>
             <strong>{summary.projectCount}</strong>
@@ -49,6 +50,21 @@ export default async function DashboardPage() {
           <div className="panel stat">
             <span className="muted">产品数量</span>
             <strong>{summary.productCount}</strong>
+          </div>
+          <div className="panel stat">
+            <span className="muted">待处理提醒</span>
+            <strong>{summary.openReminderCount}</strong>
+          </div>
+        </section>
+
+        <section className="grid two" style={{ marginTop: 16 }}>
+          <div className="panel stat">
+            <span className="muted">内容计划项</span>
+            <strong>{summary.planItemCount}</strong>
+          </div>
+          <div className="panel stat">
+            <span className="muted">素材包结构</span>
+            <strong>{summary.contentPackageCount}</strong>
           </div>
         </section>
 
@@ -97,6 +113,51 @@ export default async function DashboardPage() {
             )}
           </div>
         </section>
+
+        <section className="grid two" style={{ marginTop: 16 }}>
+          <div className="panel">
+            <h3>今日提醒</h3>
+            {summary.openReminders.length > 0 ? (
+              <div className="reminder-list">
+                {summary.openReminders.map((reminder) => (
+                  <article className="reminder-item" key={reminder.id}>
+                    <AlertTriangle size={18} aria-hidden="true" />
+                    <div>
+                      <strong>
+                        {reminder.title} · {reminderSeverityLabels[reminder.severity]}
+                      </strong>
+                      <p>
+                        {reminder.project?.name ?? "Workspace"} ·{" "}
+                        {reminder.description ?? "暂无提醒说明。"}
+                      </p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="暂无提醒" description="生成计划或素材包后，这里会出现需要处理的事项。" />
+            )}
+          </div>
+
+          <div className="panel">
+            <h3>最近变更</h3>
+            {summary.recentChangeLogs.length > 0 ? (
+              <div className="change-log-list">
+                {summary.recentChangeLogs.map((log) => (
+                  <article className="change-log-item" key={log.id}>
+                    <ClipboardCheck size={16} aria-hidden="true" />
+                    <div>
+                      <strong>{log.summary}</strong>
+                      <p>{log.action}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="暂无变更" description="执行中文指令或确认策略后会自动记录。" />
+            )}
+          </div>
+        </section>
       </AppShell>
     );
   } catch (dashboardError) {
@@ -111,4 +172,3 @@ export default async function DashboardPage() {
     );
   }
 }
-

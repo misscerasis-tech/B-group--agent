@@ -27,6 +27,70 @@ enum ProductStatus {
   ARCHIVED
 }
 
+enum ProductFactStatus {
+  DRAFT
+  CONFIRMED
+  NEEDS_REVIEW
+}
+
+enum StrategyStatus {
+  DRAFT
+  CONFIRMED
+  ARCHIVED
+}
+
+enum ContentFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+enum PlanItemStatus {
+  DRAFT
+  READY
+  REVIEW_NEEDED
+  DONE
+}
+
+enum ContentPackageStatus {
+  DRAFT
+  GENERATED
+  REVIEW_NEEDED
+  APPROVED
+  ARCHIVED
+}
+
+enum PackageFileStatus {
+  PLANNED
+  GENERATED
+  APPROVED
+}
+
+enum ReminderSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum ReminderStatus {
+  OPEN
+  DONE
+  DISMISSED
+}
+
+enum AgentMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum AgentOperationStatus {
+  APPLIED
+  PENDING_CONFIRMATION
+  REJECTED
+  FAILED
+}
+
 model User {
   id          String            @id @default(cuid())
   name        String
@@ -34,18 +98,28 @@ model User {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   memberships WorkspaceMember[]
+  changeLogs  ChangeLog[]
 }
 
 model Workspace {
-  id        String            @id @default(cuid())
-  name      String
-  slug      String            @unique
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-  deletedAt DateTime?
-  members   WorkspaceMember[]
-  projects  Project[]
-  products  Product[]
+  id                String              @id @default(cuid())
+  name              String
+  slug              String              @unique
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  deletedAt         DateTime?
+  members           WorkspaceMember[]
+  projects          Project[]
+  products          Product[]
+  productFacts      ProductFact[]
+  projectStrategies ProjectStrategy[]
+  contentPlanItems  ContentPlanItem[]
+  contentPackages   ContentPackage[]
+  reminders         Reminder[]
+  conversations     AgentConversation[]
+  messages          AgentMessage[]
+  operations        AgentOperation[]
+  changeLogs        ChangeLog[]
 }
 
 model WorkspaceMember {
@@ -63,16 +137,23 @@ model WorkspaceMember {
 }
 
 model Project {
-  id              String           @id @default(cuid())
-  workspaceId     String
-  name            String
-  description     String?
-  status          ProjectStatus    @default(DRAFT)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  deletedAt       DateTime?
-  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  projectProducts ProjectProduct[]
+  id               String              @id @default(cuid())
+  workspaceId      String
+  name             String
+  description      String?
+  status           ProjectStatus       @default(DRAFT)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  deletedAt        DateTime?
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projectProducts  ProjectProduct[]
+  strategies       ProjectStrategy[]
+  contentPlanItems ContentPlanItem[]
+  contentPackages  ContentPackage[]
+  reminders        Reminder[]
+  conversations    AgentConversation[]
+  operations       AgentOperation[]
+  changeLogs       ChangeLog[]
 
   @@index([workspaceId, status])
   @@index([workspaceId, deletedAt])
@@ -89,6 +170,7 @@ model Product {
   deletedAt       DateTime?
   workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   projectProducts ProjectProduct[]
+  facts           ProductFact[]
 
   @@index([workspaceId, status])
   @@index([workspaceId, deletedAt])
@@ -105,3 +187,187 @@ model ProjectProduct {
   @@index([productId])
 }
 
+model ProductFact {
+  id          String            @id @default(cuid())
+  workspaceId String
+  productId   String
+  label       String
+  value       String
+  source      String?
+  confidence  Int               @default(80)
+  status      ProductFactStatus @default(DRAFT)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  product     Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, productId])
+  @@index([workspaceId, status])
+}
+
+model ProjectStrategy {
+  id                String            @id @default(cuid())
+  workspaceId       String
+  projectId         String
+  version           Int               @default(1)
+  status            StrategyStatus    @default(DRAFT)
+  targetMarkets     String[]          @default([])
+  audiences         String[]          @default([])
+  channels          String[]          @default([])
+  contentDirections String[]          @default([])
+  packageFrequency  ContentFrequency  @default(MONTHLY)
+  positioning       String?
+  rationale         String?
+  confirmedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contentPlanItems  ContentPlanItem[]
+  contentPackages   ContentPackage[]
+
+  @@index([workspaceId, projectId, status])
+}
+
+model ContentPlanItem {
+  id          String           @id @default(cuid())
+  workspaceId String
+  projectId   String
+  strategyId  String?
+  week        Int
+  channel     String
+  theme       String
+  title       String
+  deliverable String
+  dueDate     DateTime?
+  status      PlanItemStatus   @default(DRAFT)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  strategy    ProjectStrategy? @relation(fields: [strategyId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, projectId, status])
+  @@index([strategyId])
+}
+
+model ContentPackage {
+  id          String               @id @default(cuid())
+  workspaceId String
+  projectId   String
+  strategyId  String?
+  name        String
+  period      String
+  frequency   ContentFrequency     @default(MONTHLY)
+  status      ContentPackageStatus @default(DRAFT)
+  summary     String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  strategy    ProjectStrategy?     @relation(fields: [strategyId], references: [id], onDelete: SetNull)
+  files       ContentPackageFile[]
+
+  @@index([workspaceId, projectId, status])
+  @@index([strategyId])
+}
+
+model ContentPackageFile {
+  id               String            @id @default(cuid())
+  contentPackageId String
+  name             String
+  fileType         String
+  status           PackageFileStatus @default(PLANNED)
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  contentPackage   ContentPackage    @relation(fields: [contentPackageId], references: [id], onDelete: Cascade)
+
+  @@index([contentPackageId, status])
+}
+
+model Reminder {
+  id          String           @id @default(cuid())
+  workspaceId String
+  projectId   String?
+  title       String
+  description String?
+  severity    ReminderSeverity @default(INFO)
+  status      ReminderStatus   @default(OPEN)
+  dueAt       DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, projectId])
+}
+
+model AgentConversation {
+  id          String           @id @default(cuid())
+  workspaceId String
+  projectId   String?
+  title       String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages    AgentMessage[]
+  operations  AgentOperation[]
+
+  @@index([workspaceId, projectId])
+}
+
+model AgentMessage {
+  id             String            @id @default(cuid())
+  workspaceId    String
+  conversationId String
+  role           AgentMessageRole
+  content        String
+  createdAt      DateTime          @default(now())
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation   AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, conversationId, createdAt])
+}
+
+model AgentOperation {
+  id             String               @id @default(cuid())
+  workspaceId    String
+  conversationId String?
+  projectId      String?
+  rawText        String
+  summary        String
+  operations     Json
+  conflictCheck  String?
+  status         AgentOperationStatus @default(PENDING_CONFIRMATION)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  workspace      Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation   AgentConversation?   @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  project        Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, projectId])
+}
+
+model ChangeLog {
+  id          String    @id @default(cuid())
+  workspaceId String
+  projectId   String?
+  entityType  String
+  entityId    String
+  action      String
+  summary     String
+  before      Json?
+  after       Json?
+  actorUserId String?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor       User?     @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, projectId, createdAt])
+  @@index([workspaceId, entityType, entityId])
+}

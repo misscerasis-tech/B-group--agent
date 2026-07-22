@@ -2,8 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createProduct, updateProduct } from "@/lib/data/products";
-import { parseProductStatus } from "@/lib/status";
+import {
+  confirmAllProductFacts,
+  createProduct,
+  createProductFact,
+  generateInitialProductFacts,
+  updateProduct,
+} from "@/lib/data/products";
+import { parseProductFactStatus, parseProductStatus } from "@/lib/status";
 import { getWorkspaceContext } from "@/lib/workspace-context";
 
 function readRequiredText(formData: FormData, key: string, label: string) {
@@ -47,3 +53,36 @@ export async function updateProductAction(productId: string, formData: FormData)
   redirect(`/brain/products/${productId}`);
 }
 
+export async function createProductFactAction(productId: string, formData: FormData) {
+  const context = await getWorkspaceContext();
+
+  await createProductFact(context.currentWorkspace.id, productId, {
+    label: readRequiredText(formData, "label", "事实名称"),
+    value: readRequiredText(formData, "value", "事实内容"),
+    status: parseProductFactStatus(formData.get("status")),
+  });
+
+  revalidatePath("/brain");
+  revalidatePath(`/brain/products/${productId}`);
+  redirect(`/brain/products/${productId}`);
+}
+
+export async function generateInitialProductFactsAction(productId: string) {
+  const context = await getWorkspaceContext();
+
+  await generateInitialProductFacts(context.currentWorkspace.id, productId);
+
+  revalidatePath("/brain");
+  revalidatePath(`/brain/products/${productId}`);
+  redirect(`/brain/products/${productId}`);
+}
+
+export async function confirmAllProductFactsAction(productId: string) {
+  const context = await getWorkspaceContext();
+
+  await confirmAllProductFacts(context.currentWorkspace.id, productId);
+
+  revalidatePath("/brain");
+  revalidatePath(`/brain/products/${productId}`);
+  redirect(`/brain/products/${productId}`);
+}

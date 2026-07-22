@@ -1,12 +1,17 @@
 import Link from "next/link";
-import { updateProductAction } from "@/app/actions/product-actions";
+import {
+  confirmAllProductFactsAction,
+  createProductFactAction,
+  generateInitialProductFactsAction,
+  updateProductAction,
+} from "@/app/actions/product-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getProduct } from "@/lib/data/products";
 import { loadWorkspaceContextSafe } from "@/lib/page-context";
-import { projectStatusLabels } from "@/lib/status";
+import { productFactStatusLabels, projectStatusLabels } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +104,81 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
             )}
           </div>
         </section>
+
+        <section className="grid two" style={{ marginTop: 16 }}>
+          <div className="panel">
+            <div className="section-title-row">
+              <h3>结构化产品事实</h3>
+              <StatusBadge
+                label={product.facts.length > 0 ? `${product.facts.length} 条事实` : "待生成"}
+                tone={product.facts.length > 0 ? "success" : "warning"}
+              />
+            </div>
+
+            <div className="demo-buttons" style={{ marginBottom: 14 }}>
+              <form action={generateInitialProductFactsAction.bind(null, product.id)}>
+                <button className="button secondary" type="submit">
+                  从产品说明生成初始事实
+                </button>
+              </form>
+              <form action={confirmAllProductFactsAction.bind(null, product.id)}>
+                <button className="button" type="submit">
+                  确认全部事实
+                </button>
+              </form>
+            </div>
+
+            {product.facts.length > 0 ? (
+              <dl className="fact-list">
+                {product.facts.map((fact) => (
+                  <div key={fact.id}>
+                    <dt>{fact.label}</dt>
+                    <dd>
+                      {fact.value}
+                      <small>
+                        {productFactStatusLabels[fact.status]} · 置信度 {fact.confidence}%
+                      </small>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <EmptyState
+                title="还没有结构化事实"
+                description="可以先从产品说明生成，再人工补充和确认。"
+              />
+            )}
+          </div>
+
+          <div className="panel">
+            <h3>新增事实</h3>
+            <form action={createProductFactAction.bind(null, product.id)} className="form">
+              <label className="form-row">
+                <span className="field-label">事实名称</span>
+                <input name="label" placeholder="例如：核心卖点" required />
+              </label>
+              <label className="form-row">
+                <span className="field-label">事实内容</span>
+                <textarea
+                  name="value"
+                  placeholder="例如：24 小时保温、防漏便携、适合通勤和礼赠。"
+                  required
+                />
+              </label>
+              <label className="form-row">
+                <span className="field-label">状态</span>
+                <select defaultValue="DRAFT" name="status">
+                  <option value="DRAFT">待确认</option>
+                  <option value="CONFIRMED">已确认</option>
+                  <option value="NEEDS_REVIEW">需复核</option>
+                </select>
+              </label>
+              <button className="button" type="submit">
+                保存事实
+              </button>
+            </form>
+          </div>
+        </section>
       </AppShell>
     );
   } catch (productError) {
@@ -111,4 +191,3 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
     );
   }
 }
-
