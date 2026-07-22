@@ -203,6 +203,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: true,
   },
   {
+    key: "review_task_cancel",
+    category: "review",
+    title: "取消审核中心任务",
+    example: "取消最新素材包审核任务。",
+    writesTo: ["ReviewTask", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
     key: "review_tasks_create_missing",
     category: "review",
     title: "补齐当前项目审核任务",

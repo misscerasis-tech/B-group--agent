@@ -192,6 +192,15 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "cancel_review_task";
+      value: {
+        subjectType?: ReviewSubjectType;
+        keyword?: string;
+        decisionNote: string;
+      };
+      label: string;
+    }
+  | {
       type: "create_missing_review_tasks";
       value: {
         scope: "current_project";
@@ -891,7 +900,35 @@ function parseReviewTaskDecisionOperation(text: string): ParsedAgentOperation | 
   };
 }
 
+function parseCancelReviewTaskOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(审核任务|审核中心|待审核事项|待确认事项|复核事项|审核|复核|审批)/.test(text) ||
+    !/(取消|关闭|撤销|不需要审核|无需审核)/.test(text) ||
+    parseReviewDecision(text)
+  ) {
+    return null;
+  }
+
+  const subjectType = parseReviewSubjectType(text);
+  const keyword = extractReviewTaskKeyword(text, subjectType);
+  const subjectText = subjectType ? reviewSubjectTypeText(subjectType) : "最新审核任务";
+
+  return {
+    type: "cancel_review_task",
+    value: {
+      ...(subjectType ? { subjectType } : {}),
+      ...(keyword ? { keyword } : {}),
+      decisionNote: "由 B 组 Agent 中文指令取消。",
+    },
+    label: `取消${subjectText}审核任务${keyword ? `：${keyword}` : ""}`,
+  };
+}
+
 function parseReviewSubjectType(text: string) {
+  if (/(素材包|内容包)/.test(text)) {
+    return ReviewSubjectType.CONTENT_PACKAGE;
+  }
+
   if (/(产品事实|事实复核|事实确认)/.test(text)) {
     return ReviewSubjectType.PRODUCT_FACT;
   }
@@ -926,11 +963,14 @@ function extractReviewTaskKeyword(text: string, subjectType?: ReviewSubjectType)
         ? /策略草案|项目策略|增长策略|内容策略|市场策略|策略确认|策略/g
         : subjectType === ReviewSubjectType.ASSET
           ? /素材来源|素材审核|审核素材|素材|资产/g
-          : /审核任务|审核中心|待审核事项|待确认事项|复核事项/g;
+          : subjectType === ReviewSubjectType.CONTENT_PACKAGE
+            ? /素材包|内容包/g
+            : /审核任务|审核中心|待审核事项|待确认事项|复核事项/g;
   const keyword = text
     .replace(/请|麻烦|帮我|把|将|当前|这个|这个项目|项目/g, "")
     .replace(subjectWords, "")
     .replace(/审核通过|通过审核|可以通过|批准|同意|要求修改|需要修改|退回修改|不通过|驳回|修改后再审/gi, "")
+    .replace(/取消审核|取消任务|取消|关闭|撤销|不需要审核|无需审核/gi, "")
     .replace(/审核|复核|审批|任务|待处理|最新|最近|一条|一个/g, "")
     .replace(/，|。|！|!|：|:|；|;|、/g, " ")
     .replace(/\s+/g, " ")
@@ -1548,6 +1588,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(reviewTaskDecisionOperation);
   }
 
+  const cancelReviewTaskOperation = parseCancelReviewTaskOperation(text);
+  if (cancelReviewTaskOperation) {
+    operations.push(cancelReviewTaskOperation);
+  }
+
   const missingReviewTasksOperation = parseMissingReviewTasksOperation(text);
   if (missingReviewTasksOperation) {
     operations.push(missingReviewTasksOperation);
@@ -1642,6 +1687,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "submit_content_package_review" ||
       operation.type === "decide_content_package_review" ||
       operation.type === "decide_review_task" ||
+      operation.type === "cancel_review_task" ||
       operation.type === "create_metrics_risk_reminders" ||
       operation.type === "create_calendar_gap_reminders" ||
       operation.type === "create_missing_review_tasks",

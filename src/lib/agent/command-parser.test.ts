@@ -392,6 +392,20 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts review task cancellation requests", () => {
+    const parsed = parseAgentCommand("取消最新素材包审核任务。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "cancel_review_task",
+      value: {
+        subjectType: ReviewSubjectType.CONTENT_PACKAGE,
+        decisionNote: "由 B 组 Agent 中文指令取消。",
+      },
+      label: "取消素材包审核任务",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts reminder completion requests", () => {
     const parsed = parseAgentCommand("把抽奖规则提醒标记完成。");
 

@@ -1294,6 +1294,64 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("cancels a pending review task from a Chinese agent command", async () => {
+    const reviewTask = {
+      id: "review-package-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      subjectType: "CONTENT_PACKAGE",
+      subjectId: "package-1",
+      title: "审核素材包：2026-08 第1周 TikTok 素材包",
+      description: "误生成的审核任务",
+      status: "PENDING",
+      reviewerUserId: null,
+      decisionNote: null,
+      dueAt: null,
+      decidedAt: null,
+      createdAt: new Date("2026-07-22T00:00:00.000Z"),
+    };
+    mocks.tx.reviewTask.count.mockResolvedValue(1);
+    mocks.tx.reviewTask.findFirst.mockResolvedValue(reviewTask);
+    mocks.tx.reviewTask.update.mockResolvedValue({
+      ...reviewTask,
+      status: "CANCELED",
+      reviewerUserId: "user-1",
+      decisionNote: "由 B 组 Agent 中文指令取消。",
+      decidedAt: new Date("2026-07-22T01:00:00.000Z"),
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "取消最新素材包审核任务。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.reviewTask.update).toHaveBeenCalledWith({
+      where: {
+        id: "review-package-1",
+      },
+      data: expect.objectContaining({
+        status: "CANCELED",
+        reviewerUserId: "user-1",
+        decisionNote: "由 B 组 Agent 中文指令取消。",
+      }),
+    });
+    expect(mocks.tx.contentPackage.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ReviewTask",
+        entityId: "review-package-1",
+        action: "agent_review_task_canceled",
+        summary: "取消素材包审核任务",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("creates missing review tasks for the current project", async () => {
     mocks.tx.project.findFirst
       .mockResolvedValueOnce({

@@ -379,6 +379,9 @@ export async function submitAgentCommand(input: {
       const reviewTaskDecisionOperations = parsed.operations.filter(
         isReviewTaskDecisionOperation,
       );
+      const reviewTaskCancellationOperations = parsed.operations.filter(
+        isReviewTaskCancellationOperation,
+      );
       const missingReviewTaskOperations = parsed.operations.filter(
         isMissingReviewTaskOperation,
       );
@@ -554,6 +557,13 @@ export async function submitAgentCommand(input: {
         operations: reviewTaskDecisionOperations,
       });
 
+      await applyReviewTaskCancellationOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: reviewTaskCancellationOperations,
+      });
+
       await applyMissingReviewTaskOperations(tx, {
         workspaceId: input.workspaceId,
         userId: input.userId,
@@ -668,6 +678,9 @@ export async function applyPendingAgentOperation(input: {
       isPackageReviewDecisionOperation,
     );
     const reviewTaskDecisionOperations = parsedOperations.filter(isReviewTaskDecisionOperation);
+    const reviewTaskCancellationOperations = parsedOperations.filter(
+      isReviewTaskCancellationOperation,
+    );
     const missingReviewTaskOperations = parsedOperations.filter(isMissingReviewTaskOperation);
     const reminderCompletionOperations = parsedOperations.filter(isReminderCompletionOperation);
     const reminderDismissalOperations = parsedOperations.filter(isReminderDismissalOperation);
@@ -904,6 +917,13 @@ export async function applyPendingAgentOperation(input: {
       operations: reviewTaskDecisionOperations,
     });
 
+    await applyReviewTaskCancellationOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: reviewTaskCancellationOperations,
+    });
+
     await applyMissingReviewTaskOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -975,6 +995,7 @@ export async function applyPendingAgentOperation(input: {
         packageReviewSubmitted: packageReviewOperations.length > 0,
         packageReviewDecided: packageReviewDecisionOperations.length > 0,
         reviewTaskDecided: reviewTaskDecisionOperations.length > 0,
+        reviewTaskCanceled: reviewTaskCancellationOperations.length > 0,
         missingReviewTasksCreated: missingReviewTaskOperations.length > 0,
         reminderCompleted: reminderCompletionOperations.length > 0,
         reminderDismissed: reminderDismissalOperations.length > 0,
@@ -1189,6 +1210,22 @@ async function findCompletionTargetWarnings(
       if (matchCount === 0) {
         warnings.push(
           `未找到匹配「${describeReviewTaskDecisionValue(operation.value)}」的待审核任务`,
+        );
+      }
+    }
+
+    if (operation.type === "cancel_review_task") {
+      const matchCount = await tx.reviewTask.count({
+        where: await buildReviewTaskDecisionWhere(tx, {
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          value: operation.value,
+        }),
+      });
+
+      if (matchCount === 0) {
+        warnings.push(
+          `未找到匹配「${describeReviewTaskSelectionValue(operation.value)}」的待审核任务`,
         );
       }
     }
@@ -3183,6 +3220,63 @@ async function applyReviewTaskDecisionOperations(
   }
 }
 
+async function applyReviewTaskCancellationOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "cancel_review_task") {
+      continue;
+    }
+
+    const reviewTask = await tx.reviewTask.findFirst({
+      where: await buildReviewTaskDecisionWhere(tx, {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        value: operation.value,
+      }),
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (!reviewTask) {
+      continue;
+    }
+
+    const updatedTask = await tx.reviewTask.update({
+      where: {
+        id: reviewTask.id,
+      },
+      data: {
+        status: ReviewTaskStatus.CANCELED,
+        reviewerUserId: input.userId,
+        decisionNote: operation.value.decisionNote,
+        decidedAt: new Date(),
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: reviewTask.projectId ?? input.projectId,
+        entityType: "ReviewTask",
+        entityId: reviewTask.id,
+        action: "agent_review_task_canceled",
+        summary: operation.label,
+        before: reviewTaskToJson(reviewTask),
+        after: reviewTaskToJson(updatedTask),
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
 async function applyMissingReviewTaskOperations(
   tx: Prisma.TransactionClient,
   input: {
@@ -3696,7 +3790,10 @@ async function buildReviewTaskDecisionWhere(
   input: {
     workspaceId: string;
     projectId: string;
-    value: Extract<ParsedAgentOperation, { type: "decide_review_task" }>["value"];
+    value: {
+      subjectType?: ReviewSubjectType;
+      keyword?: string;
+    };
   },
 ) {
   const scopeOr: Prisma.ReviewTaskWhereInput[] = [
@@ -4051,6 +4148,13 @@ function describePlanItemCompletionValue(
 function describeReviewTaskDecisionValue(
   value: Extract<ParsedAgentOperation, { type: "decide_review_task" }>["value"],
 ) {
+  return describeReviewTaskSelectionValue(value);
+}
+
+function describeReviewTaskSelectionValue(value: {
+  subjectType?: ReviewSubjectType;
+  keyword?: string;
+}) {
   const subjectText =
     value.subjectType === ReviewSubjectType.PRODUCT_FACT
       ? "产品事实"
@@ -4058,6 +4162,8 @@ function describeReviewTaskDecisionValue(
         ? "策略草案"
         : value.subjectType === ReviewSubjectType.ASSET
           ? "素材"
+          : value.subjectType === ReviewSubjectType.CONTENT_PACKAGE
+            ? "素材包"
           : "最新审核任务";
 
   return [subjectText, value.keyword].filter(Boolean).join(" · ");
@@ -4222,6 +4328,10 @@ function isPackageReviewDecisionOperation(operation: ParsedAgentOperation) {
 
 function isReviewTaskDecisionOperation(operation: ParsedAgentOperation) {
   return operation.type === "decide_review_task";
+}
+
+function isReviewTaskCancellationOperation(operation: ParsedAgentOperation) {
+  return operation.type === "cancel_review_task";
 }
 
 function isMissingReviewTaskOperation(operation: ParsedAgentOperation) {
@@ -4498,6 +4608,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
       continue;
     }
 
+    if (type === "cancel_review_task" && isReviewTaskCancellationValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `取消${describeReviewTaskSelectionValue(value)}审核任务`,
+      });
+      continue;
+    }
+
     if (type === "create_missing_review_tasks" && isMissingReviewTaskValue(value)) {
       operations.push({
         type,
@@ -4704,6 +4823,27 @@ function isReviewTaskDecisionValue(value: unknown): value is Extract<
   );
 }
 
+function isReviewTaskCancellationValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "cancel_review_task" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    (record.subjectType === undefined ||
+      record.subjectType === ReviewSubjectType.PRODUCT_FACT ||
+      record.subjectType === ReviewSubjectType.PROJECT_STRATEGY ||
+      record.subjectType === ReviewSubjectType.CONTENT_PACKAGE ||
+      record.subjectType === ReviewSubjectType.ASSET) &&
+    (record.keyword === undefined || typeof record.keyword === "string") &&
+    typeof record.decisionNote === "string"
+  );
+}
+
 function isMissingReviewTaskValue(value: unknown): value is Extract<
   ParsedAgentOperation,
   { type: "create_missing_review_tasks" }
@@ -4895,6 +5035,7 @@ function buildConfirmedAssistantReply(input: {
   packageReviewSubmitted: boolean;
   packageReviewDecided: boolean;
   reviewTaskDecided: boolean;
+  reviewTaskCanceled: boolean;
   missingReviewTasksCreated: boolean;
   reminderCompleted: boolean;
   reminderDismissed: boolean;
@@ -4924,6 +5065,7 @@ function buildConfirmedAssistantReply(input: {
   const packageReviewText = input.packageReviewSubmitted ? "，并提交素材包审核" : "";
   const packageReviewDecisionText = input.packageReviewDecided ? "，并处理素材包审核" : "";
   const reviewTaskDecisionText = input.reviewTaskDecided ? "，并处理审核任务" : "";
+  const reviewTaskCancellationText = input.reviewTaskCanceled ? "，并取消审核任务" : "";
   const missingReviewTaskText = input.missingReviewTasksCreated ? "，并补齐审核任务" : "";
   const completedReminderText = input.reminderCompleted ? "，并完成项目提醒" : "";
   const dismissedReminderText = input.reminderDismissed ? "，并忽略项目提醒" : "";
@@ -5011,7 +5153,11 @@ function buildConfirmedAssistantReply(input: {
   }
 
   if (input.reviewTaskDecided) {
-    return `已按你的确认处理审核任务${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认处理审核任务${reviewTaskCancellationText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.reviewTaskCanceled) {
+    return `已按你的确认取消审核任务${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.missingReviewTasksCreated) {
