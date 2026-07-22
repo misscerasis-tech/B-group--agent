@@ -41,6 +41,79 @@ export async function listWorkspacePlanItems(workspaceId: string) {
   });
 }
 
+export async function createContentPlanItem(input: {
+  workspaceId: string;
+  userId: string;
+  projectId: string;
+  week: number;
+  channel: string;
+  theme: string;
+  title: string;
+  deliverable: string;
+  dueDate?: Date;
+  status: PlanItemStatus;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        id: input.projectId,
+        deletedAt: null,
+      }),
+    });
+
+    if (!project) {
+      throw new Error("未找到当前 Workspace 下的项目，无法创建内容计划。");
+    }
+
+    const strategy = await tx.projectStrategy.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        projectId: input.projectId,
+        status: {
+          not: StrategyStatus.ARCHIVED,
+        },
+      }) as Prisma.ProjectStrategyWhereInput,
+      orderBy: [
+        {
+          version: "desc",
+        },
+        {
+          updatedAt: "desc",
+        },
+      ],
+    });
+
+    const planItem = await tx.contentPlanItem.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: project.id,
+        strategyId: strategy?.id ?? null,
+        week: input.week,
+        channel: input.channel,
+        theme: input.theme,
+        title: input.title,
+        deliverable: input.deliverable,
+        dueDate: input.dueDate,
+        status: input.status,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: project.id,
+        entityType: "ContentPlanItem",
+        entityId: planItem.id,
+        action: "plan_item_created",
+        summary: `新增内容计划：${project.name} · 第${planItem.week}周 · ${planItem.title}`,
+        after: planItemToJson(planItem),
+        actorUserId: input.userId,
+      },
+    });
+
+    return planItem;
+  });
+}
+
 export async function updateContentPlanItemStatus(input: {
   workspaceId: string;
   userId: string;
@@ -985,6 +1058,32 @@ function reminderToJson(reminder: {
     description: reminder.description,
     severity: reminder.severity,
     status: reminder.status,
+  };
+}
+
+function planItemToJson(planItem: {
+  id: string;
+  projectId: string;
+  strategyId: string | null;
+  week: number;
+  channel: string;
+  theme: string;
+  title: string;
+  deliverable: string;
+  dueDate: Date | null;
+  status: PlanItemStatus;
+}) {
+  return {
+    id: planItem.id,
+    projectId: planItem.projectId,
+    strategyId: planItem.strategyId,
+    week: planItem.week,
+    channel: planItem.channel,
+    theme: planItem.theme,
+    title: planItem.title,
+    deliverable: planItem.deliverable,
+    dueDate: planItem.dueDate,
+    status: planItem.status,
   };
 }
 
