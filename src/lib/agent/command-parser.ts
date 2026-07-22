@@ -2,7 +2,14 @@ import { ContentFrequency } from "@prisma/client";
 
 export type ParsedAgentOperation =
   | {
-      type: "add_channel" | "remove_channel" | "set_market" | "add_content_direction";
+      type:
+        | "add_channel"
+        | "remove_channel"
+        | "set_market"
+        | "add_audience"
+        | "remove_audience"
+        | "add_content_direction"
+        | "remove_content_direction";
       value: string;
       label: string;
     }
@@ -48,7 +55,33 @@ const MARKET_ALIASES: Array<[string, string[]]> = [
   ["德国", ["德国", "Germany"]],
 ];
 
-const DIRECTION_HINTS = ["世界杯", "那达慕", "圣诞", "黑五", "返校季", "通勤", "健身", "礼赠"];
+const AUDIENCE_HINTS = [
+  "年轻通勤人群",
+  "通勤人群",
+  "健身用户",
+  "户外用户",
+  "礼品购买者",
+  "学生用户",
+  "办公人群",
+  "居家办公人群",
+  "桌面美学爱好者",
+];
+
+const DIRECTION_HINTS = [
+  "世界杯",
+  "那达慕",
+  "圣诞",
+  "黑五",
+  "返校季",
+  "通勤",
+  "健身",
+  "礼赠",
+  "小抽奖",
+  "抽奖活动",
+  "桌面改造",
+  "护眼学习",
+  "节能生活",
+];
 
 function compactText(text: string) {
   return text.replace(/\s+/g, "");
@@ -167,7 +200,35 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     });
   }
 
+  for (const audience of AUDIENCE_HINTS) {
+    if (hasRemoveIntent(text, audience)) {
+      operations.push({
+        type: "remove_audience",
+        value: audience,
+        label: `删除客群：${audience}`,
+      });
+      continue;
+    }
+
+    if (hasAddIntent(text, audience) || text.includes(`面向${audience}`)) {
+      operations.push({
+        type: "add_audience",
+        value: audience,
+        label: `新增客群：${audience}`,
+      });
+    }
+  }
+
   for (const direction of DIRECTION_HINTS) {
+    if (hasRemoveIntent(text, direction)) {
+      operations.push({
+        type: "remove_content_direction",
+        value: direction,
+        label: `删除内容方向：${direction}`,
+      });
+      continue;
+    }
+
     if (text.includes(direction)) {
       operations.push({
         type: "add_content_direction",

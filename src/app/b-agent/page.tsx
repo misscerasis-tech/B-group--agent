@@ -180,9 +180,10 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                   <strong>当前可执行的本地指令</strong>
                   <ul>
                     <li>新增或删除渠道：TikTok、Instagram、Facebook、LinkedIn 等</li>
+                    <li>新增或删除客群：礼品购买者、学生用户、居家办公人群等</li>
                     <li>修改素材包频率：每周、每两周、每月</li>
                     <li>识别市场：巴西、蒙古、美国、日本、东南亚等</li>
-                    <li>追加内容方向：世界杯、那达慕、黑五、通勤、礼赠等</li>
+                    <li>追加或删除内容方向：世界杯、那达慕、黑五、通勤、礼赠、小抽奖等</li>
                   </ul>
                 </div>
               </div>

@@ -19,6 +19,7 @@ type ProjectStrategyRecord = Awaited<ReturnType<typeof ensureProjectStrategy>>;
 
 type StrategyMutableFields = {
   targetMarkets: string[];
+  audiences: string[];
   channels: string[];
   contentDirections: string[];
   packageFrequency: ContentFrequency;
@@ -364,7 +365,7 @@ export async function applyPendingAgentOperation(input: {
           version: strategy.version + 1,
           status: StrategyStatus.CONFIRMED,
           targetMarkets: nextData.targetMarkets,
-          audiences: strategy.audiences,
+          audiences: nextData.audiences,
           channels: nextData.channels,
           contentDirections: nextData.contentDirections,
           packageFrequency: nextData.packageFrequency,
@@ -730,6 +731,7 @@ function applyOperationsToStrategy(
   operations: ParsedAgentOperation[],
 ): StrategyMutableFields {
   let targetMarkets = [...strategy.targetMarkets];
+  let audiences = [...strategy.audiences];
   let channels = [...strategy.channels];
   let contentDirections = [...strategy.contentDirections];
   let packageFrequency = strategy.packageFrequency;
@@ -741,6 +743,16 @@ function applyOperationsToStrategy(
 
     if (operation.type === "add_channel") {
       channels = unique([...channels, operation.value]);
+    }
+
+    if (operation.type === "add_audience") {
+      audiences = unique([...audiences, operation.value]);
+    }
+
+    if (operation.type === "remove_audience") {
+      audiences = audiences.filter(
+        (audience) => audience.toLowerCase() !== operation.value.toLowerCase(),
+      );
     }
 
     if (operation.type === "remove_channel") {
@@ -756,10 +768,17 @@ function applyOperationsToStrategy(
     if (operation.type === "add_content_direction") {
       contentDirections = unique([...contentDirections, operation.value]);
     }
+
+    if (operation.type === "remove_content_direction") {
+      contentDirections = contentDirections.filter(
+        (direction) => direction.toLowerCase() !== operation.value.toLowerCase(),
+      );
+    }
   }
 
   return {
     targetMarkets,
+    audiences,
     channels,
     contentDirections,
     packageFrequency,
@@ -787,7 +806,10 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
       (type === "add_channel" ||
         type === "remove_channel" ||
         type === "set_market" ||
-        type === "add_content_direction") &&
+        type === "add_audience" ||
+        type === "remove_audience" ||
+        type === "add_content_direction" ||
+        type === "remove_content_direction") &&
       typeof value === "string"
     ) {
       operations.push({ type, value, label: label || value });

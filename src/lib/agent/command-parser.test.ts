@@ -51,6 +51,26 @@ describe("parseAgentCommand", () => {
     });
   });
 
+  it("extracts audience and content direction removals", () => {
+    const parsed = parseAgentCommand("不要学生用户，新增礼品购买者，本月不做小抽奖。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "remove_audience",
+      value: "学生用户",
+      label: "删除客群：学生用户",
+    });
+    expect(parsed.operations).toContainEqual({
+      type: "add_audience",
+      value: "礼品购买者",
+      label: "新增客群：礼品购买者",
+    });
+    expect(parsed.operations).toContainEqual({
+      type: "remove_content_direction",
+      value: "小抽奖",
+      label: "删除内容方向：小抽奖",
+    });
+  });
+
   it("returns a low-confidence summary when no safe operation is detected", () => {
     const parsed = parseAgentCommand("帮我看看这个项目怎么样");
 
