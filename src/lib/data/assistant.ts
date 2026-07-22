@@ -369,6 +369,9 @@ export async function submitAgentCommand(input: {
       const packageFilesStatusOperations = parsed.operations.filter(
         isPackageFilesStatusOperation,
       );
+      const posterPackageAttachmentOperations = parsed.operations.filter(
+        isPosterPackageAttachmentOperation,
+      );
       const packageReviewOperations = parsed.operations.filter(isPackageReviewOperation);
       const packageReviewDecisionOperations = parsed.operations.filter(
         isPackageReviewDecisionOperation,
@@ -522,6 +525,13 @@ export async function submitAgentCommand(input: {
         operations: packageFilesStatusOperations,
       });
 
+      await applyPosterPackageAttachmentOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: posterPackageAttachmentOperations,
+      });
+
       await applyPackageReviewOperations(tx, {
         workspaceId: input.workspaceId,
         userId: input.userId,
@@ -642,6 +652,9 @@ export async function applyPendingAgentOperation(input: {
       isPackageReadinessReminderOperation,
     );
     const packageFilesStatusOperations = parsedOperations.filter(isPackageFilesStatusOperation);
+    const posterPackageAttachmentOperations = parsedOperations.filter(
+      isPosterPackageAttachmentOperation,
+    );
     const packageReviewOperations = parsedOperations.filter(isPackageReviewOperation);
     const packageReviewDecisionOperations = parsedOperations.filter(
       isPackageReviewDecisionOperation,
@@ -854,6 +867,13 @@ export async function applyPendingAgentOperation(input: {
       operations: packageFilesStatusOperations,
     });
 
+    await applyPosterPackageAttachmentOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: posterPackageAttachmentOperations,
+    });
+
     await applyPackageReviewOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -935,6 +955,7 @@ export async function applyPendingAgentOperation(input: {
         contentPackageChanged: contentPackageOperations.length > 0,
         packageReadinessReminderChanged: packageReadinessReminderOperations.length > 0,
         packageFilesStatusChanged: packageFilesStatusOperations.length > 0,
+        posterPackageAttachmentChanged: posterPackageAttachmentOperations.length > 0,
         packageReviewSubmitted: packageReviewOperations.length > 0,
         packageReviewDecided: packageReviewDecisionOperations.length > 0,
         reviewTaskDecided: reviewTaskDecisionOperations.length > 0,
@@ -1263,6 +1284,42 @@ async function findCompletionTargetWarnings(
 
       if (matchCount === 0) {
         warnings.push(`未找到匹配「${operation.value.keyword ?? "最新素材包"}」的素材包`);
+      }
+    }
+
+    if (operation.type === "attach_latest_poster_to_content_package") {
+      const contentPackage = await tx.contentPackage.findFirst({
+        where: buildPosterAttachmentPackageWhere({
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          value: operation.value,
+        }),
+        include: {
+          files: true,
+        },
+        orderBy: {
+          updatedAt: "desc",
+        },
+      });
+
+      if (!contentPackage) {
+        warnings.push(
+          `未找到匹配「${operation.value.packageKeyword ?? "最新素材包"}」的素材包`,
+        );
+      } else if (!findPosterPackageFile(contentPackage.files)) {
+        warnings.push(`素材包「${contentPackage.name}」中没有模板化海报图片文件项`);
+      }
+
+      const assetCount = await tx.asset.count({
+        where: await buildPosterAttachmentAssetWhere(tx, {
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          value: operation.value,
+        }),
+      });
+
+      if (assetCount === 0) {
+        warnings.push("当前项目没有可关联的已审核模板海报 Asset");
       }
     }
   }
@@ -2798,6 +2855,90 @@ async function applyPackageFilesStatusOperations(
   }
 }
 
+async function applyPosterPackageAttachmentOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "attach_latest_poster_to_content_package") {
+      continue;
+    }
+
+    const contentPackage = await tx.contentPackage.findFirst({
+      where: buildPosterAttachmentPackageWhere({
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        value: operation.value,
+      }),
+      include: {
+        files: true,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+    const posterAsset = await tx.asset.findFirst({
+      where: await buildPosterAttachmentAssetWhere(tx, {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        value: operation.value,
+      }),
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+
+    if (!contentPackage || !posterAsset) {
+      continue;
+    }
+
+    const posterFile = findPosterPackageFile(contentPackage.files);
+
+    if (!posterFile) {
+      continue;
+    }
+
+    const updatedFile = await tx.contentPackageFile.update({
+      where: {
+        id: posterFile.id,
+      },
+      data: {
+        assetId: posterAsset.id,
+        status: PackageFileStatus.GENERATED,
+        notes: `已关联素材：${posterAsset.name}`,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ContentPackageFile",
+        entityId: posterFile.id,
+        action: "agent_poster_asset_attached_to_package",
+        summary: operation.label,
+        before: {
+          assetId: posterFile.assetId,
+          status: posterFile.status,
+          notes: posterFile.notes,
+        },
+        after: {
+          assetId: updatedFile.assetId,
+          status: updatedFile.status,
+          notes: updatedFile.notes,
+          assetName: posterAsset.name,
+        },
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
 async function applyPackageReviewOperations(
   tx: Prisma.TransactionClient,
   input: {
@@ -3598,6 +3739,108 @@ function buildContentPackageFilesStatusWhere(input: {
   return where;
 }
 
+function buildPosterAttachmentPackageWhere(input: {
+  workspaceId: string;
+  projectId: string;
+  value: Extract<
+    ParsedAgentOperation,
+    { type: "attach_latest_poster_to_content_package" }
+  >["value"];
+}) {
+  const where = scopedWhere(input.workspaceId, {
+    projectId: input.projectId,
+    status: {
+      not: ContentPackageStatus.ARCHIVED,
+    },
+  }) as Prisma.ContentPackageWhereInput;
+
+  if (input.value.packageKeyword) {
+    where.OR = [
+      {
+        name: {
+          contains: input.value.packageKeyword,
+        },
+      },
+      {
+        period: {
+          contains: input.value.packageKeyword,
+        },
+      },
+    ];
+  }
+
+  return where;
+}
+
+async function buildPosterAttachmentAssetWhere(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    projectId: string;
+    value: Extract<
+      ParsedAgentOperation,
+      { type: "attach_latest_poster_to_content_package" }
+    >["value"];
+  },
+) {
+  const productIds = await findProjectLinkedProductIds(tx, input);
+  const scopeFilters: Prisma.AssetWhereInput[] = [
+    {
+      projectId: input.projectId,
+    },
+  ];
+
+  if (productIds.length > 0) {
+    scopeFilters.push({
+      productId: {
+        in: productIds,
+      },
+    });
+  }
+
+  const where = scopedWhere(input.workspaceId, {
+    kind: AssetKind.GENERATED_IMAGE,
+    status: AssetStatus.APPROVED,
+    OR: scopeFilters,
+  }) as Prisma.AssetWhereInput;
+
+  if (input.value.assetKeyword) {
+    where.AND = [
+      {
+        OR: [
+          {
+            name: {
+              contains: input.value.assetKeyword,
+            },
+          },
+          {
+            originalFilename: {
+              contains: input.value.assetKeyword,
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  return where;
+}
+
+function findPosterPackageFile(
+  files: Array<{
+    id: string;
+    name: string;
+    assetId: string | null;
+    status: PackageFileStatus;
+    notes: string | null;
+  }>,
+) {
+  return (
+    files.find((file) => /模板化海报|海报图片|海报图/.test(file.name)) ??
+    files.find((file) => /海报/.test(file.name))
+  );
+}
+
 function buildProjectProductWhere(input: { workspaceId: string; projectId: string }) {
   return {
     projectId: input.projectId,
@@ -3874,6 +4117,10 @@ function isPackageFilesStatusOperation(operation: ParsedAgentOperation) {
   return operation.type === "update_content_package_files_status";
 }
 
+function isPosterPackageAttachmentOperation(operation: ParsedAgentOperation) {
+  return operation.type === "attach_latest_poster_to_content_package";
+}
+
 function isPackageReviewOperation(operation: ParsedAgentOperation) {
   return operation.type === "submit_content_package_review";
 }
@@ -4098,6 +4345,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
       continue;
     }
 
+    if (type === "attach_latest_poster_to_content_package" && isPosterPackageAttachmentValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `关联模板海报到素材包：${value.packageKeyword ?? "最新素材包"}`,
+      });
+      continue;
+    }
+
     if (type === "submit_content_package_review" && isPackageReviewValue(value)) {
       operations.push({
         type,
@@ -4268,6 +4524,22 @@ function isPackageFilesStatusValue(value: unknown): value is Extract<
     (record.status === PackageFileStatus.GENERATED ||
       record.status === PackageFileStatus.APPROVED) &&
     (record.keyword === undefined || typeof record.keyword === "string")
+  );
+}
+
+function isPosterPackageAttachmentValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "attach_latest_poster_to_content_package" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    (record.packageKeyword === undefined || typeof record.packageKeyword === "string") &&
+    (record.assetKeyword === undefined || typeof record.assetKeyword === "string")
   );
 }
 
@@ -4512,6 +4784,7 @@ function buildConfirmedAssistantReply(input: {
   contentPackageChanged: boolean;
   packageReadinessReminderChanged: boolean;
   packageFilesStatusChanged: boolean;
+  posterPackageAttachmentChanged: boolean;
   packageReviewSubmitted: boolean;
   packageReviewDecided: boolean;
   reviewTaskDecided: boolean;
@@ -4537,6 +4810,9 @@ function buildConfirmedAssistantReply(input: {
     ? "，并生成素材包可交付性缺口提醒"
     : "";
   const packageFilesStatusText = input.packageFilesStatusChanged ? "，并推进素材包文件状态" : "";
+  const posterPackageAttachmentText = input.posterPackageAttachmentChanged
+    ? "，并关联模板海报到素材包"
+    : "";
   const packageReviewText = input.packageReviewSubmitted ? "，并提交素材包审核" : "";
   const packageReviewDecisionText = input.packageReviewDecided ? "，并处理素材包审核" : "";
   const reviewTaskDecisionText = input.reviewTaskDecided ? "，并处理审核任务" : "";
@@ -4610,7 +4886,11 @@ function buildConfirmedAssistantReply(input: {
   }
 
   if (input.packageFilesStatusChanged) {
-    return `已按你的确认推进素材包文件状态${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认推进素材包文件状态${posterPackageAttachmentText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.posterPackageAttachmentChanged) {
+    return `已按你的确认关联模板海报到素材包${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.packageReviewSubmitted) {

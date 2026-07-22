@@ -52,6 +52,7 @@ const mocks = vi.hoisted(() => {
     },
     asset: {
       count: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       updateMany: vi.fn(),
     },
@@ -65,6 +66,7 @@ const mocks = vi.hoisted(() => {
     },
     contentPackageFile: {
       createMany: vi.fn(),
+      update: vi.fn(),
       updateMany: vi.fn(),
     },
     reminder: {
@@ -954,6 +956,84 @@ describe("generateStarterPlan", () => {
         entityId: "package-1",
         action: "agent_package_files_status_updated",
         summary: "全部文件标记为已生成：最新素材包：更新 2 个文件项。",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("attaches the latest approved poster asset to the latest content package", async () => {
+    const contentPackage = {
+      id: "package-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      strategyId: "strategy-1",
+      name: "2026-08 第1周 TikTok 素材包",
+      period: "2026-08 第1周",
+      frequency: "WEEKLY",
+      status: "DRAFT",
+      summary: "待生成素材。",
+      updatedAt: new Date("2026-07-22T00:00:00.000Z"),
+      files: [
+        {
+          id: "file-poster",
+          name: "模板化海报图片",
+          assetId: null,
+          status: "PLANNED",
+          notes: null,
+        },
+      ],
+    };
+    const posterAsset = {
+      id: "asset-poster",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      productId: "product-1",
+      name: "模板化海报 4:5",
+      kind: "GENERATED_IMAGE",
+      status: "APPROVED",
+      updatedAt: new Date("2026-07-22T01:00:00.000Z"),
+    };
+    mocks.tx.contentPackage.findFirst.mockResolvedValue(contentPackage);
+    mocks.tx.projectProduct.findMany.mockResolvedValue([
+      {
+        productId: "product-1",
+      },
+    ]);
+    mocks.tx.asset.count.mockResolvedValue(1);
+    mocks.tx.asset.findFirst.mockResolvedValue(posterAsset);
+    mocks.tx.contentPackageFile.update.mockResolvedValue({
+      ...contentPackage.files[0],
+      assetId: "asset-poster",
+      status: "GENERATED",
+      notes: "已关联素材：模板化海报 4:5",
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "把最新模板海报关联到最新素材包。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.contentPackageFile.update).toHaveBeenCalledWith({
+      where: {
+        id: "file-poster",
+      },
+      data: {
+        assetId: "asset-poster",
+        status: "GENERATED",
+        notes: "已关联素材：模板化海报 4:5",
+      },
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPackageFile",
+        entityId: "file-poster",
+        action: "agent_poster_asset_attached_to_package",
+        summary: "关联模板海报到素材包：最新素材包",
         actorUserId: "user-1",
       }),
     });

@@ -163,6 +163,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: true,
   },
   {
+    key: "content_package_attach_poster",
+    category: "content_package",
+    title: "关联模板海报到素材包",
+    example: "把最新模板海报关联到最新素材包。",
+    writesTo: ["ContentPackageFile", "Asset", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "content_package_submit_review",
     category: "review",
     title: "提交素材包审核",

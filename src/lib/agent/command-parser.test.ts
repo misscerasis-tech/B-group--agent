@@ -298,6 +298,17 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts poster asset attachment requests for content packages", () => {
+    const parsed = parseAgentCommand("把最新模板海报关联到最新素材包。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "attach_latest_poster_to_content_package",
+      value: {},
+      label: "关联模板海报到素材包：最新素材包",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts content package review submission requests", () => {
     const parsed = parseAgentCommand("提交最新素材包审核。");
 

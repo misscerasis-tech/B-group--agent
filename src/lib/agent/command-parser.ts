@@ -150,6 +150,14 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "attach_latest_poster_to_content_package";
+      value: {
+        packageKeyword?: string;
+        assetKeyword?: string;
+      };
+      label: string;
+    }
+  | {
       type: "submit_content_package_review";
       value: {
         keyword?: string;
@@ -675,6 +683,54 @@ function parseContentPackageFilesStatusOperation(text: string): ParsedAgentOpera
     },
     label: `${statusLabel}：${keyword ?? "最新素材包"}`,
   };
+}
+
+function parsePosterPackageAttachmentOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(素材包|内容包)/.test(text) ||
+    !/(模板化海报|模板海报|海报图|海报图片|生成图)/.test(text) ||
+    !/(关联|放进|加入|绑定|挂到|放到|插入)/.test(text)
+  ) {
+    return null;
+  }
+
+  const packageKeyword = extractPosterPackageKeyword(text);
+  const assetKeyword = extractPosterAssetKeyword(text);
+
+  return {
+    type: "attach_latest_poster_to_content_package",
+    value: {
+      ...(packageKeyword ? { packageKeyword } : {}),
+      ...(assetKeyword ? { assetKeyword } : {}),
+    },
+    label: `关联模板海报到素材包：${packageKeyword ?? "最新素材包"}`,
+  };
+}
+
+function extractPosterPackageKeyword(text: string) {
+  if (/(最新|最近|当前|这个|该).*(素材包|内容包)/.test(text)) {
+    return undefined;
+  }
+
+  return extractPackageKeyword(text)
+    ?.replace(/模板化海报|模板海报|海报图|海报图片|生成图|关联|放进|加入|绑定|挂到|放到|插入/g, "")
+    .trim();
+}
+
+function extractPosterAssetKeyword(text: string) {
+  if (/(最新|最近|当前|这个|该).*(模板化海报|模板海报|海报图|海报图片|生成图)/.test(text)) {
+    return undefined;
+  }
+
+  const keyword = text
+    .replace(/请|麻烦|帮我|把|将|当前|这个|这个项目|项目/g, "")
+    .replace(/素材包|内容包|模板化海报|模板海报|海报图|海报图片|生成图/g, "")
+    .replace(/关联|放进|加入|绑定|挂到|放到|插入|最新|最近|一张|一个/g, "")
+    .replace(/，|。|！|!|：|:|；|;|、/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return keyword.length >= 2 ? keyword.slice(0, 80) : undefined;
 }
 
 function parsePackageFileStatus(text: string) {
@@ -1362,6 +1418,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(contentPackageFilesStatusOperation);
   }
 
+  const posterPackageAttachmentOperation = parsePosterPackageAttachmentOperation(text);
+  if (posterPackageAttachmentOperation) {
+    operations.push(posterPackageAttachmentOperation);
+  }
+
   const packageReviewOperation = parseSubmitContentPackageReviewOperation(text);
   if (packageReviewOperation) {
     operations.push(packageReviewOperation);
@@ -1466,6 +1527,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "create_content_package" ||
       operation.type === "create_content_package_readiness_reminders" ||
       operation.type === "update_content_package_files_status" ||
+      operation.type === "attach_latest_poster_to_content_package" ||
       operation.type === "submit_content_package_review" ||
       operation.type === "decide_content_package_review" ||
       operation.type === "decide_review_task" ||
