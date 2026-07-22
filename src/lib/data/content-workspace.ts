@@ -1109,6 +1109,7 @@ export async function decideReviewTask(input: {
   workspaceId: string;
   userId: string;
   taskId: string;
+  projectId?: string;
   decision: ReviewDecision;
   decisionNote?: string;
 }) {
@@ -1116,6 +1117,7 @@ export async function decideReviewTask(input: {
     const reviewTask = await tx.reviewTask.findFirst({
       where: scopedWhere(input.workspaceId, {
         id: input.taskId,
+        ...(input.projectId ? { projectId: input.projectId } : {}),
         status: ReviewTaskStatus.PENDING,
       }) as Prisma.ReviewTaskWhereInput,
     });
@@ -1166,12 +1168,14 @@ export async function cancelReviewTask(input: {
   workspaceId: string;
   userId: string;
   taskId: string;
+  projectId?: string;
   decisionNote?: string;
 }) {
   return prisma.$transaction(async (tx) => {
     const reviewTask = await tx.reviewTask.findFirst({
       where: scopedWhere(input.workspaceId, {
         id: input.taskId,
+        ...(input.projectId ? { projectId: input.projectId } : {}),
         status: ReviewTaskStatus.PENDING,
       }) as Prisma.ReviewTaskWhereInput,
     });

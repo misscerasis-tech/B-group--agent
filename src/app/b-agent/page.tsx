@@ -16,7 +16,9 @@ import {
 } from "lucide-react";
 import {
   applyPendingAgentOperationAction,
+  cancelBAgentReviewTaskAction,
   confirmProjectStrategyAction,
+  decideBAgentReviewTaskAction,
   generateStarterPlanAction,
   rejectPendingAgentOperationAction,
   resolveBAgentReminderAction,
@@ -626,6 +628,62 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                                 {task.description ?? "等待审核人处理。"}
                               </p>
                               {task.dueAt ? <small>截止：{formatShortDate(task.dueAt)}</small> : null}
+                              {task.status === "PENDING" ? (
+                                <>
+                                  <form action={decideBAgentReviewTaskAction} className="form compact">
+                                    <input name="taskId" type="hidden" value={task.id} />
+                                    <input
+                                      name="projectId"
+                                      type="hidden"
+                                      value={selectedProject.id}
+                                    />
+                                    <label className="form-row">
+                                      <span className="field-label">审核备注</span>
+                                      <input
+                                        name="decisionNote"
+                                        placeholder="写通过依据、修改意见或风险点"
+                                        type="text"
+                                      />
+                                    </label>
+                                    <div className="hero-actions">
+                                      <button
+                                        className="button"
+                                        name="decision"
+                                        type="submit"
+                                        value="APPROVED"
+                                      >
+                                        <CheckCircle2 size={16} aria-hidden="true" />
+                                        通过
+                                      </button>
+                                      <button
+                                        className="button secondary"
+                                        name="decision"
+                                        type="submit"
+                                        value="CHANGES_REQUESTED"
+                                      >
+                                        <XCircle size={16} aria-hidden="true" />
+                                        要求修改
+                                      </button>
+                                    </div>
+                                  </form>
+                                  <form action={cancelBAgentReviewTaskAction} className="inline-form">
+                                    <input name="taskId" type="hidden" value={task.id} />
+                                    <input
+                                      name="projectId"
+                                      type="hidden"
+                                      value={selectedProject.id}
+                                    />
+                                    <input
+                                      name="decisionNote"
+                                      type="hidden"
+                                      value="B 组 Agent 工作台取消审核任务。"
+                                    />
+                                    <button className="button secondary" type="submit">
+                                      取消任务
+                                    </button>
+                                  </form>
+                                </>
+                              ) : null}
                             </article>
                           ))
                         ) : (

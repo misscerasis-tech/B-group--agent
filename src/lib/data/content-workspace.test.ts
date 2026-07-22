@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { ReminderSeverity } from "@prisma/client";
+import { ReminderSeverity, ReviewSubjectType, ReviewTaskStatus } from "@prisma/client";
 import {
   attachAssetToPackageFile,
   buildMetricsReminderCandidates,
+  cancelReviewTask,
   createContentPackage,
   submitContentPackageForReview,
 } from "./content-workspace";
@@ -31,6 +32,7 @@ const mocks = vi.hoisted(() => {
     reviewTask: {
       findFirst: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
     },
     changeLog: {
       create: vi.fn(),
@@ -48,6 +50,65 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({
   prisma: mocks.prisma,
 }));
+
+describe("cancelReviewTask", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
+  });
+
+  it("can limit cancellation to the current project inside the workspace", async () => {
+    const reviewTask = {
+      id: "review-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      subjectType: ReviewSubjectType.CONTENT_PACKAGE,
+      subjectId: "package-1",
+      title: "审核素材包：8 月 TikTok 素材包",
+      description: "待取消任务",
+      status: ReviewTaskStatus.PENDING,
+      reviewerUserId: null,
+      decisionNote: null,
+      dueAt: null,
+      decidedAt: null,
+      createdAt: new Date("2026-07-22T00:00:00.000Z"),
+    };
+    mocks.tx.reviewTask.findFirst.mockResolvedValue(reviewTask);
+    mocks.tx.reviewTask.update.mockResolvedValue({
+      ...reviewTask,
+      status: ReviewTaskStatus.CANCELED,
+      reviewerUserId: "user-1",
+      decisionNote: "B 组 Agent 工作台取消审核任务。",
+    });
+    mocks.tx.changeLog.create.mockResolvedValue({ id: "log-1" });
+
+    await cancelReviewTask({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      taskId: "review-1",
+      projectId: "project-1",
+      decisionNote: "B 组 Agent 工作台取消审核任务。",
+    });
+
+    expect(mocks.tx.reviewTask.findFirst).toHaveBeenCalledWith({
+      where: {
+        workspaceId: "workspace-1",
+        id: "review-1",
+        projectId: "project-1",
+        status: ReviewTaskStatus.PENDING,
+      },
+    });
+    expect(mocks.tx.reviewTask.update).toHaveBeenCalledWith({
+      where: {
+        id: "review-1",
+      },
+      data: expect.objectContaining({
+        status: ReviewTaskStatus.CANCELED,
+        reviewerUserId: "user-1",
+      }),
+    });
+  });
+});
 
 describe("createContentPackage", () => {
   beforeEach(() => {
