@@ -123,6 +123,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "content_package_readiness_reminders",
+    category: "content_package",
+    title: "将素材包交付缺口生成提醒",
+    example: "把最新素材包可交付性缺口生成提醒。",
+    writesTo: ["Reminder", "ContentPackage", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "content_package_submit_review",
     category: "review",
     title: "提交素材包审核",

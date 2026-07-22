@@ -111,6 +111,14 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "create_content_package_readiness_reminders";
+      value: {
+        keyword?: string;
+        limit: number;
+      };
+      label: string;
+    }
+  | {
       type: "submit_content_package_review";
       value: {
         keyword?: string;
@@ -555,6 +563,29 @@ function parseSubmitContentPackageReviewOperation(text: string): ParsedAgentOper
   };
 }
 
+function parseContentPackageReadinessReminderOperation(
+  text: string,
+): ParsedAgentOperation | null {
+  if (
+    !/(素材包|内容包)/.test(text) ||
+    !/(可交付|交付检查|交付性|缺口|阻塞|问题|风险)/.test(text) ||
+    !/(生成|创建|加入|转成|变成).*(提醒|待办)/.test(text)
+  ) {
+    return null;
+  }
+
+  const keyword = extractPackageReadinessKeyword(text);
+
+  return {
+    type: "create_content_package_readiness_reminders",
+    value: {
+      ...(keyword ? { keyword } : {}),
+      limit: 4,
+    },
+    label: `根据素材包可交付性缺口生成提醒：${keyword ?? "最新素材包"}`,
+  };
+}
+
 function parseDecideContentPackageReviewOperation(text: string): ParsedAgentOperation | null {
   if (!/(素材包|内容包)/.test(text) || !/审核/.test(text)) {
     return null;
@@ -578,6 +609,19 @@ function parseDecideContentPackageReviewOperation(text: string): ParsedAgentOper
     },
     label: `${decisionText}：${keyword ?? "最新素材包"}`,
   };
+}
+
+function extractPackageReadinessKeyword(text: string) {
+  if (/(最新|最近|当前|这个|该)/.test(text)) {
+    return null;
+  }
+
+  const keyword = extractPackageKeyword(text)
+    ?.replace(/可交付性|可交付|交付检查|交付性|缺口|阻塞|问题|风险/g, "")
+    .replace(/生成提醒|创建提醒|加入提醒|转成提醒|变成提醒|生成待办|创建待办|提醒|待办/g, "")
+    .trim();
+
+  return keyword && keyword.length >= 2 ? keyword : null;
 }
 
 function parseReviewDecision(text: string) {
@@ -1069,6 +1113,12 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(contentPackageOperation);
   }
 
+  const contentPackageReadinessReminderOperation =
+    parseContentPackageReadinessReminderOperation(text);
+  if (contentPackageReadinessReminderOperation) {
+    operations.push(contentPackageReadinessReminderOperation);
+  }
+
   const packageReviewOperation = parseSubmitContentPackageReviewOperation(text);
   if (packageReviewOperation) {
     operations.push(packageReviewOperation);
@@ -1150,6 +1200,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "infer_product_facts_from_text" ||
       operation.type === "recommend_strategy" ||
       operation.type === "create_content_package" ||
+      operation.type === "create_content_package_readiness_reminders" ||
       operation.type === "submit_content_package_review" ||
       operation.type === "decide_content_package_review",
   );

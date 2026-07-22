@@ -231,6 +231,19 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts content package readiness reminder requests", () => {
+    const parsed = parseAgentCommand("把最新素材包可交付性缺口生成提醒。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_content_package_readiness_reminders",
+      value: {
+        limit: 4,
+      },
+      label: "根据素材包可交付性缺口生成提醒：最新素材包",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts content package review submission requests", () => {
     const parsed = parseAgentCommand("提交最新素材包审核。");
 

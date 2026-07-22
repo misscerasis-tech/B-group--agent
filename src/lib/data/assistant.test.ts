@@ -47,6 +47,7 @@ const mocks = vi.hoisted(() => {
     },
     asset: {
       count: vi.fn(),
+      findMany: vi.fn(),
     },
     contentPackage: {
       count: vi.fn(),
@@ -619,6 +620,82 @@ describe("generateStarterPlan", () => {
         entityId: "package-created-from-agent",
         action: "agent_content_package_created",
         summary: "创建素材包结构：2026-08 第1周 TikTok 素材包",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("creates reminders from the latest content package readiness gaps", async () => {
+    const contentPackage = {
+      id: "package-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      strategyId: "strategy-1",
+      name: "2026-08 第1周 TikTok 素材包",
+      period: "2026-08 第1周",
+      frequency: "WEEKLY",
+      status: "DRAFT",
+      summary: "待补齐素材。",
+      updatedAt: new Date("2026-07-22T00:00:00.000Z"),
+      project: {
+        id: "project-1",
+        name: "巴西新品首月增长",
+        projectProducts: [
+          {
+            productId: "product-1",
+          },
+        ],
+      },
+      files: [
+        {
+          id: "file-1",
+          status: "PLANNED",
+          asset: null,
+          createdAt: new Date("2026-07-22T00:00:00.000Z"),
+        },
+      ],
+    };
+    mocks.tx.contentPackage.count.mockResolvedValue(1);
+    mocks.tx.contentPackage.findFirst.mockResolvedValue(contentPackage);
+    mocks.tx.asset.findMany.mockResolvedValue([]);
+    mocks.tx.reminder.findFirst.mockResolvedValue(null);
+    mocks.tx.reminder.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: `reminder-${data.title}`,
+        ...data,
+      }),
+    );
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "把最新素材包可交付性缺口生成提醒。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.reminder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        title: "2026-08 第1周 TikTok 素材包：先生成文件内容",
+        severity: "WARNING",
+        status: "OPEN",
+      }),
+    });
+    expect(mocks.tx.reminder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        title: "2026-08 第1周 TikTok 素材包：关联真实产品图和 Logo",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPackage",
+        entityId: "package-1",
+        action: "agent_package_readiness_reminders_generated",
+        summary: expect.stringContaining("新增 2 条"),
         actorUserId: "user-1",
       }),
     });
