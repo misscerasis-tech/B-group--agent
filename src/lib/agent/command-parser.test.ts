@@ -4,6 +4,7 @@ import {
   PlanItemStatus,
   ProjectStatus,
   ReminderSeverity,
+  ReviewSubjectType,
   ReviewTaskStatus,
 } from "@prisma/client";
 import { describe, expect, it } from "vitest";
@@ -292,6 +293,39 @@ describe("parseAgentCommand", () => {
         decisionNote: "由 B 组 Agent 中文指令处理。",
       },
       label: "审核通过：最新素材包",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("extracts product fact review decisions without using the content package flow", () => {
+    const parsed = parseAgentCommand("产品事实审核通过。");
+
+    expect(parsed.operations).toEqual([
+      {
+        type: "decide_review_task",
+        value: {
+          subjectType: ReviewSubjectType.PRODUCT_FACT,
+          decision: ReviewTaskStatus.APPROVED,
+          decisionNote: "由 B 组 Agent 中文指令处理。",
+        },
+        label: "产品事实审核通过",
+      },
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("extracts asset review change requests with a keyword", () => {
+    const parsed = parseAgentCommand("Logo 素材审核不通过，要求修改。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "decide_review_task",
+      value: {
+        subjectType: ReviewSubjectType.ASSET,
+        decision: ReviewTaskStatus.CHANGES_REQUESTED,
+        keyword: "Logo",
+        decisionNote: "由 B 组 Agent 中文指令处理。",
+      },
+      label: "素材要求修改：Logo",
     });
     expect(parsed.confidence).toBe("high");
   });

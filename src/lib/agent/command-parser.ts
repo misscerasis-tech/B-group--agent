@@ -4,6 +4,7 @@ import {
   PlanItemStatus,
   ProjectStatus,
   ReminderSeverity,
+  ReviewSubjectType,
   ReviewTaskStatus,
 } from "@prisma/client";
 
@@ -144,6 +145,16 @@ export type ParsedAgentOperation =
   | {
       type: "decide_content_package_review";
       value: {
+        decision: typeof ReviewTaskStatus.APPROVED | typeof ReviewTaskStatus.CHANGES_REQUESTED;
+        keyword?: string;
+        decisionNote: string;
+      };
+      label: string;
+    }
+  | {
+      type: "decide_review_task";
+      value: {
+        subjectType?: ReviewSubjectType;
         decision: typeof ReviewTaskStatus.APPROVED | typeof ReviewTaskStatus.CHANGES_REQUESTED;
         keyword?: string;
         decisionNote: string;
@@ -468,7 +479,7 @@ function parseConfirmProductFactsOperation(text: string): ParsedAgentOperation |
   if (
     !/(产品事实|事实)/.test(text) ||
     !/(确认|审核通过|通过审核|批准|全部通过|全部确认)/.test(text) ||
-    /(新增|添加|记录|补充|提取|抽取|整理|生成|识别)/.test(text)
+    /(新增|添加|记录|补充|提取|抽取|整理|生成|识别|审核)/.test(text)
   ) {
     return null;
   }
@@ -687,6 +698,82 @@ function parseDecideContentPackageReviewOperation(text: string): ParsedAgentOper
     },
     label: `${decisionText}：${keyword ?? "最新素材包"}`,
   };
+}
+
+function parseReviewTaskDecisionOperation(text: string): ParsedAgentOperation | null {
+  if (/(素材包|内容包)/.test(text) || !/(审核|复核|审批)/.test(text)) {
+    return null;
+  }
+
+  const decision = parseReviewDecision(text);
+
+  if (!decision) {
+    return null;
+  }
+
+  const subjectType = parseReviewSubjectType(text);
+  const keyword = extractReviewTaskKeyword(text, subjectType);
+  const decisionText = decision === ReviewTaskStatus.APPROVED ? "审核通过" : "要求修改";
+  const subjectText = subjectType ? reviewSubjectTypeText(subjectType) : "最新审核任务";
+
+  return {
+    type: "decide_review_task",
+    value: {
+      ...(subjectType ? { subjectType } : {}),
+      decision,
+      ...(keyword ? { keyword } : {}),
+      decisionNote: "由 B 组 Agent 中文指令处理。",
+    },
+    label: `${subjectText}${decisionText}${keyword ? `：${keyword}` : ""}`,
+  };
+}
+
+function parseReviewSubjectType(text: string) {
+  if (/(产品事实|事实复核|事实确认)/.test(text)) {
+    return ReviewSubjectType.PRODUCT_FACT;
+  }
+
+  if (/(策略草案|项目策略|增长策略|内容策略|市场策略|策略确认|策略)/.test(text)) {
+    return ReviewSubjectType.PROJECT_STRATEGY;
+  }
+
+  if (/(素材来源|产品图|商品图|官方\s*Logo|Logo|logo|素材审核|审核素材|资产)/.test(text)) {
+    return ReviewSubjectType.ASSET;
+  }
+
+  return undefined;
+}
+
+function reviewSubjectTypeText(subjectType: ReviewSubjectType) {
+  const labels: Record<ReviewSubjectType, string> = {
+    ASSET: "素材",
+    CONTENT_PACKAGE: "素材包",
+    PRODUCT_FACT: "产品事实",
+    PROJECT_STRATEGY: "策略草案",
+  };
+
+  return labels[subjectType];
+}
+
+function extractReviewTaskKeyword(text: string, subjectType?: ReviewSubjectType) {
+  const subjectWords =
+    subjectType === ReviewSubjectType.PRODUCT_FACT
+      ? /产品事实|事实复核|事实确认|事实/g
+      : subjectType === ReviewSubjectType.PROJECT_STRATEGY
+        ? /策略草案|项目策略|增长策略|内容策略|市场策略|策略确认|策略/g
+        : subjectType === ReviewSubjectType.ASSET
+          ? /素材来源|素材审核|审核素材|素材|资产/g
+          : /审核任务|审核中心|待审核事项|待确认事项|复核事项/g;
+  const keyword = text
+    .replace(/请|麻烦|帮我|把|将|当前|这个|这个项目|项目/g, "")
+    .replace(subjectWords, "")
+    .replace(/审核通过|通过审核|可以通过|批准|同意|要求修改|需要修改|退回修改|不通过|驳回|修改后再审/gi, "")
+    .replace(/审核|复核|审批|任务|待处理|最新|最近|一条|一个/g, "")
+    .replace(/，|。|！|!|：|:|；|;|、/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return keyword.length >= 2 ? keyword.slice(0, 80) : undefined;
 }
 
 function parseMissingReviewTasksOperation(text: string): ParsedAgentOperation | null {
@@ -1236,6 +1323,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(packageReviewDecisionOperation);
   }
 
+  const reviewTaskDecisionOperation = parseReviewTaskDecisionOperation(text);
+  if (reviewTaskDecisionOperation) {
+    operations.push(reviewTaskDecisionOperation);
+  }
+
   const missingReviewTasksOperation = parseMissingReviewTasksOperation(text);
   if (missingReviewTasksOperation) {
     operations.push(missingReviewTasksOperation);
@@ -1317,6 +1409,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "update_content_package_files_status" ||
       operation.type === "submit_content_package_review" ||
       operation.type === "decide_content_package_review" ||
+      operation.type === "decide_review_task" ||
       operation.type === "create_missing_review_tasks",
   );
 

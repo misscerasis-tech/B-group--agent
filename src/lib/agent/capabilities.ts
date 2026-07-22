@@ -163,6 +163,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: true,
   },
   {
+    key: "review_task_decide",
+    category: "review",
+    title: "处理审核中心任务",
+    example: "产品事实审核通过，或 Logo 素材审核不通过，要求修改。",
+    writesTo: ["ReviewTask", "ProductFact", "Asset", "ProjectStrategy", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
     key: "review_tasks_create_missing",
     category: "review",
     title: "补齐当前项目审核任务",

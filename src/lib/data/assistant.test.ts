@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       count: vi.fn(),
       findMany: vi.fn(),
     },
@@ -51,6 +52,7 @@ const mocks = vi.hoisted(() => {
     asset: {
       count: vi.fn(),
       findMany: vi.fn(),
+      updateMany: vi.fn(),
     },
     contentPackage: {
       count: vi.fn(),
@@ -977,6 +979,85 @@ describe("generateStarterPlan", () => {
         entityId: "review-1",
         action: "agent_content_package_review_approved",
         summary: "审核通过：最新素材包",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("approves a pending product fact review from a Chinese agent command", async () => {
+    const reviewTask = {
+      id: "review-fact-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      subjectType: "PRODUCT_FACT",
+      subjectId: "fact-1",
+      title: "确认产品事实：核心卖点",
+      description: "24小时保温",
+      status: "PENDING",
+      reviewerUserId: null,
+      decisionNote: null,
+      dueAt: null,
+      decidedAt: null,
+      createdAt: new Date("2026-07-22T00:00:00.000Z"),
+    };
+    mocks.tx.projectProduct.findMany.mockResolvedValue([
+      {
+        productId: "product-1",
+      },
+    ]);
+    mocks.tx.productFact.findMany.mockResolvedValue([
+      {
+        id: "fact-1",
+      },
+    ]);
+    mocks.tx.reviewTask.count.mockResolvedValue(1);
+    mocks.tx.reviewTask.findFirst.mockResolvedValue(reviewTask);
+    mocks.tx.reviewTask.update.mockResolvedValue({
+      ...reviewTask,
+      status: "APPROVED",
+      reviewerUserId: "user-1",
+      decisionNote: "由 B 组 Agent 中文指令处理。",
+      decidedAt: new Date("2026-07-22T01:00:00.000Z"),
+    });
+    mocks.tx.productFact.updateMany.mockResolvedValue({
+      count: 1,
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "产品事实审核通过。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.productFact.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "fact-1",
+        workspaceId: "workspace-1",
+      },
+      data: {
+        status: "CONFIRMED",
+      },
+    });
+    expect(mocks.tx.reviewTask.update).toHaveBeenCalledWith({
+      where: {
+        id: "review-fact-1",
+      },
+      data: expect.objectContaining({
+        status: "APPROVED",
+        reviewerUserId: "user-1",
+        decisionNote: "由 B 组 Agent 中文指令处理。",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ReviewTask",
+        entityId: "review-fact-1",
+        action: "agent_review_task_approved",
+        summary: "产品事实审核通过",
         actorUserId: "user-1",
       }),
     });
