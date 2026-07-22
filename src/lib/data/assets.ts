@@ -43,6 +43,17 @@ export async function listWorkspaceAssets(workspaceId: string) {
   });
 }
 
+export async function getWorkspaceAssetForDownload(workspaceId: string, assetId: string) {
+  return prisma.asset.findFirst({
+    where: scopedWhere(workspaceId, {
+      id: assetId,
+      storagePath: {
+        not: null,
+      },
+    }) as Prisma.AssetWhereInput,
+  });
+}
+
 export async function listWorkspaceImageJobs(workspaceId: string) {
   return prisma.imageGenerationJob.findMany({
     where: scopedWhere(workspaceId),
@@ -267,6 +278,17 @@ export function validateAssetFile(
   if (kind === AssetKind.EXPORT_FILE && !isAllowedExportFile(extension, mimeType)) {
     throw new Error("导出文件仅支持 ZIP、PDF、Office、TXT、Markdown 或表格文件。");
   }
+}
+
+export function resolveLocalAssetPath(storagePath: string) {
+  const root = path.resolve(process.cwd(), LOCAL_ASSET_ROOT);
+  const absolutePath = path.resolve(process.cwd(), storagePath);
+
+  if (!absolutePath.startsWith(`${root}${path.sep}`)) {
+    throw new Error("素材文件路径不在本地素材库目录内。");
+  }
+
+  return absolutePath;
 }
 
 function isImageAssetKind(kind: AssetKind) {

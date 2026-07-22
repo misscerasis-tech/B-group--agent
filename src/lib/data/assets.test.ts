@@ -1,6 +1,6 @@
 import { AssetKind } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { validateAssetFile } from "./assets";
+import { resolveLocalAssetPath, validateAssetFile } from "./assets";
 
 describe("validateAssetFile", () => {
   it("allows image files for product image assets", () => {
@@ -41,5 +41,17 @@ describe("validateAssetFile", () => {
         size: 21 * 1024 * 1024,
       }),
     ).toThrow("不能超过 20MB");
+  });
+});
+
+describe("resolveLocalAssetPath", () => {
+  it("allows files inside the local asset storage root", () => {
+    expect(resolveLocalAssetPath("storage/assets/workspace-1/product.png")).toContain(
+      "storage/assets/workspace-1/product.png",
+    );
+  });
+
+  it("rejects paths outside the local asset storage root", () => {
+    expect(() => resolveLocalAssetPath("../.env")).toThrow("素材文件路径不在本地素材库目录内");
   });
 });

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Image as ImageIcon, Layers, Sparkles } from "lucide-react";
 import {
   approveAssetAction,
@@ -220,6 +221,11 @@ export default async function AssetsPage() {
                       {asset.project ? `项目：${asset.project.name}` : "未关联项目"}
                     </p>
                     {asset.storagePath ? <small>{asset.storagePath}</small> : null}
+                    {asset.storagePath ? (
+                      <Link className="button secondary" href={`/assets/${asset.id}/download`}>
+                        下载原文件
+                      </Link>
+                    ) : null}
                     {asset.status !== "APPROVED" ? (
                       <form action={approveAssetAction} className="inline-form">
                         <input name="assetId" type="hidden" value={asset.id} />
