@@ -284,6 +284,61 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("creates a content package structure from a Chinese agent command", async () => {
+    mocks.tx.contentPackage.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: "package-created-from-agent",
+        ...data,
+      }),
+    );
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "为 2026-08 第1周创建 TikTok 素材包。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.contentPackage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        strategyId: "strategy-1",
+        name: "2026-08 第1周 TikTok 素材包",
+        period: "2026-08 第1周",
+        frequency: "WEEKLY",
+        status: "DRAFT",
+      }),
+    });
+    expect(mocks.tx.contentPackageFile.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          contentPackageId: "package-created-from-agent",
+          name: "素材包说明 PDF",
+          status: "PLANNED",
+        }),
+        expect.objectContaining({
+          contentPackageId: "package-created-from-agent",
+          name: "最终 ZIP 打包下载",
+          status: "PLANNED",
+        }),
+      ]),
+    });
+    expect(mocks.tx.contentPackageFile.createMany.mock.calls.at(-1)?.[0].data).toHaveLength(11);
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPackage",
+        entityId: "package-created-from-agent",
+        action: "agent_content_package_created",
+        summary: "创建素材包结构：2026-08 第1周 TikTok 素材包",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("completes an open reminder from a Chinese agent command", async () => {
     const reminder = {
       id: "reminder-1",

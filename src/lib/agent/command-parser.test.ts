@@ -149,6 +149,22 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts content package creation requests for a specific period", () => {
+    const parsed = parseAgentCommand("为 2026-08 第1周创建 TikTok 素材包。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_content_package",
+      value: {
+        name: "2026-08 第1周 TikTok 素材包",
+        period: "2026-08 第1周",
+        frequency: ContentFrequency.WEEKLY,
+        summary: "由 B 组 Agent 中文指令创建的素材包结构，待补充真实素材和审核。",
+      },
+      label: "创建素材包结构：2026-08 第1周 TikTok 素材包",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts reminder completion requests", () => {
     const parsed = parseAgentCommand("把抽奖规则提醒标记完成。");
 

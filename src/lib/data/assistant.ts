@@ -32,6 +32,20 @@ type ActivePlanChannelUsage = {
   week: number;
 };
 
+const DEFAULT_CONTENT_PACKAGE_FILES: Array<[string, string]> = [
+  ["素材包说明 PDF", "PDF"],
+  ["内容排期 XLSX", "XLSX"],
+  ["平台文案 DOCX", "DOCX"],
+  ["Hashtags TXT", "TXT"],
+  ["TikTok 视频脚本 DOCX", "DOCX"],
+  ["发布配文 TXT", "TXT"],
+  ["模板化海报图片", "PNG"],
+  ["海报文案 DOCX", "DOCX"],
+  ["设计 Brief PDF", "PDF"],
+  ["品牌与合规检查 PDF", "PDF"],
+  ["最终 ZIP 打包下载", "ZIP"],
+];
+
 export async function getAssistantState(workspaceId: string, projectId?: string) {
   const projects = await prisma.project.findMany({
     where: scopedWhere(workspaceId, {
@@ -319,6 +333,7 @@ export async function submitAgentCommand(input: {
       const starterPlanOperations = parsed.operations.filter(isStarterPlanOperation);
       const metricsOperations = parsed.operations.filter(isMetricsOperation);
       const planItemOperations = parsed.operations.filter(isPlanItemOperation);
+      const contentPackageOperations = parsed.operations.filter(isContentPackageOperation);
       const reminderCompletionOperations = parsed.operations.filter(isReminderCompletionOperation);
       const planItemCompletionOperations = parsed.operations.filter(isPlanItemCompletionOperation);
 
@@ -392,6 +407,14 @@ export async function submitAgentCommand(input: {
         projectId: project.id,
         strategyId: updatedStrategy.id,
         operations: planItemOperations,
+      });
+
+      await applyContentPackageOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        strategyId: updatedStrategy.id,
+        operations: contentPackageOperations,
       });
 
       await applyReminderCompletionOperations(tx, {
@@ -469,6 +492,7 @@ export async function applyPendingAgentOperation(input: {
     const starterPlanOperations = parsedOperations.filter(isStarterPlanOperation);
     const metricsOperations = parsedOperations.filter(isMetricsOperation);
     const planItemOperations = parsedOperations.filter(isPlanItemOperation);
+    const contentPackageOperations = parsedOperations.filter(isContentPackageOperation);
     const reminderCompletionOperations = parsedOperations.filter(isReminderCompletionOperation);
     const planItemCompletionOperations = parsedOperations.filter(isPlanItemCompletionOperation);
     let updatedStrategy: ProjectStrategyRecord = strategy;
@@ -580,6 +604,14 @@ export async function applyPendingAgentOperation(input: {
       operations: planItemOperations,
     });
 
+    await applyContentPackageOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      strategyId: updatedStrategy.id,
+      operations: contentPackageOperations,
+    });
+
     await applyReminderCompletionOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -624,6 +656,7 @@ export async function applyPendingAgentOperation(input: {
         starterPlanChanged: starterPlanOperations.length > 0,
         metricsChanged: metricsOperations.length > 0,
         planItemChanged: planItemOperations.length > 0,
+        contentPackageChanged: contentPackageOperations.length > 0,
         reminderCompleted: reminderCompletionOperations.length > 0,
         planItemCompleted: planItemCompletionOperations.length > 0,
       });
@@ -1001,19 +1034,7 @@ async function createStarterPlanIfMissing(
   });
 
   await tx.contentPackageFile.createMany({
-    data: [
-      ["素材包说明 PDF", "PDF"],
-      ["内容排期 XLSX", "XLSX"],
-      ["平台文案 DOCX", "DOCX"],
-      ["Hashtags TXT", "TXT"],
-      ["TikTok 视频脚本 DOCX", "DOCX"],
-      ["发布配文 TXT", "TXT"],
-      ["模板化海报图片", "PNG"],
-      ["海报文案 DOCX", "DOCX"],
-      ["设计 Brief PDF", "PDF"],
-      ["品牌与合规检查 PDF", "PDF"],
-      ["最终 ZIP 打包下载", "ZIP"],
-    ].map(([name, fileType]) => ({
+    data: DEFAULT_CONTENT_PACKAGE_FILES.map(([name, fileType]) => ({
       contentPackageId: contentPackage.id,
       name,
       fileType,
@@ -1353,6 +1374,65 @@ async function applyPlanItemOperations(
   }
 }
 
+async function applyContentPackageOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    strategyId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "create_content_package") {
+      continue;
+    }
+
+    const contentPackage = await tx.contentPackage.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        strategyId: input.strategyId,
+        name: operation.value.name,
+        period: operation.value.period,
+        frequency: operation.value.frequency,
+        status: ContentPackageStatus.DRAFT,
+        summary: operation.value.summary,
+      },
+    });
+
+    await tx.contentPackageFile.createMany({
+      data: DEFAULT_CONTENT_PACKAGE_FILES.map(([name, fileType]) => ({
+        contentPackageId: contentPackage.id,
+        name,
+        fileType,
+        status: PackageFileStatus.PLANNED,
+      })),
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ContentPackage",
+        entityId: contentPackage.id,
+        action: "agent_content_package_created",
+        summary: operation.label,
+        after: {
+          id: contentPackage.id,
+          name: contentPackage.name,
+          period: contentPackage.period,
+          frequency: contentPackage.frequency,
+          status: contentPackage.status,
+          fileCount: DEFAULT_CONTENT_PACKAGE_FILES.length,
+        },
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
 async function applyReminderCompletionOperations(
   tx: Prisma.TransactionClient,
   input: {
@@ -1581,6 +1661,10 @@ function isPlanItemOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_plan_item";
 }
 
+function isContentPackageOperation(operation: ParsedAgentOperation) {
+  return operation.type === "create_content_package";
+}
+
 function isReminderCompletionOperation(operation: ParsedAgentOperation) {
   return operation.type === "complete_reminder";
 }
@@ -1691,6 +1775,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
       continue;
     }
 
+    if (type === "create_content_package" && isContentPackageValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `创建素材包结构：${value.name}`,
+      });
+      continue;
+    }
+
     if (type === "create_plan_item" && isPlanItemValue(value)) {
       operations.push({
         type,
@@ -1732,6 +1825,28 @@ function isMetricsSnapshotValue(value: unknown): value is Extract<
     (record.notes === undefined || typeof record.notes === "string") &&
     record.clicks <= record.impressions &&
     record.conversions <= record.clicks
+  );
+}
+
+function isContentPackageValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "create_content_package" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    typeof record.name === "string" &&
+    record.name.trim().length > 0 &&
+    typeof record.period === "string" &&
+    record.period.trim().length > 0 &&
+    (record.frequency === ContentFrequency.WEEKLY ||
+      record.frequency === ContentFrequency.BIWEEKLY ||
+      record.frequency === ContentFrequency.MONTHLY) &&
+    (record.summary === undefined || typeof record.summary === "string")
   );
 }
 
@@ -1822,46 +1937,52 @@ function buildConfirmedAssistantReply(input: {
   starterPlanChanged: boolean;
   metricsChanged: boolean;
   planItemChanged: boolean;
+  contentPackageChanged: boolean;
   reminderCompleted: boolean;
   planItemCompleted: boolean;
 }) {
   const starterPlanText = input.starterPlanChanged ? "，并生成首月计划和第一份素材包结构" : "";
   const metricsText = input.metricsChanged ? "，并录入渠道表现指标" : "";
   const planItemText = input.planItemChanged ? "，并新增内容计划" : "";
+  const contentPackageText = input.contentPackageChanged ? "，并创建素材包结构" : "";
   const completedReminderText = input.reminderCompleted ? "，并完成项目提醒" : "";
   const completedPlanItemText = input.planItemCompleted ? "，并完成内容计划" : "";
 
   if (input.strategyChanged && input.strategyWasConfirmed) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认写入策略草案${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认写入策略草案${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认更新项目基础信息${reminderText}${starterPlanText}${metricsText}${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认更新项目基础信息${reminderText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderChanged) {
-    return `已按你的确认创建提醒${starterPlanText}${metricsText}${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建提醒${starterPlanText}${metricsText}${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.starterPlanChanged) {
-    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.metricsChanged) {
-    return `已按你的确认录入渠道表现指标${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认录入渠道表现指标${planItemText}${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.planItemChanged) {
-    return `已按你的确认新增内容计划${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认新增内容计划${contentPackageText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.contentPackageChanged) {
+    return `已按你的确认创建素材包结构${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderCompleted) {

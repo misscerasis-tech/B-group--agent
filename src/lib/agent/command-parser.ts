@@ -63,6 +63,16 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "create_content_package";
+      value: {
+        name: string;
+        period: string;
+        frequency: ContentFrequency;
+        summary?: string;
+      };
+      label: string;
+    }
+  | {
       type: "complete_plan_item";
       value: {
         keyword?: string;
@@ -272,7 +282,70 @@ function parseCompleteReminderOperation(text: string): ParsedAgentOperation | nu
 }
 
 function shouldGenerateStarterPlan(text: string) {
-  return /生成首月计划|创建首月计划|生成第一份素材包|创建第一份素材包|生成素材包结构|创建素材包结构/.test(text);
+  if (/生成首月计划|创建首月计划|生成第一份素材包|创建第一份素材包/.test(text)) {
+    return true;
+  }
+
+  return /生成素材包结构|创建素材包结构/.test(text) && !parseContentPackagePeriod(text);
+}
+
+function parseContentPackageOperation(text: string): ParsedAgentOperation | null {
+  if (!/(新增|创建|生成|准备|安排).*(素材包|内容包)/.test(text)) {
+    return null;
+  }
+
+  if (shouldGenerateStarterPlan(text)) {
+    return null;
+  }
+
+  if (/(每周|每两周|双周|每月|每个月|月更|周更).*(生成|创建).*(一次|一份)?素材包/.test(text)) {
+    return null;
+  }
+
+  const period = parseContentPackagePeriod(text);
+
+  if (!period) {
+    return null;
+  }
+
+  const channel = CHANNELS.find((channelName) =>
+    text.toLowerCase().includes(channelName.toLowerCase()),
+  );
+  const frequency = parseFrequency(text) ?? ContentFrequency.WEEKLY;
+  const name = `${period}${channel ? ` ${channel}` : ""} 素材包`;
+
+  return {
+    type: "create_content_package",
+    value: {
+      name,
+      period,
+      frequency,
+      summary: "由 B 组 Agent 中文指令创建的素材包结构，待补充真实素材和审核。",
+    },
+    label: `创建素材包结构：${name}`,
+  };
+}
+
+function parseContentPackagePeriod(text: string) {
+  const explicitPeriod = text.match(/20\d{2}[-/.年]\d{1,2}(?:\s*(?:第\s*\d+\s*周|周|月))?/);
+
+  if (explicitPeriod?.[0]) {
+    return explicitPeriod[0].replace(/年/g, "-").replace(/月/g, "").replace(/\s+/g, " ").trim();
+  }
+
+  const relativePeriod = text.match(/(?:首月|本月|下个月|下月|本周|下周)(?:\s*第\s*\d+\s*周)?/);
+
+  if (relativePeriod?.[0]) {
+    return relativePeriod[0].replace(/\s+/g, " ").trim();
+  }
+
+  const week = parsePlanWeek(text);
+
+  if (week) {
+    return `第${week}周`;
+  }
+
+  return null;
 }
 
 function parseMetricsSnapshotOperation(text: string): ParsedAgentOperation | null {
@@ -677,6 +750,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     });
   }
 
+  const contentPackageOperation = parseContentPackageOperation(text);
+  if (contentPackageOperation) {
+    operations.push(contentPackageOperation);
+  }
+
   const metricsOperation = parseMetricsSnapshotOperation(text);
   if (metricsOperation) {
     operations.push(metricsOperation);
@@ -741,7 +819,8 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "create_plan_item" || operation.type === "complete_plan_item",
   );
   const hasCompleteWorkflowOperation = dedupedOperations.some(
-    (operation) => operation.type === "complete_reminder",
+    (operation) =>
+      operation.type === "complete_reminder" || operation.type === "create_content_package",
   );
 
   return {

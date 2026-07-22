@@ -197,6 +197,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                     <li>录入渠道表现：记录 TikTok 本周曝光、点击、转化和花费</li>
                     <li>新增内容计划：第2周 TikTok 做一条开箱短视频，主题新品认知</li>
                     <li>完成内容计划：第2周 TikTok 开箱短视频已完成</li>
+                    <li>创建素材包：为 2026-08 第1周创建 TikTok 素材包</li>
                     <li>生成首月计划：请生成首月计划和第一份素材包结构</li>
                     <li>识别市场：巴西、蒙古、美国、日本、东南亚等</li>
                     <li>追加或删除内容方向：世界杯、那达慕、黑五、通勤、礼赠、小抽奖等</li>
