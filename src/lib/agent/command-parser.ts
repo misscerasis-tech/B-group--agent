@@ -64,6 +64,15 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "update_product_fact";
+      value: {
+        label: string;
+        value: string;
+        source: string;
+      };
+      label: string;
+    }
+  | {
       type: "infer_product_facts_from_text";
       value: {
         sourceText: string;
@@ -332,6 +341,9 @@ const PRODUCT_FACT_LABELS: Record<string, string> = {
   产品参数: "规格参数",
   规格: "规格参数",
   参数: "规格参数",
+  容量: "规格参数",
+  材质: "规格参数",
+  尺寸: "规格参数",
   使用场景: "使用场景",
   场景: "使用场景",
   目标人群: "目标人群",
@@ -340,6 +352,9 @@ const PRODUCT_FACT_LABELS: Record<string, string> = {
   合规注意: "合规注意",
   合规: "合规注意",
 };
+
+const PRODUCT_FACT_LABEL_PATTERN =
+  "(产品名称|名称|核心卖点|卖点|规格参数|产品参数|规格|参数|容量|材质|尺寸|使用场景|场景|目标人群|人群|视觉限制|合规注意|合规)";
 
 const MAX_PRODUCT_FACT_SOURCE_TEXT_LENGTH = 2000;
 
@@ -539,8 +554,14 @@ function parseProductFactOperation(text: string): ParsedAgentOperation | null {
     return null;
   }
 
+  if (/(修改|更新|调整|更正|纠正|改成|改为|更新为|调整为)/.test(text)) {
+    return null;
+  }
+
   const match = text.match(
-    /(?:新增|添加|记录|补充)?(?:产品事实|事实)?\s*[:：]?\s*(产品名称|核心卖点|卖点|规格参数|产品参数|规格|参数|使用场景|场景|目标人群|人群|视觉限制|合规注意|合规)\s*[=＝:：]\s*([^，。；;]+)/,
+    new RegExp(
+      `(?:新增|添加|记录|补充)?(?:产品事实|事实)?\\s*[:：]?\\s*${PRODUCT_FACT_LABEL_PATTERN}\\s*[=＝:：]\\s*([^，。；;]+)`,
+    ),
   );
 
   if (!match?.[1] || !match[2]) {
@@ -563,6 +584,51 @@ function parseProductFactOperation(text: string): ParsedAgentOperation | null {
     },
     label: `新增产品事实：${label}=${factValue}`,
   };
+}
+
+function parseUpdateProductFactOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(产品事实|事实|卖点|规格|参数|容量|材质|尺寸|场景|人群|视觉限制|合规)/.test(text) ||
+    !/(修改|更新|调整|更正|纠正|改成|改为|更新为|调整为)/.test(text)
+  ) {
+    return null;
+  }
+
+  const patterns = [
+    new RegExp(
+      `(?:修改|更新|调整|更正|纠正)(?:产品事实|事实)?\\s*[:：]?\\s*${PRODUCT_FACT_LABEL_PATTERN}\\s*[=＝:：]\\s*([^，。；;]+)`,
+    ),
+    new RegExp(
+      `(?:把|将)?(?:产品事实|事实)?\\s*${PRODUCT_FACT_LABEL_PATTERN}\\s*(?:改成|改为|更新为|调整为|更正为)\\s*([^，。；;]+)`,
+    ),
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+
+    if (!match?.[1] || !match[2]) {
+      continue;
+    }
+
+    const label = PRODUCT_FACT_LABELS[match[1]] ?? match[1];
+    const factValue = match[2].trim().slice(0, 160);
+
+    if (factValue.length < 2) {
+      return null;
+    }
+
+    return {
+      type: "update_product_fact",
+      value: {
+        label,
+        value: factValue,
+        source: "B组 Agent 中文指令校准",
+      },
+      label: `修改产品事实：${label}=${factValue}`,
+    };
+  }
+
+  return null;
 }
 
 function parseInferProductFactsFromTextOperation(text: string): ParsedAgentOperation | null {
@@ -1810,6 +1876,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(projectHealthReminderOperation);
   }
 
+  const productFactUpdateOperation = parseUpdateProductFactOperation(text);
+  if (productFactUpdateOperation) {
+    operations.push(productFactUpdateOperation);
+  }
+
   const productFactOperation = parseProductFactOperation(text);
   if (productFactOperation) {
     operations.push(productFactOperation);
@@ -2001,6 +2072,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "update_reminder_due_date" ||
       operation.type === "create_project_health_reminders" ||
       operation.type === "create_product_fact" ||
+      operation.type === "update_product_fact" ||
       operation.type === "infer_product_facts_from_text" ||
       operation.type === "confirm_product_facts" ||
       operation.type === "recommend_strategy" ||

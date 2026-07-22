@@ -160,6 +160,23 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts product fact update requests without creating a duplicate fact", () => {
+    const parsed = parseAgentCommand("把容量改成 600ml。");
+
+    expect(parsed.operations).toEqual([
+      {
+        type: "update_product_fact",
+        value: {
+          label: "规格参数",
+          value: "600ml",
+          source: "B组 Agent 中文指令校准",
+        },
+        label: "修改产品事实：规格参数=600ml",
+      },
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts product fact inference from pasted Chinese product material", () => {
     const parsed = parseAgentCommand(
       "请从产品资料提取产品事实：智能温显保温杯，500ml，不锈钢，适合通勤和健身，24小时保温，防漏便携。",

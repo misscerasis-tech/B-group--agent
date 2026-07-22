@@ -1414,6 +1414,31 @@ async function findCompletionTargetWarnings(
       }
     }
 
+    if (operation.type === "update_product_fact") {
+      const productIds = await findProjectLinkedProductIds(tx, {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+      });
+
+      if (productIds.length === 0) {
+        warnings.push("当前项目还没有关联产品，无法修改产品事实");
+        continue;
+      }
+
+      const matchingFactCount = await tx.productFact.count({
+        where: scopedWhere(input.workspaceId, {
+          productId: {
+            in: productIds,
+          },
+          label: operation.value.label,
+        }) as Prisma.ProductFactWhereInput,
+      });
+
+      if (matchingFactCount === 0) {
+        warnings.push(`当前项目没有可修改的产品事实：${operation.value.label}`);
+      }
+    }
+
     if (operation.type === "infer_product_facts_from_text") {
       const linkedProductCount = await tx.projectProduct.count({
         where: buildProjectProductWhere({
@@ -2188,6 +2213,74 @@ async function applyProductFactOperations(
         action: "agent_product_fact_created",
         summary: operation.label,
         after: productFactToJson(productFact),
+        actorUserId: input.userId,
+      },
+    });
+  }
+
+  for (const operation of input.operations) {
+    if (operation.type !== "update_product_fact") {
+      continue;
+    }
+
+    const productIds = await findProjectLinkedProductIds(tx, {
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+    });
+
+    if (productIds.length === 0) {
+      continue;
+    }
+
+    const facts = await tx.productFact.findMany({
+      where: scopedWhere(input.workspaceId, {
+        productId: {
+          in: productIds,
+        },
+        label: operation.value.label,
+      }) as Prisma.ProductFactWhereInput,
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    if (facts.length === 0) {
+      continue;
+    }
+
+    const result = await tx.productFact.updateMany({
+      where: scopedWhere(input.workspaceId, {
+        id: {
+          in: facts.map((fact) => fact.id),
+        },
+      }) as Prisma.ProductFactWhereInput,
+      data: {
+        value: operation.value.value,
+        source: operation.value.source,
+        confidence: 90,
+        status: ProductFactStatus.NEEDS_REVIEW,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ProductFact",
+        entityId: input.projectId,
+        action: "agent_product_fact_updated",
+        summary: `${operation.label}：更新 ${result.count} 条，已转为需复核。`,
+        before: {
+          facts: facts.map(productFactToJson),
+        },
+        after: {
+          factIds: facts.map((fact) => fact.id),
+          label: operation.value.label,
+          value: operation.value.value,
+          source: operation.value.source,
+          status: ProductFactStatus.NEEDS_REVIEW,
+          count: result.count,
+        },
         actorUserId: input.userId,
       },
     });
@@ -4827,6 +4920,7 @@ function isProjectHealthReminderOperation(operation: ParsedAgentOperation) {
 function isProductFactOperation(operation: ParsedAgentOperation) {
   return (
     operation.type === "create_product_fact" ||
+    operation.type === "update_product_fact" ||
     operation.type === "infer_product_facts_from_text"
   );
 }
@@ -5008,6 +5102,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         type,
         value,
         label: label || `新增产品事实：${value.label}=${value.value}`,
+      });
+      continue;
+    }
+
+    if (type === "update_product_fact" && isProductFactValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `修改产品事实：${value.label}=${value.value}`,
       });
       continue;
     }

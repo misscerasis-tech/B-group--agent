@@ -58,6 +58,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: true,
   },
   {
+    key: "product_fact_update",
+    category: "product_brain",
+    title: "校准产品事实",
+    example: "把容量改成 600ml。",
+    writesTo: ["ProductFact", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
     key: "product_fact_infer_text",
     category: "product_brain",
     title: "从中文资料提取产品事实",

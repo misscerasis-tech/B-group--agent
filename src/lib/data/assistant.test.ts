@@ -639,6 +639,76 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("updates existing product facts from a Chinese agent command and marks them for review", async () => {
+    mocks.tx.projectProduct.count.mockResolvedValue(1);
+    mocks.tx.projectProduct.findFirst.mockResolvedValue({
+      projectId: "project-1",
+      productId: "product-1",
+      product: {
+        id: "product-1",
+        workspaceId: "workspace-1",
+        name: "Aurora Cup",
+        description: "智能温显保温杯，500ml。",
+        facts: [],
+      },
+    });
+    mocks.tx.projectProduct.findMany.mockResolvedValue([
+      {
+        productId: "product-1",
+      },
+    ]);
+    mocks.tx.productFact.count.mockResolvedValue(1);
+    mocks.tx.productFact.findMany.mockResolvedValue([
+      {
+        id: "fact-1",
+        productId: "product-1",
+        label: "规格参数",
+        value: "500ml",
+        source: "官网资料",
+        confidence: 90,
+        status: "CONFIRMED",
+        createdAt: new Date("2026-07-22T00:00:00.000Z"),
+      },
+    ]);
+    mocks.tx.productFact.updateMany.mockResolvedValue({
+      count: 1,
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "把容量改成 600ml。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.productFact.updateMany).toHaveBeenCalledWith({
+      where: {
+        workspaceId: "workspace-1",
+        id: {
+          in: ["fact-1"],
+        },
+      },
+      data: {
+        value: "600ml",
+        source: "B组 Agent 中文指令校准",
+        confidence: 90,
+        status: "NEEDS_REVIEW",
+      },
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ProductFact",
+        entityId: "project-1",
+        action: "agent_product_fact_updated",
+        summary: "修改产品事实：规格参数=600ml：更新 1 条，已转为需复核。",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("creates a new draft strategy recommendation without overwriting a confirmed strategy", async () => {
     mocks.tx.projectProduct.findFirst.mockResolvedValue({
       projectId: "project-1",
