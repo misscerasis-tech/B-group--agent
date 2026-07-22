@@ -12,8 +12,12 @@ const mocks = vi.hoisted(() => {
       findMany: vi.fn(),
     },
     project: {
+      create: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
+    },
+    product: {
+      create: vi.fn(),
     },
     agentConversation: {
       findFirst: vi.fn(),
@@ -22,6 +26,7 @@ const mocks = vi.hoisted(() => {
     },
     agentMessage: {
       create: vi.fn(),
+      createMany: vi.fn(),
     },
     agentOperation: {
       create: vi.fn(),
@@ -40,11 +45,13 @@ const mocks = vi.hoisted(() => {
     },
     projectProduct: {
       count: vi.fn(),
+      create: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
     },
     productFact: {
       create: vi.fn(),
+      createMany: vi.fn(),
       update: vi.fn(),
       count: vi.fn(),
       findMany: vi.fn(),
@@ -109,6 +116,20 @@ describe("generateStarterPlan", () => {
       description: "项目说明",
       status: "ACTIVE",
     });
+    mocks.tx.project.create.mockResolvedValue({
+      id: "project-new",
+      workspaceId: "workspace-1",
+      name: "日本母婴礼赠内容增长",
+      description: "新项目说明",
+      status: "ACTIVE",
+    });
+    mocks.tx.product.create.mockResolvedValue({
+      id: "product-new",
+      workspaceId: "workspace-1",
+      name: "Aurora Cup 迷你保温杯",
+      description: "新产品说明",
+      status: "ACTIVE",
+    });
     mocks.tx.projectStrategy.findFirst.mockResolvedValue({
       id: "strategy-1",
       workspaceId: "workspace-1",
@@ -150,9 +171,18 @@ describe("generateStarterPlan", () => {
     mocks.tx.agentMessage.create.mockResolvedValue({
       id: "message-1",
     });
+    mocks.tx.agentMessage.createMany.mockResolvedValue({
+      count: 2,
+    });
     mocks.tx.agentOperation.create.mockResolvedValue({
       id: "operation-1",
       status: "APPLIED",
+    });
+    mocks.tx.projectProduct.create.mockResolvedValue({
+      id: "project-product-1",
+    });
+    mocks.tx.productFact.createMany.mockResolvedValue({
+      count: 3,
     });
     mocks.tx.metricsSnapshot.create.mockImplementation(({ data }) =>
       Promise.resolve({
@@ -315,6 +345,124 @@ describe("generateStarterPlan", () => {
         actorUserId: "user-1",
       }),
     });
+  });
+
+  it("starts a new project from a Chinese agent kickoff command", async () => {
+    mocks.tx.agentConversation.findFirst.mockResolvedValue({
+      id: "conversation-current",
+    });
+    mocks.tx.project.create.mockResolvedValue({
+      id: "project-new",
+      workspaceId: "workspace-1",
+      name: "日本母婴礼赠内容增长项目",
+      description: "创建一个日本母婴礼赠内容增长项目",
+      status: "ACTIVE",
+    });
+    mocks.tx.product.create.mockResolvedValue({
+      id: "product-new",
+      workspaceId: "workspace-1",
+      name: "Aurora Cup 迷你保温杯",
+      description: "创建一个日本母婴礼赠内容增长项目",
+      status: "ACTIVE",
+    });
+    mocks.tx.projectStrategy.create.mockResolvedValue({
+      id: "strategy-new",
+      workspaceId: "workspace-1",
+      projectId: "project-new",
+      version: 1,
+      status: "DRAFT",
+      targetMarkets: ["日本"],
+      audiences: ["礼品购买者"],
+      channels: ["Instagram", "TikTok", "X"],
+      contentDirections: ["返校季"],
+      packageFrequency: "WEEKLY",
+      positioning: "面向礼品购买者",
+      rationale: "本地规则",
+    });
+    mocks.tx.agentConversation.create.mockResolvedValue({
+      id: "conversation-new",
+      projectId: "project-new",
+    });
+    mocks.tx.agentOperation.create.mockResolvedValue({
+      id: "operation-new",
+      status: "APPLIED",
+      projectId: "project-new",
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text:
+        "创建一个日本母婴礼赠内容增长项目，产品名称：Aurora Cup 迷你保温杯，主推日本市场，新增 TikTok，每周生成一次素材包，面向礼品购买者，做返校季。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(result.targetProjectId).toBe("project-new");
+    expect(mocks.tx.project.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        name: "日本母婴礼赠内容增长项目",
+        status: "ACTIVE",
+      }),
+    });
+    expect(mocks.tx.product.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        name: "Aurora Cup 迷你保温杯",
+        status: "ACTIVE",
+      }),
+    });
+    expect(mocks.tx.projectProduct.create).toHaveBeenCalledWith({
+      data: {
+        projectId: "project-new",
+        productId: "product-new",
+      },
+    });
+    expect(mocks.tx.productFact.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          workspaceId: "workspace-1",
+          productId: "product-new",
+          source: "B组 Agent 中文指令启动项目",
+        }),
+      ]),
+    });
+    expect(mocks.tx.projectStrategy.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-new",
+        targetMarkets: ["日本"],
+        audiences: ["礼品购买者"],
+        channels: ["Instagram", "TikTok", "X"],
+        contentDirections: ["返校季", "礼赠"],
+        packageFrequency: "WEEKLY",
+      }),
+    });
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        conversationId: "conversation-new",
+        projectId: "project-new",
+        status: "APPLIED",
+      }),
+    });
+    expect(mocks.tx.agentMessage.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          workspaceId: "workspace-1",
+          conversationId: "conversation-new",
+          role: "USER",
+        }),
+        expect.objectContaining({
+          workspaceId: "workspace-1",
+          conversationId: "conversation-new",
+          role: "ASSISTANT",
+          content: expect.stringContaining("已启动新项目"),
+        }),
+      ]),
+    });
+    expect(mocks.tx.project.update).not.toHaveBeenCalled();
   });
 
   it("creates reminders from current project metrics risks", async () => {

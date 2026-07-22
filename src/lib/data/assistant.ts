@@ -9,6 +9,7 @@ import {
   PlanItemStatus,
   Prisma,
   ProductFactStatus,
+  ProductStatus,
   ProjectStatus,
   ReminderSeverity,
   ReminderStatus,
@@ -366,6 +367,65 @@ export async function submitAgentCommand(input: {
       activePlanChannelUsage,
       completionTargetWarnings,
     });
+    const projectKickoffOperation = parsed.operations.find(isProjectKickoffOperation);
+
+    if (
+      projectKickoffOperation &&
+      parsed.operations.length === 1 &&
+      operationStatus === AgentOperationStatus.APPLIED
+    ) {
+      const kickoff = await createProjectFromAgentKickoff(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        rawText: text,
+        operation: projectKickoffOperation,
+      });
+      const operation = await tx.agentOperation.create({
+        data: {
+          workspaceId: input.workspaceId,
+          conversationId: kickoff.conversation.id,
+          projectId: kickoff.project.id,
+          rawText: text,
+          summary: parsed.summary,
+          operations: parsed.operations as Prisma.InputJsonValue,
+          conflictCheck,
+          status: operationStatus,
+        },
+      });
+
+      await tx.agentMessage.createMany({
+        data: [
+          {
+            workspaceId: input.workspaceId,
+            conversationId: kickoff.conversation.id,
+            role: AgentMessageRole.USER,
+            content: text,
+          },
+          {
+            workspaceId: input.workspaceId,
+            conversationId: kickoff.conversation.id,
+            role: AgentMessageRole.ASSISTANT,
+            content: `已启动新项目「${kickoff.project.name}」，并创建产品「${kickoff.product.name}」、${kickoff.factCount} 条待确认事实和策略草案。请先核对产品事实，再确认正式策略。`,
+          },
+        ],
+      });
+
+      await tx.agentConversation.update({
+        where: {
+          id: kickoff.conversation.id,
+        },
+        data: {
+          updatedAt: new Date(),
+        },
+      });
+
+      return {
+        operation,
+        strategy: kickoff.strategy,
+        status: operationStatus,
+        targetProjectId: kickoff.project.id,
+      };
+    }
 
     await tx.agentMessage.create({
       data: {
@@ -709,8 +769,113 @@ export async function submitAgentCommand(input: {
       operation,
       strategy: updatedStrategy,
       status: operationStatus,
+      targetProjectId: project.id,
     };
   });
+}
+
+async function createProjectFromAgentKickoff(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    rawText: string;
+    operation: Extract<ParsedAgentOperation, { type: "kickoff_project" }>;
+  },
+) {
+  const facts = inferProductFactsFromText({
+    productName: input.operation.value.productName,
+    description: input.operation.value.brief,
+  });
+  const project = await tx.project.create({
+    data: {
+      workspaceId: input.workspaceId,
+      name: input.operation.value.projectName,
+      description: input.operation.value.brief,
+      status: ProjectStatus.ACTIVE,
+    },
+  });
+  const product = await tx.product.create({
+    data: {
+      workspaceId: input.workspaceId,
+      name: input.operation.value.productName,
+      description: input.operation.value.brief,
+      status: ProductStatus.ACTIVE,
+    },
+  });
+
+  await tx.projectProduct.create({
+    data: {
+      projectId: project.id,
+      productId: product.id,
+    },
+  });
+
+  if (facts.length > 0) {
+    await tx.productFact.createMany({
+      data: facts.map((fact) => ({
+        workspaceId: input.workspaceId,
+        productId: product.id,
+        label: fact.label,
+        value: fact.value,
+        confidence: fact.confidence,
+        source: "B组 Agent 中文指令启动项目",
+        status: ProductFactStatus.DRAFT,
+      })),
+    });
+  }
+
+  const strategy = await tx.projectStrategy.create({
+    data: {
+      workspaceId: input.workspaceId,
+      projectId: project.id,
+      version: 1,
+      status: StrategyStatus.DRAFT,
+      targetMarkets: input.operation.value.targetMarkets,
+      audiences: input.operation.value.audiences,
+      channels: input.operation.value.channels,
+      contentDirections: input.operation.value.contentDirections,
+      packageFrequency: input.operation.value.packageFrequency,
+      positioning: `${product.name} 面向 ${input.operation.value.audiences.join("、")}，以 ${input.operation.value.contentDirections
+        .slice(0, 2)
+        .join("、")} 切入 ${input.operation.value.targetMarkets.join("、")}。`,
+      rationale: "由 B 组 Agent 中文新项目指令生成，正式使用前需要人工确认。",
+    },
+  });
+  const conversation = await tx.agentConversation.create({
+    data: {
+      workspaceId: input.workspaceId,
+      projectId: project.id,
+      title: "项目启动顾问对话",
+    },
+  });
+
+  await tx.changeLog.create({
+    data: {
+      workspaceId: input.workspaceId,
+      projectId: project.id,
+      entityType: "Project",
+      entityId: project.id,
+      action: "agent_project_kickoff_created",
+      summary: `B 组 Agent 启动新项目：${project.name}`,
+      after: {
+        project: projectToJson(project),
+        product: productToJson(product),
+        strategyId: strategy.id,
+        factCount: facts.length,
+        rawText: input.rawText,
+      },
+      actorUserId: input.userId,
+    },
+  });
+
+  return {
+    project,
+    product,
+    strategy,
+    conversation,
+    factCount: facts.length,
+  };
 }
 
 export async function applyPendingAgentOperation(input: {
@@ -4913,6 +5078,12 @@ function isProjectOperation(operation: ParsedAgentOperation) {
   return operation.type === "set_project_status";
 }
 
+function isProjectKickoffOperation(
+  operation: ParsedAgentOperation,
+): operation is Extract<ParsedAgentOperation, { type: "kickoff_project" }> {
+  return operation.type === "kickoff_project";
+}
+
 function isStrategyRecommendationOperation(operation: ParsedAgentOperation) {
   return operation.type === "recommend_strategy";
 }
@@ -5064,6 +5235,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         value === ProjectStatus.ARCHIVED)
     ) {
       operations.push({ type, value, label: label || value });
+      continue;
+    }
+
+    if (type === "kickoff_project" && isProjectKickoffValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `启动新项目：${value.projectName}`,
+      });
       continue;
     }
 
@@ -5625,6 +5805,33 @@ function isProjectHealthReminderValue(value: unknown): value is Extract<
   return Number.isInteger(record.limit) && Number(record.limit) >= 1 && Number(record.limit) <= 8;
 }
 
+function isProjectKickoffValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "kickoff_project" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    typeof record.projectName === "string" &&
+    record.projectName.trim().length > 0 &&
+    typeof record.productName === "string" &&
+    record.productName.trim().length > 0 &&
+    typeof record.brief === "string" &&
+    record.brief.trim().length > 0 &&
+    isStringArray(record.targetMarkets) &&
+    isStringArray(record.audiences) &&
+    isStringArray(record.channels) &&
+    isStringArray(record.contentDirections) &&
+    (record.packageFrequency === ContentFrequency.WEEKLY ||
+      record.packageFrequency === ContentFrequency.BIWEEKLY ||
+      record.packageFrequency === ContentFrequency.MONTHLY)
+  );
+}
+
 function isProductFactSourceValue(value: unknown): value is Extract<
   ParsedAgentOperation,
   { type: "infer_product_facts_from_text" }
@@ -5802,6 +6009,10 @@ function isPlanItemCompletionValue(value: unknown): value is Extract<
 
 function isNonNegativeNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 function buildAssistantReply(
@@ -6043,6 +6254,20 @@ function projectToJson(project: {
     name: project.name,
     description: project.description,
     status: project.status,
+  };
+}
+
+function productToJson(product: {
+  id: string;
+  name: string;
+  description: string | null;
+  status: ProductStatus;
+}) {
+  return {
+    id: product.id,
+    name: product.name,
+    description: product.description,
+    status: product.status,
   };
 }
 

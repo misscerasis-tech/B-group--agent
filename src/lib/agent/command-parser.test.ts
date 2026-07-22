@@ -95,6 +95,37 @@ describe("parseAgentCommand", () => {
     });
   });
 
+  it("extracts new project kickoff requests with strategy seed data", () => {
+    const parsed = parseAgentCommand(
+      "创建一个日本母婴礼赠内容增长项目，产品名称：Aurora Cup 迷你保温杯，主推日本市场，新增 TikTok，每周生成一次素材包，面向礼品购买者，做返校季。",
+    );
+
+    expect(parsed.operations).toEqual([
+      {
+        type: "kickoff_project",
+        value: {
+          projectName: "日本母婴礼赠内容增长项目",
+          productName: "Aurora Cup 迷你保温杯",
+          brief:
+            "创建一个日本母婴礼赠内容增长项目，产品名称：Aurora Cup 迷你保温杯，主推日本市场，新增 TikTok，每周生成一次素材包，面向礼品购买者，做返校季。",
+          targetMarkets: ["日本"],
+          audiences: ["礼品购买者"],
+          channels: ["Instagram", "TikTok", "X"],
+          contentDirections: ["返校季", "礼赠"],
+          packageFrequency: ContentFrequency.WEEKLY,
+        },
+        label: "启动新项目：日本母婴礼赠内容增长项目",
+      },
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("does not treat project reminders as new project kickoff", () => {
+    const parsed = parseAgentCommand("创建项目提醒：下周检查素材包真实产品图。");
+
+    expect(parsed.operations.some((operation) => operation.type === "kickoff_project")).toBe(false);
+  });
+
   it("extracts strategy recommendation requests", () => {
     const parsed = parseAgentCommand("请根据产品事实推荐一版巴西首月增长策略。");
 

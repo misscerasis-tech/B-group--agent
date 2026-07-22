@@ -42,7 +42,7 @@ export async function submitAgentCommandAction(formData: FormData) {
   const projectId = readRequiredText(formData, "projectId", "当前项目");
   const command = readRequiredText(formData, "command", "中文指令");
 
-  await submitAgentCommand({
+  const result = await submitAgentCommand({
     workspaceId: context.currentWorkspace.id,
     userId: context.user.id,
     projectId,
@@ -55,7 +55,7 @@ export async function submitAgentCommandAction(formData: FormData) {
   revalidatePath("/packages");
   revalidatePath("/reminders");
   revalidatePath("/recaps");
-  redirect(bAgentReturnPath(projectId));
+  redirect(bAgentReturnPath(result.targetProjectId ?? projectId));
 }
 
 export async function resolveBAgentReminderAction(formData: FormData) {

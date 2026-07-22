@@ -356,6 +356,18 @@ function productToJson(product: {
 }
 
 function buildKickoffStrategySeed(operations: ParsedAgentOperation[]) {
+  const kickoffOperation = operations.find((operation) => operation.type === "kickoff_project");
+
+  if (kickoffOperation) {
+    return {
+      targetMarkets: kickoffOperation.value.targetMarkets,
+      audiences: kickoffOperation.value.audiences,
+      channels: kickoffOperation.value.channels,
+      contentDirections: kickoffOperation.value.contentDirections,
+      packageFrequency: kickoffOperation.value.packageFrequency,
+    };
+  }
+
   const addedChannels = valuesFor(operations, "add_channel");
   const removedChannels = valuesFor(operations, "remove_channel");
   const targetMarkets = valuesFor(operations, "set_market");

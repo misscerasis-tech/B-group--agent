@@ -33,6 +33,20 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "kickoff_project";
+      value: {
+        projectName: string;
+        productName: string;
+        brief: string;
+        targetMarkets: string[];
+        audiences: string[];
+        channels: string[];
+        contentDirections: string[];
+        packageFrequency: ContentFrequency;
+      };
+      label: string;
+    }
+  | {
       type: "recommend_strategy";
       value: {
         basis: "product_facts";
@@ -413,6 +427,157 @@ function parseFrequency(text: string): ContentFrequency | null {
   }
 
   return null;
+}
+
+function parseProjectKickoffOperation(text: string): ParsedAgentOperation | null {
+  if (!hasProjectKickoffIntent(text)) {
+    return null;
+  }
+
+  const explicitProductName = extractProjectKickoffProductName(text);
+  const projectName = extractProjectKickoffProjectName(text, explicitProductName);
+  const productName = explicitProductName ?? inferProductNameFromProjectName(projectName);
+
+  if (!projectName || !productName) {
+    return null;
+  }
+
+  const targetMarkets = findMentionedMarkets(text);
+  const addedChannels = CHANNELS.filter(
+    (channel) => hasAddIntent(text, channel) || mentionsChannel(text, channel),
+  );
+  const removedChannels = CHANNELS.filter((channel) => hasRemoveIntent(text, channel));
+  const audiences = AUDIENCE_HINTS.filter(
+    (audience) => text.includes(audience) && !hasRemoveIntent(text, audience),
+  );
+  const contentDirections = DIRECTION_HINTS.filter(
+    (direction) => text.includes(direction) && !hasRemoveIntent(text, direction),
+  );
+  const channels = unique([
+    ...recommendChannelsForMarkets(targetMarkets),
+    ...addedChannels,
+  ]).filter((channel) => !removedChannels.includes(channel));
+
+  return {
+    type: "kickoff_project",
+    value: {
+      projectName,
+      productName,
+      brief: text.slice(0, MAX_PRODUCT_FACT_SOURCE_TEXT_LENGTH),
+      targetMarkets: targetMarkets.length > 0 ? targetMarkets : ["待确认市场"],
+      audiences: audiences.length > 0 ? audiences : ["目标客群待确认"],
+      channels: channels.length > 0 ? channels : ["TikTok", "Instagram"],
+      contentDirections:
+        contentDirections.length > 0 ? contentDirections : ["新品认知", "场景种草", "转化促销"],
+      packageFrequency: parseFrequency(text) ?? ContentFrequency.MONTHLY,
+    },
+    label: `启动新项目：${projectName}`,
+  };
+}
+
+function hasProjectKickoffIntent(text: string) {
+  const compact = compactText(text);
+
+  if (/提醒|待办|审核任务|体检|缺口|归档|恢复/.test(compact)) {
+    return false;
+  }
+
+  return (
+    /(创建|新建|启动|发起|开一个|开设).*(项目|增长项目|Campaign|campaign)/.test(text) &&
+    /(产品|新品|商品|SKU|sku)/.test(text)
+  );
+}
+
+function extractProjectKickoffProjectName(text: string, productName?: string | null) {
+  const explicit = text.match(/项目(?:名称|名)?[：:]\s*([^，。；;\n]+)/)?.[1]?.trim();
+
+  if (explicit) {
+    return cleanProjectKickoffName(explicit);
+  }
+
+  const actionBased = text.match(
+    /(?:创建|新建|启动|发起|开一个|开设)(?:一个|1个)?\s*([^，。；;\n]{2,50}?项目)/,
+  )?.[1];
+
+  if (actionBased && !/^(新项目|一个项目|项目)$/.test(actionBased.trim())) {
+    return cleanProjectKickoffName(actionBased);
+  }
+
+  const market = findMentionedMarkets(text)[0] ?? "新品";
+  const product = productName ?? "待命名产品";
+  return `${market}${product}内容增长`;
+}
+
+function cleanProjectKickoffName(value: string) {
+  return value.replace(/^(一个|1个)/, "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function extractProjectKickoffProductName(text: string) {
+  const explicit = text.match(/产品(?:名称|名)?[：:]\s*([^，。；;\n]+)/)?.[1]?.trim();
+
+  if (explicit) {
+    return cleanProductKickoffName(explicit);
+  }
+
+  const described = text.match(
+    /(?:产品|新品|商品|SKU|sku)(?:名称是|名称为|是|为|叫|：|:)\s*([^，。；;\n]+)/,
+  )?.[1]?.trim();
+
+  return described ? cleanProductKickoffName(described) : null;
+}
+
+function cleanProductKickoffName(value: string) {
+  return value.replace(/\s+/g, " ").replace(/^(一款|一个|1个)/, "").trim().slice(0, 80);
+}
+
+function inferProductNameFromProjectName(projectName: string) {
+  let candidate = projectName
+    .replace(/项目/g, "")
+    .replace(/内容增长|增长|Campaign|campaign|首月|上市|推广|新品/g, "");
+
+  for (const [market, aliases] of MARKET_ALIASES) {
+    candidate = candidate.replace(market, "");
+    for (const alias of aliases) {
+      candidate = candidate.replace(alias, "");
+    }
+  }
+
+  candidate = candidate.trim();
+  return candidate.length >= 2 ? candidate.slice(0, 80) : null;
+}
+
+function findMentionedMarkets(text: string) {
+  return MARKET_ALIASES.filter(([, aliases]) => includesAny(text, aliases)).map(
+    ([market]) => market,
+  );
+}
+
+function mentionsChannel(text: string, channel: string) {
+  return text.toLowerCase().includes(channel.toLowerCase());
+}
+
+function recommendChannelsForMarkets(targetMarkets: string[]) {
+  if (targetMarkets.includes("巴西")) {
+    return ["TikTok", "Instagram", "Facebook"];
+  }
+
+  if (targetMarkets.includes("蒙古")) {
+    return ["Facebook", "Instagram"];
+  }
+
+  if (targetMarkets.includes("日本")) {
+    return ["Instagram", "TikTok", "X"];
+  }
+
+  if (targetMarkets.includes("美国")) {
+    return ["TikTok", "Instagram", "YouTube"];
+  }
+
+  return [];
+}
+
+function unique(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
 }
 
 function parseProjectStatus(text: string): ProjectStatus | null {
@@ -1770,6 +1935,19 @@ function summarizeOperations(operations: ParsedAgentOperation[]) {
 export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const text = rawText.trim();
   const operations: ParsedAgentOperation[] = [];
+  const projectKickoffOperation = parseProjectKickoffOperation(text);
+
+  if (projectKickoffOperation) {
+    operations.push(projectKickoffOperation);
+
+    return {
+      rawText: text,
+      operations,
+      summary: summarizeOperations(operations),
+      confidence: "high",
+    };
+  }
+
   const inferredProductFactsOperation = parseInferProductFactsFromTextOperation(text);
 
   if (inferredProductFactsOperation) {
@@ -2075,6 +2253,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "update_product_fact" ||
       operation.type === "infer_product_facts_from_text" ||
       operation.type === "confirm_product_facts" ||
+      operation.type === "kickoff_project" ||
       operation.type === "recommend_strategy" ||
       operation.type === "create_content_package" ||
       operation.type === "update_content_package_status" ||

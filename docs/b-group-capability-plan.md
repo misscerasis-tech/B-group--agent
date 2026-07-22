@@ -151,6 +151,7 @@ V1 目标素材包：
 - `/projects` 支持中文 Brief 启动项目，一次创建项目、产品、关联、待确认事实、策略草案、对话和变更日志。
 - `/b-agent` 在空 Workspace 下也支持用中文 Brief 启动第一个项目，避免首次使用必须跳转到项目中心。
 - `/b-agent` 在已有项目时也支持用中文 Brief 创建新项目，便于连续管理多个市场或 Campaign 项目。
+- `/b-agent` 左侧中文指令可识别“创建/启动新项目”，并真实写入 Project、Product、ProjectProduct、ProductFact、ProjectStrategy、AgentConversation、AgentOperation 和 ChangeLog。
 - `/b-agent` 支持提交中文指令、确认正式策略、确认应用变更、修改项目状态、创建提醒、通过按钮或中文指令生成首月计划，并导出项目快照。
 - `/b-agent` 支持根据当前项目产品事实生成策略推荐草案；已有正式策略时创建新的草案版本，等待人工确认。
 - `/b-agent` 支持通过中文指令新增或校准待复核产品事实，也支持从粘贴的中文产品资料批量提取事实，并写入当前项目关联产品。

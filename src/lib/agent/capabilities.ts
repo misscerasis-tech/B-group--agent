@@ -1,4 +1,5 @@
 export type AgentCapabilityCategory =
+  | "project"
   | "strategy"
   | "product_brain"
   | "planning"
@@ -17,6 +18,24 @@ export type AgentCommandCapability = {
 };
 
 export const agentCommandCapabilities: AgentCommandCapability[] = [
+  {
+    key: "project_kickoff",
+    category: "project",
+    title: "启动新项目",
+    example:
+      "创建一个日本母婴礼赠内容增长项目，产品名称：Aurora Cup 迷你保温杯，主推日本市场，新增 TikTok，每周生成一次素材包。",
+    writesTo: [
+      "Project",
+      "Product",
+      "ProjectProduct",
+      "ProductFact",
+      "ProjectStrategy",
+      "AgentConversation",
+      "AgentOperation",
+      "ChangeLog",
+    ],
+    requiresExplicitHumanReview: true,
+  },
   {
     key: "strategy_channels",
     category: "strategy",
