@@ -1,4 +1,4 @@
-import { ContentFrequency, ProjectStatus } from "@prisma/client";
+import { ContentFrequency, ProjectStatus, ReminderSeverity } from "@prisma/client";
 
 export type ParsedAgentOperation =
   | {
@@ -22,6 +22,12 @@ export type ParsedAgentOperation =
       type: "set_project_status";
       value: ProjectStatus;
       label: string;
+    }
+  | {
+      type: "create_reminder";
+      value: string;
+      label: string;
+      severity: ReminderSeverity;
     };
 
 export type ParsedAgentCommand = {
@@ -167,6 +173,37 @@ function parseProjectStatus(text: string): ProjectStatus | null {
   return null;
 }
 
+function parseReminderSeverity(text: string): ReminderSeverity {
+  if (/紧急|马上|立刻|必须|critical/i.test(text)) {
+    return ReminderSeverity.CRITICAL;
+  }
+
+  if (/风险|重要|提前|warning/i.test(text)) {
+    return ReminderSeverity.WARNING;
+  }
+
+  return ReminderSeverity.INFO;
+}
+
+function parseReminderTitle(text: string) {
+  if (!/(提醒我|帮我提醒|记得|待办|需要提醒)/.test(text)) {
+    return null;
+  }
+
+  const title = text
+    .replace(/请|麻烦|帮我/g, "")
+    .replace(/提醒我|提醒|记得|待办|需要提醒/g, "")
+    .replace(/，|。|！|!/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (title.length < 4) {
+    return "跟进当前项目待办";
+  }
+
+  return title.slice(0, 80);
+}
+
 function operationKey(operation: ParsedAgentOperation) {
   return `${operation.type}:${operation.value}`;
 }
@@ -225,6 +262,23 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       type: "set_project_status",
       value: projectStatus,
       label: `项目状态改为：${projectStatusLabel[projectStatus]}`,
+    });
+  }
+
+  const reminderTitle = parseReminderTitle(text);
+  if (reminderTitle) {
+    const severity = parseReminderSeverity(text);
+    const severityLabel: Record<ReminderSeverity, string> = {
+      INFO: "提示",
+      WARNING: "风险",
+      CRITICAL: "紧急",
+    };
+
+    operations.push({
+      type: "create_reminder",
+      value: reminderTitle,
+      severity,
+      label: `创建${severityLabel[severity]}提醒：${reminderTitle}`,
     });
   }
 

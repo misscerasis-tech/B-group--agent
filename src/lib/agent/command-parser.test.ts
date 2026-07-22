@@ -1,4 +1,4 @@
-import { ContentFrequency, ProjectStatus } from "@prisma/client";
+import { ContentFrequency, ProjectStatus, ReminderSeverity } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { parseAgentCommand } from "./command-parser";
 
@@ -83,6 +83,17 @@ describe("parseAgentCommand", () => {
       type: "add_channel",
       value: "TikTok",
       label: "新增渠道：TikTok",
+    });
+  });
+
+  it("extracts reminder creation requests", () => {
+    const parsed = parseAgentCommand("提醒我提前确认巴西抽奖奖品和活动规则，这是重要风险。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_reminder",
+      value: "提前确认巴西抽奖奖品和活动规则 这是重要风险",
+      severity: ReminderSeverity.WARNING,
+      label: "创建风险提醒：提前确认巴西抽奖奖品和活动规则 这是重要风险",
     });
   });
 

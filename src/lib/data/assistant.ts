@@ -243,17 +243,23 @@ export async function submitAgentCommand(input: {
     const strategy = await ensureProjectStrategy(tx, input.workspaceId, project.id);
     const parsed = parseAgentCommand(text);
     const noSafeOperation = parsed.operations.length === 0;
-    const requiresConfirmation = strategy.status === StrategyStatus.CONFIRMED && !noSafeOperation;
+    const hasConfirmationSensitiveOperation = parsed.operations.some(
+      isConfirmationSensitiveOperation,
+    );
+    const requiresConfirmation =
+      strategy.status === StrategyStatus.CONFIRMED && hasConfirmationSensitiveOperation;
     const operationStatus = noSafeOperation
       ? AgentOperationStatus.FAILED
       : requiresConfirmation
         ? AgentOperationStatus.PENDING_CONFIRMATION
         : AgentOperationStatus.APPLIED;
     const conflictCheck = noSafeOperation
-      ? "未识别到足够明确的市场、渠道、频率或内容方向，未写入数据库。"
+      ? "未识别到足够明确的市场、渠道、频率、项目状态、提醒或内容方向，未写入数据库。"
       : requiresConfirmation
-        ? "当前策略已被人工确认为正式版本，需要二次确认后才能修改。"
-        : "当前策略仍为草案，可直接应用。";
+        ? "当前策略已被人工确认为正式版本，需要二次确认后才能修改核心项目配置。"
+        : hasConfirmationSensitiveOperation
+          ? "当前策略仍为草案，可直接应用。"
+          : "该操作不改动正式策略，已直接写入项目工作台。";
 
     await tx.agentMessage.create({
       data: {
@@ -282,6 +288,7 @@ export async function submitAgentCommand(input: {
     if (operationStatus === AgentOperationStatus.APPLIED) {
       const strategyOperations = parsed.operations.filter(isStrategyOperation);
       const projectOperations = parsed.operations.filter(isProjectOperation);
+      const reminderOperations = parsed.operations.filter(isReminderOperation);
 
       if (strategyOperations.length > 0) {
         const before = strategyToJson(strategy);
@@ -332,6 +339,13 @@ export async function submitAgentCommand(input: {
           },
         });
       }
+
+      await applyReminderOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: reminderOperations,
+      });
     }
 
     await tx.agentMessage.create({
@@ -381,6 +395,7 @@ export async function applyPendingAgentOperation(input: {
     const parsedOperations = parseStoredOperations(operation.operations);
     const strategyOperations = parsedOperations.filter(isStrategyOperation);
     const projectOperations = parsedOperations.filter(isProjectOperation);
+    const reminderOperations = parsedOperations.filter(isReminderOperation);
     let updatedStrategy: ProjectStrategyRecord = strategy;
 
     if (strategyOperations.length > 0) {
@@ -468,6 +483,13 @@ export async function applyPendingAgentOperation(input: {
       });
     }
 
+    await applyReminderOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: reminderOperations,
+    });
+
     await tx.agentOperation.update({
       where: {
         id: operation.id,
@@ -485,6 +507,7 @@ export async function applyPendingAgentOperation(input: {
         strategyVersion: updatedStrategy.version,
         strategyChanged: strategyOperations.length > 0,
         projectChanged: projectOperations.length > 0,
+        reminderChanged: reminderOperations.length > 0,
       });
 
       await tx.agentMessage.create({
@@ -875,12 +898,60 @@ function applyOperationsToProject(
   };
 }
 
+async function applyReminderOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "create_reminder") {
+      continue;
+    }
+
+    const reminder = await tx.reminder.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        title: operation.value,
+        description: "由 B 组 Agent 中文指令创建。",
+        severity: operation.severity,
+        status: ReminderStatus.OPEN,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "Reminder",
+        entityId: reminder.id,
+        action: "agent_reminder_created",
+        summary: operation.label,
+        after: reminderToJson(reminder),
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
 function isStrategyOperation(operation: ParsedAgentOperation) {
-  return operation.type !== "set_project_status";
+  return operation.type !== "set_project_status" && operation.type !== "create_reminder";
 }
 
 function isProjectOperation(operation: ParsedAgentOperation) {
   return operation.type === "set_project_status";
+}
+
+function isReminderOperation(operation: ParsedAgentOperation) {
+  return operation.type === "create_reminder";
+}
+
+function isConfirmationSensitiveOperation(operation: ParsedAgentOperation) {
+  return isStrategyOperation(operation) || isProjectOperation(operation);
 }
 
 function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] {
@@ -901,7 +972,7 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
     const value = record.value;
 
     if (
-        (type === "add_channel" ||
+      (type === "add_channel" ||
         type === "remove_channel" ||
         type === "set_market" ||
         type === "add_audience" ||
@@ -922,6 +993,23 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         value === ProjectStatus.ARCHIVED)
     ) {
       operations.push({ type, value, label: label || value });
+      continue;
+    }
+
+    const severity = record.severity;
+    if (
+      type === "create_reminder" &&
+      typeof value === "string" &&
+      (severity === ReminderSeverity.INFO ||
+        severity === ReminderSeverity.WARNING ||
+        severity === ReminderSeverity.CRITICAL)
+    ) {
+      operations.push({
+        type,
+        value,
+        severity,
+        label: label || `创建提醒：${value}`,
+      });
       continue;
     }
 
@@ -960,19 +1048,27 @@ function buildConfirmedAssistantReply(input: {
   strategyVersion: number;
   strategyChanged: boolean;
   projectChanged: boolean;
+  reminderChanged: boolean;
 }) {
   if (input.strategyChanged && input.strategyWasConfirmed) {
-    const projectText = input.projectChanged ? "，并同步更新项目基础信息" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}：${input.operationSummary}`;
+    const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
+    const reminderText = input.reminderChanged ? "，并创建提醒" : "";
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
-    const projectText = input.projectChanged ? "，并同步更新项目基础信息" : "";
-    return `已按你的确认写入策略草案${projectText}：${input.operationSummary}`;
+    const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
+    const reminderText = input.reminderChanged ? "，并创建提醒" : "";
+    return `已按你的确认写入策略草案${projectText}${reminderText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
-    return `已按你的确认更新项目基础信息：${input.operationSummary}`;
+    const reminderText = input.reminderChanged ? "，并创建提醒" : "";
+    return `已按你的确认更新项目基础信息${reminderText}：${input.operationSummary}`;
+  }
+
+  if (input.reminderChanged) {
+    return `已按你的确认创建提醒：${input.operationSummary}`;
   }
 
   return `已按你的确认处理：${input.operationSummary}`;
@@ -1022,6 +1118,24 @@ function operationToJson(operation: {
     operations: operation.operations,
     conflictCheck: operation.conflictCheck,
     status: operation.status,
+  };
+}
+
+function reminderToJson(reminder: {
+  id: string;
+  projectId: string | null;
+  title: string;
+  description: string | null;
+  severity: ReminderSeverity;
+  status: ReminderStatus;
+}) {
+  return {
+    id: reminder.id,
+    projectId: reminder.projectId,
+    title: reminder.title,
+    description: reminder.description,
+    severity: reminder.severity,
+    status: reminder.status,
   };
 }
 
