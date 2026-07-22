@@ -163,6 +163,19 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts product fact confirmation requests", () => {
+    const parsed = parseAgentCommand("确认当前项目所有产品事实。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "confirm_product_facts",
+      value: {
+        scope: "current_project",
+      },
+      label: "确认当前项目待复核产品事实",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts starter plan generation requests", () => {
     const parsed = parseAgentCommand("请生成首月计划和第一份素材包结构。");
 

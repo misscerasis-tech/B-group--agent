@@ -67,6 +67,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: true,
   },
   {
+    key: "product_fact_confirm",
+    category: "product_brain",
+    title: "确认当前项目产品事实",
+    example: "确认当前项目所有产品事实。",
+    writesTo: ["ProductFact", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
     key: "reminder_create",
     category: "reminder",
     title: "创建项目提醒",

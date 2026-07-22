@@ -44,6 +44,8 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
       update: vi.fn(),
       count: vi.fn(),
+      findMany: vi.fn(),
+      updateMany: vi.fn(),
     },
     asset: {
       count: vi.fn(),
@@ -565,6 +567,71 @@ describe("generateStarterPlan", () => {
         entityId: "strategy-2",
         action: "agent_strategy_recommended",
         summary: "根据产品事实生成策略推荐草案",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("confirms unreviewed product facts for the current project products", async () => {
+    mocks.tx.projectProduct.findMany.mockResolvedValue([
+      {
+        productId: "product-1",
+      },
+    ]);
+    mocks.tx.productFact.count.mockResolvedValue(2);
+    mocks.tx.productFact.findMany.mockResolvedValue([
+      {
+        id: "fact-1",
+        productId: "product-1",
+        label: "核心卖点",
+        value: "24小时保温",
+        source: "B组 Agent 中文资料提取",
+        confidence: 90,
+        status: "NEEDS_REVIEW",
+        createdAt: new Date("2026-07-22T00:00:00.000Z"),
+      },
+      {
+        id: "fact-2",
+        productId: "product-1",
+        label: "规格参数",
+        value: "500ml",
+        source: "B组 Agent 中文资料提取",
+        confidence: 80,
+        status: "DRAFT",
+        createdAt: new Date("2026-07-22T00:00:00.000Z"),
+      },
+    ]);
+    mocks.tx.productFact.updateMany.mockResolvedValue({
+      count: 2,
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "确认当前项目所有产品事实。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.productFact.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        workspaceId: "workspace-1",
+        id: {
+          in: ["fact-1", "fact-2"],
+        },
+      }),
+      data: {
+        status: "CONFIRMED",
+      },
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ProductFact",
+        entityId: "project-1",
+        action: "agent_product_facts_confirmed",
+        summary: "确认当前项目待复核产品事实：确认 2 条。",
         actorUserId: "user-1",
       }),
     });

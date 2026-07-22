@@ -68,6 +68,13 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "confirm_product_facts";
+      value: {
+        scope: "current_project";
+      };
+      label: string;
+    }
+  | {
       type: "complete_reminder";
       value: {
         keyword: string;
@@ -438,6 +445,24 @@ function parseInferProductFactsFromTextOperation(text: string): ParsedAgentOpera
       source: "B组 Agent 中文资料提取",
     },
     label: `从产品资料提取事实：${preview}`,
+  };
+}
+
+function parseConfirmProductFactsOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(产品事实|事实)/.test(text) ||
+    !/(确认|审核通过|通过审核|批准|全部通过|全部确认)/.test(text) ||
+    /(新增|添加|记录|补充|提取|抽取|整理|生成|识别)/.test(text)
+  ) {
+    return null;
+  }
+
+  return {
+    type: "confirm_product_facts",
+    value: {
+      scope: "current_project",
+    },
+    label: "确认当前项目待复核产品事实",
   };
 }
 
@@ -1080,6 +1105,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(productFactOperation);
   }
 
+  const confirmProductFactsOperation = parseConfirmProductFactsOperation(text);
+  if (confirmProductFactsOperation) {
+    operations.push(confirmProductFactsOperation);
+  }
+
   const reminderCompletionOperation = parseCompleteReminderOperation(text);
   if (reminderCompletionOperation) {
     operations.push(reminderCompletionOperation);
@@ -1198,6 +1228,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "create_project_health_reminders" ||
       operation.type === "create_product_fact" ||
       operation.type === "infer_product_facts_from_text" ||
+      operation.type === "confirm_product_facts" ||
       operation.type === "recommend_strategy" ||
       operation.type === "create_content_package" ||
       operation.type === "create_content_package_readiness_reminders" ||
