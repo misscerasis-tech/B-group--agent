@@ -90,14 +90,14 @@ B 组工作助手已新增：
 - `Asset`：素材库，保存真实产品图、官方 Logo、资料、参考图、生成图和导出文件。
 - `ImageGenerationProviderConfig`：Workspace 级图片生成候选供应商配置，不保存 seed 密钥。
 - `ImageGenerationJob`：图片生成/模板合成任务，保存 provider、model、promptVersion、sourceAssetIds、generationMode、aspectRatio、status 和 error。
+- `IntegrationConnection`：Workspace 级可插拔集成连接，当前支持飞书占位连接。
+- `IntegrationMigrationRecord`：飞书组织、通知群或沉淀位置换绑时的迁移记录。
 
 仍预留：
 
 - `ReviewTask`
 - `MetricsSnapshot`
-- `IntegrationConnection`
 - `FeishuConnection`
-- `IntegrationMigration`
 - `AuditLog`
 
 ## 多 Workspace 原则
@@ -139,6 +139,8 @@ B 组工作助手已新增：
 - 支持停用旧连接。
 - 支持保存迁移记录。
 - 旧飞书组织断开后，核心业务数据仍在本系统中可用。
+
+当前实现只保存非敏感占位连接、目标名称和迁移记录；真实授权、连接测试、群聊/文档/多维表格选择和密钥加密保存留到 Feishu Connector 阶段。
 
 ## 安全与凭证
 

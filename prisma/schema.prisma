@@ -128,6 +128,16 @@ enum ImageGenerationMode {
   IMAGE_EXPAND
 }
 
+enum IntegrationProvider {
+  FEISHU
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  DISABLED
+  NEEDS_RECONNECT
+}
+
 model User {
   id          String            @id @default(cuid())
   name        String
@@ -139,27 +149,29 @@ model User {
 }
 
 model Workspace {
-  id                   String                          @id @default(cuid())
-  name                 String
-  slug                 String                          @unique
-  createdAt            DateTime                        @default(now())
-  updatedAt            DateTime                        @updatedAt
-  deletedAt            DateTime?
-  members              WorkspaceMember[]
-  projects             Project[]
-  products             Product[]
-  productFacts         ProductFact[]
-  projectStrategies    ProjectStrategy[]
-  contentPlanItems     ContentPlanItem[]
-  contentPackages      ContentPackage[]
-  reminders            Reminder[]
-  conversations        AgentConversation[]
-  messages             AgentMessage[]
-  operations           AgentOperation[]
-  changeLogs           ChangeLog[]
-  assets               Asset[]
-  imageProviderConfigs ImageGenerationProviderConfig[]
-  imageGenerationJobs  ImageGenerationJob[]
+  id                     String                          @id @default(cuid())
+  name                   String
+  slug                   String                          @unique
+  createdAt              DateTime                        @default(now())
+  updatedAt              DateTime                        @updatedAt
+  deletedAt              DateTime?
+  members                WorkspaceMember[]
+  projects               Project[]
+  products               Product[]
+  productFacts           ProductFact[]
+  projectStrategies      ProjectStrategy[]
+  contentPlanItems       ContentPlanItem[]
+  contentPackages        ContentPackage[]
+  reminders              Reminder[]
+  conversations          AgentConversation[]
+  messages               AgentMessage[]
+  operations             AgentOperation[]
+  changeLogs             ChangeLog[]
+  assets                 Asset[]
+  imageProviderConfigs   ImageGenerationProviderConfig[]
+  imageGenerationJobs    ImageGenerationJob[]
+  integrationConnections IntegrationConnection[]
+  integrationMigrations  IntegrationMigrationRecord[]
 }
 
 model WorkspaceMember {
@@ -488,4 +500,42 @@ model ImageGenerationJob {
   @@index([workspaceId, projectId])
   @@index([providerConfigId])
   @@index([resultAssetId])
+}
+
+model IntegrationConnection {
+  id                           String                       @id @default(cuid())
+  workspaceId                  String
+  provider                     IntegrationProvider
+  status                       IntegrationStatus            @default(NEEDS_RECONNECT)
+  displayName                  String
+  tenantDisplayName            String?
+  notificationTargetName       String?
+  notificationTargetExternalId String?
+  repositoryTargetName         String?
+  repositoryTargetExternalId   String?
+  notes                        String?
+  connectedAt                  DateTime?
+  disabledAt                   DateTime?
+  createdAt                    DateTime                     @default(now())
+  updatedAt                    DateTime                     @updatedAt
+  workspace                    Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  migrationRecords             IntegrationMigrationRecord[]
+
+  @@index([workspaceId, provider, status])
+}
+
+model IntegrationMigrationRecord {
+  id             String                 @id @default(cuid())
+  workspaceId    String
+  connectionId   String?
+  provider       IntegrationProvider
+  fromTargetName String?
+  toTargetName   String?
+  summary        String
+  createdAt      DateTime               @default(now())
+  workspace      Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection     IntegrationConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, provider, createdAt])
+  @@index([connectionId])
 }

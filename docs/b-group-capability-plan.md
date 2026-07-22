@@ -143,8 +143,10 @@ V1 目标素材包：
 - `ChangeLog` 保存策略确认、指令应用和计划生成记录。
 - `Asset` 保存真实产品图、官方 Logo、资料和参考图，并带审核状态。
 - `ImageGenerationProviderConfig` 和 `ImageGenerationJob` 预留图片供应商评测与模板化合成任务。
+- `IntegrationConnection` 和 `IntegrationMigrationRecord` 保存飞书占位连接、停用状态和迁移记录。
 - `/b-agent` 支持提交中文指令、确认正式策略、确认应用变更、生成首月计划。
 - `/assets` 支持上传素材、关联项目/产品、标记审核通过。
+- `/integrations` 支持登记飞书占位连接、停用旧连接和保存迁移记录。
 - 内容日历、素材包中心、审核中心、提醒中心读取当前 Workspace 数据。
 
 ## 仍待补齐能力
@@ -154,4 +156,4 @@ V1 目标素材包：
 - PDF、XLSX、DOCX、TXT、PNG、ZIP 真实文件生成。
 - 真实产品图 + 官方 Logo 的模板化海报合成。
 - 数据复盘指标录入、导入和总结。
-- Workspace 级飞书连接、测试、换绑、通知群和沉淀位置选择。
+- Workspace 级真实飞书授权、测试连接、通知群和沉淀位置选择。

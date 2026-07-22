@@ -16,6 +16,8 @@
 - 增加 Asset、ImageGenerationProviderConfig、ImageGenerationJob 数据模型和 migration。
 - 增加素材库 `/assets`，支持本地上传素材、关联项目/产品、保存审核状态和文件元数据。
 - 增加图片生成候选供应商和模板化合成任务 seed。
+- 增加 IntegrationConnection、IntegrationMigrationRecord 数据模型和 migration。
+- 集成设置页面支持保存飞书占位连接、停用旧连接和记录迁移说明，不接真实飞书。
 - 内容日历、素材包中心、审核中心、提醒中心改为读取当前 Workspace 真实数据。
 - 今日工作台增加内容计划、素材包、待处理提醒和最近变更摘要。
 - 增加 B 组工作助手 Prisma migration 和增强 seed 数据。

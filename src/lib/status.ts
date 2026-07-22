@@ -7,6 +7,8 @@ import type {
   ContentPackageStatus,
   ImageGenerationMode,
   ImageGenerationStatus,
+  IntegrationProvider,
+  IntegrationStatus,
   PackageFileStatus,
   PlanItemStatus,
   ProductFactStatus,
@@ -131,6 +133,16 @@ export const imageGenerationStatusLabels: Record<ImageGenerationStatus, string> 
   SUCCEEDED: "已成功",
   FAILED: "已失败",
   CANCELED: "已取消",
+};
+
+export const integrationProviderLabels: Record<IntegrationProvider, string> = {
+  FEISHU: "飞书",
+};
+
+export const integrationStatusLabels: Record<IntegrationStatus, string> = {
+  CONNECTED: "已连接",
+  DISABLED: "已停用",
+  NEEDS_RECONNECT: "待连接",
 };
 
 export function parseProjectStatus(value: FormDataEntryValue | null): ProjectStatus {

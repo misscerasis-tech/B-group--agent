@@ -8,6 +8,8 @@ import {
   ContentPackageStatus,
   ImageGenerationMode,
   ImageGenerationStatus,
+  IntegrationProvider,
+  IntegrationStatus,
   PackageFileStatus,
   PlanItemStatus,
   PrismaClient,
@@ -596,6 +598,54 @@ async function main() {
       generationMode: ImageGenerationMode.TEMPLATE_COMPOSITION,
       aspectRatio: "4:5",
       status: ImageGenerationStatus.QUEUED,
+    },
+  });
+
+  const feishuConnection = await prisma.integrationConnection.upsert({
+    where: { id: "demo-feishu-connection-placeholder" },
+    update: {
+      workspaceId: workspace.id,
+      provider: IntegrationProvider.FEISHU,
+      status: IntegrationStatus.NEEDS_RECONNECT,
+      displayName: "飞书连接占位",
+      tenantDisplayName: "待用户授权后选择组织",
+      notificationTargetName: "待选择通知群",
+      repositoryTargetName: "待选择沉淀位置",
+      notes: "Seed 只保存非敏感占位信息；真实 App ID、Secret、tenant key、chat ID、document ID 不得写入代码。",
+      connectedAt: null,
+      disabledAt: null,
+    },
+    create: {
+      id: "demo-feishu-connection-placeholder",
+      workspaceId: workspace.id,
+      provider: IntegrationProvider.FEISHU,
+      status: IntegrationStatus.NEEDS_RECONNECT,
+      displayName: "飞书连接占位",
+      tenantDisplayName: "待用户授权后选择组织",
+      notificationTargetName: "待选择通知群",
+      repositoryTargetName: "待选择沉淀位置",
+      notes: "Seed 只保存非敏感占位信息；真实 App ID、Secret、tenant key、chat ID、document ID 不得写入代码。",
+    },
+  });
+
+  await prisma.integrationMigrationRecord.upsert({
+    where: { id: "demo-feishu-migration-record" },
+    update: {
+      workspaceId: workspace.id,
+      connectionId: feishuConnection.id,
+      provider: IntegrationProvider.FEISHU,
+      fromTargetName: "旧飞书组织",
+      toTargetName: "新飞书组织待选择",
+      summary: "演示迁移记录：未来换绑飞书组织时，通知群和沉淀位置必须重新选择并留痕。",
+    },
+    create: {
+      id: "demo-feishu-migration-record",
+      workspaceId: workspace.id,
+      connectionId: feishuConnection.id,
+      provider: IntegrationProvider.FEISHU,
+      fromTargetName: "旧飞书组织",
+      toTargetName: "新飞书组织待选择",
+      summary: "演示迁移记录：未来换绑飞书组织时，通知群和沉淀位置必须重新选择并留痕。",
     },
   });
 }
