@@ -304,6 +304,7 @@ async function main() {
     ["demo-package-file-tiktok", "TikTok 视频脚本 DOCX", "DOCX"],
     ["demo-package-file-caption", "发布配文 TXT", "TXT"],
     ["demo-package-file-poster", "模板化海报图片", "PNG"],
+    ["demo-package-file-poster-copy", "海报文案 DOCX", "DOCX"],
     ["demo-package-file-brief", "设计 Brief PDF", "PDF"],
     ["demo-package-file-compliance", "品牌与合规检查 PDF", "PDF"],
     ["demo-package-file-zip", "最终 ZIP 打包下载", "ZIP"],

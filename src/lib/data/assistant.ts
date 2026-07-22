@@ -744,6 +744,7 @@ async function createStarterPlanIfMissing(
       ["TikTok 视频脚本 DOCX", "DOCX"],
       ["发布配文 TXT", "TXT"],
       ["模板化海报图片", "PNG"],
+      ["海报文案 DOCX", "DOCX"],
       ["设计 Brief PDF", "PDF"],
       ["品牌与合规检查 PDF", "PDF"],
       ["最终 ZIP 打包下载", "ZIP"],

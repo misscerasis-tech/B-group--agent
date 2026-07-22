@@ -75,7 +75,7 @@ describe("createContentPackage", () => {
       frequency: "WEEKLY",
       status: "DRAFT",
     });
-    mocks.tx.contentPackageFile.createMany.mockResolvedValue({ count: 10 });
+    mocks.tx.contentPackageFile.createMany.mockResolvedValue({ count: 11 });
     mocks.tx.changeLog.create.mockResolvedValue({ id: "log-1" });
 
     const contentPackage = await createContentPackage({
@@ -107,6 +107,11 @@ describe("createContentPackage", () => {
     expect(mocks.tx.contentPackageFile.createMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
+          name: "海报文案 DOCX",
+          fileType: "DOCX",
+          status: "PLANNED",
+        }),
+        expect.objectContaining({
           name: "品牌与合规检查 PDF",
           fileType: "PDF",
           status: "PLANNED",
@@ -119,7 +124,7 @@ describe("createContentPackage", () => {
       ]),
     });
     const createdFiles = mocks.tx.contentPackageFile.createMany.mock.calls[0][0].data;
-    expect(createdFiles).toHaveLength(10);
+    expect(createdFiles).toHaveLength(11);
     expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         workspaceId: "workspace-1",

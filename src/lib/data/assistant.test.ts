@@ -66,7 +66,7 @@ describe("generateStarterPlan", () => {
       id: "package-1",
     });
     mocks.tx.contentPackageFile.createMany.mockResolvedValue({
-      count: 10,
+      count: 11,
     });
     mocks.tx.reminder.create.mockResolvedValue({
       id: "reminder-1",
@@ -107,9 +107,13 @@ describe("generateStarterPlan", () => {
       }),
     });
     const packageFiles = mocks.tx.contentPackageFile.createMany.mock.calls[0][0].data;
-    expect(packageFiles).toHaveLength(10);
+    expect(packageFiles).toHaveLength(11);
     expect(packageFiles).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          name: "海报文案 DOCX",
+          status: "PLANNED",
+        }),
         expect.objectContaining({
           name: "品牌与合规检查 PDF",
           status: "PLANNED",

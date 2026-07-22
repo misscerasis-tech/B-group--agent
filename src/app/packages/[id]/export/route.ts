@@ -23,7 +23,7 @@ export async function GET(_request: Request, { params }: PackageExportRouteProps
     });
   }
 
-  const zip = buildContentPackageZip(exportData);
+  const zip = await buildContentPackageZip(exportData);
   const filename = `b-agent-content-package-${id}.zip`;
 
   return new Response(zip, {

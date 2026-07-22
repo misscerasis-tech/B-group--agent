@@ -1,6 +1,6 @@
 export type ZipFileInput = {
   filename: string;
-  content: string;
+  content: Buffer | string;
 };
 
 export function buildZipArchive(files: ZipFileInput[]) {
@@ -12,7 +12,7 @@ export function buildZipArchive(files: ZipFileInput[]) {
 
   for (const file of files) {
     const filename = Buffer.from(file.filename, "utf8");
-    const content = Buffer.from(file.content, "utf8");
+    const content = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content, "utf8");
     const crc = crc32(content);
     const localHeader = Buffer.alloc(30);
 

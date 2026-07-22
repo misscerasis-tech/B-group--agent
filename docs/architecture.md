@@ -96,7 +96,7 @@ B 组工作助手已新增：
 - `IntegrationConnection`：Workspace 级可插拔集成连接，当前支持飞书占位连接。
 - `IntegrationMigrationRecord`：飞书组织、通知群或沉淀位置换绑时的迁移记录。
 
-当前素材包导出先使用服务端本地 ZIP 清单生成器，输出说明、排期 CSV、文案、Hashtags、TikTok 脚本、设计 Brief、合规检查和 manifest。导出查询必须按当前 Workspace 限制；后续 PDF、DOCX、XLSX、PNG 生成器可以逐个替换同一导出入口。
+当前素材包导出使用服务端本地 ZIP 生成器，输出基础 PDF、XLSX、DOCX、TXT、关联素材文件和 manifest。导出查询必须按当前 Workspace 限制；后续精排 PDF、复杂 XLSX、正式 DOCX、PNG 海报或对象存储打包可以逐个替换同一导出入口。
 
 项目工作台快照导出为 Workspace 作用域 JSON，包含项目、关联产品事实、素材审核状态、最新策略与版本历史、内容计划、素材包、提醒、审核任务、最近 Agent 操作和变更日志。该导出不包含密钥、飞书 token 或本地文件二进制，只用于演示备份、复盘和迁移核对。
 

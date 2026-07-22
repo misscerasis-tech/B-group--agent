@@ -49,7 +49,7 @@ export default async function PackagesPage() {
           <div>
             <h2>素材包中心</h2>
             <p className="muted">
-              当前阶段先提供本地 ZIP 清单导出；后续接入真实 PDF、XLSX、DOCX、TXT、PNG 文件生成。
+              当前阶段先提供本地 ZIP 可交付文件包；后续继续增强 PDF、XLSX、DOCX 和海报成品精排。
             </p>
           </div>
           <Link className="button" href="/b-agent">
@@ -180,7 +180,7 @@ export default async function PackagesPage() {
                 </div>
                 <div className="download-preview">
                   <Download size={18} aria-hidden="true" />
-                  <span>可下载包含说明、排期、文案、Brief、合规检查和 manifest 的 ZIP。</span>
+                  <span>可下载包含 PDF、XLSX、DOCX、TXT、关联素材和 manifest 的 ZIP。</span>
                   {contentPackage.status !== "APPROVED" ? (
                     <form action={submitContentPackageForReviewAction} className="inline-form">
                       <input name="contentPackageId" type="hidden" value={contentPackage.id} />
@@ -192,7 +192,7 @@ export default async function PackagesPage() {
                     </form>
                   ) : null}
                   <Link className="button secondary" href={`/packages/${contentPackage.id}/export`}>
-                    下载 ZIP 清单
+                    下载素材包
                   </Link>
                 </div>
               </article>
