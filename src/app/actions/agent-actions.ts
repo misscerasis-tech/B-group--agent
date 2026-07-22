@@ -38,6 +38,11 @@ export async function submitAgentCommandAction(formData: FormData) {
   });
 
   revalidatePath("/b-agent");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+  revalidatePath("/packages");
+  revalidatePath("/reminders");
+  revalidatePath("/recaps");
   redirect(bAgentReturnPath(projectId));
 }
 
@@ -53,6 +58,11 @@ export async function applyPendingAgentOperationAction(formData: FormData) {
   });
 
   revalidatePath("/b-agent");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+  revalidatePath("/packages");
+  revalidatePath("/reminders");
+  revalidatePath("/recaps");
   redirect(bAgentReturnPath(projectId));
 }
 
@@ -68,6 +78,7 @@ export async function rejectPendingAgentOperationAction(formData: FormData) {
   });
 
   revalidatePath("/b-agent");
+  revalidatePath("/dashboard");
   redirect(bAgentReturnPath(projectId));
 }
 
@@ -84,6 +95,8 @@ export async function confirmProjectStrategyAction(formData: FormData) {
   });
 
   revalidatePath("/b-agent");
+  revalidatePath("/dashboard");
+  revalidatePath("/reviews");
   redirect(bAgentReturnPath(projectId));
 }
 
@@ -98,5 +111,10 @@ export async function generateStarterPlanAction(formData: FormData) {
   });
 
   revalidatePath("/b-agent");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+  revalidatePath("/packages");
+  revalidatePath("/reminders");
+  revalidatePath("/recaps");
   redirect(bAgentReturnPath(projectId));
 }

@@ -38,5 +38,9 @@ export function createAgentTextProvider(providerKey = "local-rule"): AgentTextPr
 }
 
 export function getConfiguredAgentTextProvider() {
-  return createAgentTextProvider(process.env.AI_PROVIDER ?? "local-rule");
+  try {
+    return createAgentTextProvider(process.env.AI_PROVIDER ?? "local-rule");
+  } catch {
+    return new LocalRuleAgentTextProvider();
+  }
 }

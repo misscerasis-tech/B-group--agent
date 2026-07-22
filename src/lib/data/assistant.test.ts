@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { generateStarterPlan } from "./assistant";
+import { generateStarterPlan, submitAgentCommand } from "./assistant";
 
 const mocks = vi.hoisted(() => {
   const tx = {
@@ -8,7 +8,22 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
     },
     project: {
+      findFirst: vi.fn(),
       update: vi.fn(),
+    },
+    agentConversation: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    agentMessage: {
+      create: vi.fn(),
+    },
+    agentOperation: {
+      create: vi.fn(),
+    },
+    metricsSnapshot: {
+      create: vi.fn(),
     },
     contentPlanItem: {
       count: vi.fn(),
@@ -44,6 +59,13 @@ describe("generateStarterPlan", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
+    mocks.tx.project.findFirst.mockResolvedValue({
+      id: "project-1",
+      workspaceId: "workspace-1",
+      name: "巴西新品首月增长",
+      description: "项目说明",
+      status: "ACTIVE",
+    });
     mocks.tx.projectStrategy.findFirst.mockResolvedValue({
       id: "strategy-1",
       workspaceId: "workspace-1",
@@ -74,6 +96,26 @@ describe("generateStarterPlan", () => {
     mocks.tx.changeLog.create.mockResolvedValue({
       id: "log-1",
     });
+    mocks.tx.agentConversation.findFirst.mockResolvedValue(null);
+    mocks.tx.agentConversation.create.mockResolvedValue({
+      id: "conversation-1",
+    });
+    mocks.tx.agentConversation.update.mockResolvedValue({
+      id: "conversation-1",
+    });
+    mocks.tx.agentMessage.create.mockResolvedValue({
+      id: "message-1",
+    });
+    mocks.tx.agentOperation.create.mockResolvedValue({
+      id: "operation-1",
+      status: "APPLIED",
+    });
+    mocks.tx.metricsSnapshot.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: "metric-1",
+        ...data,
+      }),
+    );
   });
 
   it("creates first-month plan items, a content package, files, reminder and change log", async () => {
@@ -151,5 +193,45 @@ describe("generateStarterPlan", () => {
     expect(mocks.tx.contentPlanItem.create).not.toHaveBeenCalled();
     expect(mocks.tx.contentPackage.create).not.toHaveBeenCalled();
     expect(mocks.tx.contentPackageFile.createMany).not.toHaveBeenCalled();
+  });
+
+  it("records metrics from a Chinese agent command", async () => {
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "记录 2026-07 第3周 TikTok 曝光10000 点击600 转化24 花费1234.56 元。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        status: "APPLIED",
+        summary: expect.stringContaining("录入指标"),
+      }),
+    });
+    expect(mocks.tx.metricsSnapshot.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        period: "2026-07 第3周",
+        channel: "TikTok",
+        impressions: 10000,
+        clicks: 600,
+        conversions: 24,
+        spendCents: 123456,
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "MetricsSnapshot",
+        action: "agent_metrics_snapshot_created",
+        actorUserId: "user-1",
+      }),
+    });
   });
 });

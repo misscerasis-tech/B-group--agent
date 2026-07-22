@@ -30,6 +30,19 @@ export type ParsedAgentOperation =
       severity: ReminderSeverity;
     }
   | {
+      type: "create_metrics_snapshot";
+      value: {
+        period: string;
+        channel: string;
+        impressions: number;
+        clicks: number;
+        conversions: number;
+        spendCents: number;
+        notes?: string;
+      };
+      label: string;
+    }
+  | {
       type: "generate_starter_plan";
       value: "first_month";
       label: string;
@@ -213,8 +226,88 @@ function shouldGenerateStarterPlan(text: string) {
   return /生成首月计划|创建首月计划|生成第一份素材包|创建第一份素材包|生成素材包结构|创建素材包结构/.test(text);
 }
 
+function parseMetricsSnapshotOperation(text: string): ParsedAgentOperation | null {
+  if (!/(记录|录入|导入|保存).*(曝光|点击|转化|花费|消耗)/.test(text)) {
+    return null;
+  }
+
+  const channel = CHANNELS.find((channelName) => text.toLowerCase().includes(channelName.toLowerCase()));
+  const period = parseMetricsPeriod(text);
+  const impressions = extractMetricNumber(text, ["曝光", "展现", "impressions"]);
+  const clicks = extractMetricNumber(text, ["点击", "clicks"]);
+  const conversions = extractMetricNumber(text, ["转化", "成交", "询盘", "conversions"]);
+  const spend = extractMetricNumber(text, ["花费", "消耗", "费用", "spend"]);
+
+  if (
+    !channel ||
+    !period ||
+    impressions === null ||
+    clicks === null ||
+    conversions === null ||
+    spend === null
+  ) {
+    return null;
+  }
+
+  if (clicks > impressions || conversions > clicks) {
+    return null;
+  }
+
+  const value = {
+    period,
+    channel,
+    impressions: Math.round(impressions),
+    clicks: Math.round(clicks),
+    conversions: Math.round(conversions),
+    spendCents: Math.round(spend * 100),
+    notes: "由 B 组 Agent 中文指令录入。",
+  };
+
+  return {
+    type: "create_metrics_snapshot",
+    value,
+    label: `录入指标：${period} · ${channel} · 曝光 ${value.impressions} / 点击 ${value.clicks} / 转化 ${value.conversions} / 花费 ¥${spend.toFixed(
+      2,
+    )}`,
+  };
+}
+
+function parseMetricsPeriod(text: string) {
+  const periodPatterns = [
+    /20\d{2}[-/.年]\d{1,2}(?:\s*(?:第\s*\d+\s*周|周|月))?/,
+    /首月第\s*\d+\s*周/,
+    /第\s*\d+\s*周/,
+    /本周|上周|本月|上月|今天|昨天/,
+  ];
+
+  for (const pattern of periodPatterns) {
+    const match = text.match(pattern);
+
+    if (match?.[0]) {
+      return match[0].replace(/\s+/g, " ").trim();
+    }
+  }
+
+  return null;
+}
+
+function extractMetricNumber(text: string, labels: string[]) {
+  for (const label of labels) {
+    const match = text.match(new RegExp(`${label}\\s*[:：]?\\s*(\\d+(?:\\.\\d+)?)`, "i"));
+
+    if (match?.[1]) {
+      const value = Number.parseFloat(match[1]);
+      return Number.isFinite(value) && value >= 0 ? value : null;
+    }
+  }
+
+  return null;
+}
+
 function operationKey(operation: ParsedAgentOperation) {
-  return `${operation.type}:${operation.value}`;
+  return `${operation.type}:${
+    typeof operation.value === "string" ? operation.value : JSON.stringify(operation.value)
+  }`;
 }
 
 function summarizeOperations(operations: ParsedAgentOperation[]) {
@@ -314,6 +407,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     });
   }
 
+  const metricsOperation = parseMetricsSnapshotOperation(text);
+  if (metricsOperation) {
+    operations.push(metricsOperation);
+  }
+
   for (const audience of AUDIENCE_HINTS) {
     if (hasRemoveIntent(text, audience)) {
       operations.push({
@@ -355,12 +453,19 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const dedupedOperations = Array.from(
     new Map(operations.map((operation) => [operationKey(operation), operation])).values(),
   );
+  const hasCompleteMetricsOperation = dedupedOperations.some(
+    (operation) => operation.type === "create_metrics_snapshot",
+  );
 
   return {
     rawText: text,
     operations: dedupedOperations,
     summary: summarizeOperations(dedupedOperations),
     confidence:
-      dedupedOperations.length >= 2 ? "high" : dedupedOperations.length === 1 ? "medium" : "low",
+      dedupedOperations.length >= 2 || hasCompleteMetricsOperation
+        ? "high"
+        : dedupedOperations.length === 1
+          ? "medium"
+          : "low",
   };
 }

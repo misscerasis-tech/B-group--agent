@@ -107,6 +107,27 @@ describe("parseAgentCommand", () => {
     });
   });
 
+  it("extracts metrics snapshot creation requests", () => {
+    const parsed = parseAgentCommand(
+      "记录 2026-07 第3周 TikTok 曝光10000 点击600 转化24 花费1234.56 元。",
+    );
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_metrics_snapshot",
+      value: {
+        period: "2026-07 第3周",
+        channel: "TikTok",
+        impressions: 10000,
+        clicks: 600,
+        conversions: 24,
+        spendCents: 123456,
+        notes: "由 B 组 Agent 中文指令录入。",
+      },
+      label: "录入指标：2026-07 第3周 · TikTok · 曝光 10000 / 点击 600 / 转化 24 / 花费 ¥1234.56",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("returns a low-confidence summary when no safe operation is detected", () => {
     const parsed = parseAgentCommand("帮我看看这个项目怎么样");
 

@@ -174,7 +174,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                   <span className="field-label">给 B 组 Agent 的中文指令</span>
                   <textarea
                     name="command"
-                    placeholder="例如：巴西不做 LinkedIn，新增 TikTok，下个月每周生成一次素材包。"
+                    placeholder="例如：记录 2026-07 第3周 TikTok 曝光10000 点击600 转化24 花费1234.56 元。"
                     required
                   />
                 </label>
@@ -193,6 +193,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                     <li>修改素材包频率：每周、每两周、每月</li>
                     <li>修改项目状态：暂停项目、恢复项目、归档项目或改回草稿</li>
                     <li>创建项目提醒：提醒我提前确认奖品、规则、Logo 或素材来源</li>
+                    <li>录入渠道表现：记录 TikTok 本周曝光、点击、转化和花费</li>
                     <li>生成首月计划：请生成首月计划和第一份素材包结构</li>
                     <li>识别市场：巴西、蒙古、美国、日本、东南亚等</li>
                     <li>追加或删除内容方向：世界杯、那达慕、黑五、通勤、礼赠、小抽奖等</li>
