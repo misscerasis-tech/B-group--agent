@@ -99,6 +99,8 @@ B 组工作助手已新增：
 
 今日工作台的 Agent 工作简报不直接调用模型，而是先从 `ContentPackage`、`ContentPlanItem`、`Reminder` 和 `MetricsSnapshot` 聚合出可解释的中文重点进展、风险和下一步动作。后续接入真实 GPT 时，可以把这份结构化简报作为上下文输入，而不是让模型直接绕过业务数据做自由总结。
 
+数据复盘风险先以 `MetricsSnapshot` 形式沉淀，再由规则模块识别低点击率、无转化和投放花费风险。Agent 对话可以把这些风险转成 `Reminder`，但不会凭空生成指标，也不会跨 Workspace 或跨项目读取数据。
+
 当前素材包导出使用服务端本地 ZIP 生成器，输出基础 PDF、XLSX、DOCX、TXT、关联素材文件和 manifest。导出查询必须按当前 Workspace 限制；后续精排 PDF、复杂 XLSX、正式 DOCX、PNG 海报或对象存储打包可以逐个替换同一导出入口。
 
 项目工作台快照导出为 Workspace 作用域 JSON，包含项目、关联产品事实、素材审核状态、最新策略与版本历史、内容计划、素材包、提醒、审核任务、最近 Agent 操作和变更日志。该导出不包含密钥、飞书 token 或本地文件二进制，只用于演示备份、复盘和迁移核对。

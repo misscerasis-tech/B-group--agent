@@ -24,6 +24,7 @@ import {
   collectProjectHealthInput,
 } from "@/lib/data/project-health";
 import { buildContentPackageReadiness } from "@/lib/content-package-readiness";
+import { buildMetricsReminderCandidates } from "@/lib/data/content-workspace";
 import { inferProductFactsFromText } from "@/lib/product-facts/extractor";
 import { prisma } from "@/lib/prisma";
 import { buildStrategyRecommendation } from "@/lib/strategy/recommender";
@@ -354,6 +355,9 @@ export async function submitAgentCommand(input: {
       );
       const starterPlanOperations = parsed.operations.filter(isStarterPlanOperation);
       const metricsOperations = parsed.operations.filter(isMetricsOperation);
+      const metricsRiskReminderOperations = parsed.operations.filter(
+        isMetricsRiskReminderOperation,
+      );
       const planItemOperations = parsed.operations.filter(isPlanItemOperation);
       const contentPackageOperations = parsed.operations.filter(isContentPackageOperation);
       const packageReadinessReminderOperations = parsed.operations.filter(
@@ -468,6 +472,13 @@ export async function submitAgentCommand(input: {
         userId: input.userId,
         projectId: project.id,
         operations: metricsOperations,
+      });
+
+      await applyMetricsRiskReminderOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: metricsRiskReminderOperations,
       });
 
       await applyPlanItemOperations(tx, {
@@ -612,6 +623,7 @@ export async function applyPendingAgentOperation(input: {
     );
     const starterPlanOperations = parsedOperations.filter(isStarterPlanOperation);
     const metricsOperations = parsedOperations.filter(isMetricsOperation);
+    const metricsRiskReminderOperations = parsedOperations.filter(isMetricsRiskReminderOperation);
     const planItemOperations = parsedOperations.filter(isPlanItemOperation);
     const contentPackageOperations = parsedOperations.filter(isContentPackageOperation);
     const packageReadinessReminderOperations = parsedOperations.filter(
@@ -785,6 +797,13 @@ export async function applyPendingAgentOperation(input: {
       operations: metricsOperations,
     });
 
+    await applyMetricsRiskReminderOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: metricsRiskReminderOperations,
+    });
+
     await applyPlanItemOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -890,6 +909,7 @@ export async function applyPendingAgentOperation(input: {
         productFactsConfirmed: productFactConfirmationOperations.length > 0,
         starterPlanChanged: starterPlanOperations.length > 0,
         metricsChanged: metricsOperations.length > 0,
+        metricsRiskReminderChanged: metricsRiskReminderOperations.length > 0,
         planItemChanged: planItemOperations.length > 0,
         contentPackageChanged: contentPackageOperations.length > 0,
         packageReadinessReminderChanged: packageReadinessReminderOperations.length > 0,
@@ -1162,6 +1182,18 @@ async function findCompletionTargetWarnings(
       }
     }
 
+    if (operation.type === "create_metrics_risk_reminders") {
+      const metricsCount = await tx.metricsSnapshot.count({
+        where: scopedWhere(input.workspaceId, {
+          projectId: input.projectId,
+        }) as Prisma.MetricsSnapshotWhereInput,
+      });
+
+      if (metricsCount === 0) {
+        warnings.push("当前项目还没有复盘指标，无法生成数据风险提醒");
+      }
+    }
+
     if (operation.type === "create_content_package_readiness_reminders") {
       const matchCount = await tx.contentPackage.count({
         where: buildContentPackageReadinessReminderWhere({
@@ -1204,7 +1236,7 @@ function buildAgentConflictCheck(input: {
   completionTargetWarnings: string[];
 }) {
   const base = input.noSafeOperation
-    ? "未识别到足够明确的市场、渠道、频率、项目状态、产品事实、提醒、内容计划、素材包或审核动作，未写入数据库。"
+    ? "未识别到足够明确的市场、渠道、频率、项目状态、产品事实、提醒、内容计划、素材包、审核或复盘动作，未写入数据库。"
     : input.completionTargetWarnings.length > 0
       ? `已识别到任务类指令，但${input.completionTargetWarnings.join("；")}，未写入数据库。`
     : input.requiresConfirmation
@@ -2141,6 +2173,104 @@ async function applyMetricsOperations(
       },
     });
   }
+}
+
+async function applyMetricsRiskReminderOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "create_metrics_risk_reminders") {
+      continue;
+    }
+
+    const metricsSnapshots = await tx.metricsSnapshot.findMany({
+      where: scopedWhere(input.workspaceId, {
+        projectId: input.projectId,
+      }) as Prisma.MetricsSnapshotWhereInput,
+      include: {
+        project: true,
+      },
+      orderBy: {
+        capturedAt: "desc",
+      },
+      take: 12,
+    });
+    const candidates = buildMetricsReminderCandidates(metricsSnapshots).slice(
+      0,
+      operation.value.limit,
+    );
+    let createdCount = 0;
+
+    for (const candidate of candidates) {
+      createdCount += await createReminderIfMissing(tx, {
+        workspaceId: input.workspaceId,
+        projectId: candidate.projectId,
+        title: candidate.title,
+        description: candidate.description,
+        severity: candidate.severity,
+      });
+    }
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "MetricsSnapshot",
+        entityId: input.projectId,
+        action: "agent_metrics_risk_reminders_generated",
+        summary: `${operation.label}：新增 ${createdCount} 条。`,
+        after: {
+          inspectedSnapshots: metricsSnapshots.length,
+          riskCandidates: candidates.length,
+          createdCount,
+        },
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
+async function createReminderIfMissing(
+  tx: Prisma.TransactionClient,
+  data: {
+    workspaceId: string;
+    projectId?: string | null;
+    title: string;
+    description: string;
+    severity: ReminderSeverity;
+  },
+) {
+  const existingReminder = await tx.reminder.findFirst({
+    where: {
+      workspaceId: data.workspaceId,
+      projectId: data.projectId ?? null,
+      title: data.title,
+      status: ReminderStatus.OPEN,
+    },
+  });
+
+  if (existingReminder) {
+    return 0;
+  }
+
+  await tx.reminder.create({
+    data: {
+      workspaceId: data.workspaceId,
+      projectId: data.projectId,
+      title: data.title,
+      description: data.description,
+      severity: data.severity,
+      status: ReminderStatus.OPEN,
+    },
+  });
+
+  return 1;
 }
 
 async function applyPlanItemOperations(
@@ -3554,6 +3684,10 @@ function isMetricsOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_metrics_snapshot";
 }
 
+function isMetricsRiskReminderOperation(operation: ParsedAgentOperation) {
+  return operation.type === "create_metrics_risk_reminders";
+}
+
 function isPlanItemOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_plan_item";
 }
@@ -3741,6 +3875,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
       continue;
     }
 
+    if (type === "create_metrics_risk_reminders" && isMetricsRiskReminderValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || "根据数据复盘风险生成提醒",
+      });
+      continue;
+    }
+
     if (type === "create_content_package" && isContentPackageValue(value)) {
       operations.push({
         type,
@@ -3864,6 +4007,19 @@ function isMetricsSnapshotValue(value: unknown): value is Extract<
     record.clicks <= record.impressions &&
     record.conversions <= record.clicks
   );
+}
+
+function isMetricsRiskReminderValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "create_metrics_risk_reminders" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return Number.isInteger(record.limit) && Number(record.limit) >= 1 && Number(record.limit) <= 8;
 }
 
 function isContentPackageValue(value: unknown): value is Extract<
@@ -4158,6 +4314,7 @@ function buildConfirmedAssistantReply(input: {
   productFactsConfirmed: boolean;
   starterPlanChanged: boolean;
   metricsChanged: boolean;
+  metricsRiskReminderChanged: boolean;
   planItemChanged: boolean;
   contentPackageChanged: boolean;
   packageReadinessReminderChanged: boolean;
@@ -4175,6 +4332,9 @@ function buildConfirmedAssistantReply(input: {
   const productFactText = input.productFactChanged ? "，并新增待复核产品事实" : "";
   const productFactsConfirmedText = input.productFactsConfirmed ? "，并确认产品事实" : "";
   const metricsText = input.metricsChanged ? "，并录入渠道表现指标" : "";
+  const metricsRiskReminderText = input.metricsRiskReminderChanged
+    ? "，并生成数据复盘风险提醒"
+    : "";
   const planItemText = input.planItemChanged ? "，并新增内容计划" : "";
   const contentPackageText = input.contentPackageChanged ? "，并创建素材包结构" : "";
   const packageReadinessReminderText = input.packageReadinessReminderChanged
@@ -4230,7 +4390,11 @@ function buildConfirmedAssistantReply(input: {
   }
 
   if (input.metricsChanged) {
-    return `已按你的确认录入渠道表现指标${planItemText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认录入渠道表现指标${metricsRiskReminderText}${planItemText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.metricsRiskReminderChanged) {
+    return `已按你的确认生成数据复盘风险提醒${planItemText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.planItemChanged) {

@@ -107,6 +107,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "metrics_risk_reminders",
+    category: "recap",
+    title: "将复盘风险生成提醒",
+    example: "把数据复盘风险生成提醒。",
+    writesTo: ["MetricsSnapshot", "Reminder", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "plan_item_create",
     category: "planning",
     title: "新增内容计划",

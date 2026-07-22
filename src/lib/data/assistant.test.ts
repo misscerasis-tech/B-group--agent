@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
     metricsSnapshot: {
       create: vi.fn(),
       count: vi.fn(),
+      findMany: vi.fn(),
     },
     contentPlanItem: {
       count: vi.fn(),
@@ -271,6 +272,66 @@ describe("generateStarterPlan", () => {
         projectId: "project-1",
         entityType: "MetricsSnapshot",
         action: "agent_metrics_snapshot_created",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("creates reminders from current project metrics risks", async () => {
+    mocks.tx.metricsSnapshot.count.mockResolvedValue(1);
+    mocks.tx.metricsSnapshot.findMany.mockResolvedValue([
+      {
+        id: "metric-1",
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        project: {
+          name: "巴西新品首月增长",
+        },
+        period: "2026-07 第3周",
+        channel: "TikTok",
+        impressions: 1200,
+        clicks: 0,
+        conversions: 0,
+        spendCents: 0,
+        notes: null,
+        capturedAt: new Date("2026-07-22T00:00:00.000Z"),
+        createdAt: new Date("2026-07-22T00:00:00.000Z"),
+        updatedAt: new Date("2026-07-22T00:00:00.000Z"),
+      },
+    ]);
+    mocks.tx.reminder.findFirst.mockResolvedValue(null);
+    mocks.tx.reminder.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: "reminder-from-metrics-risk",
+        ...data,
+      }),
+    );
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "把数据复盘风险生成提醒。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.reminder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        title: "曝光无点击：TikTok 2026-07 第3周",
+        severity: "CRITICAL",
+        status: "OPEN",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "MetricsSnapshot",
+        entityId: "project-1",
+        action: "agent_metrics_risk_reminders_generated",
+        summary: "根据数据复盘风险生成提醒：新增 1 条。",
         actorUserId: "user-1",
       }),
     });

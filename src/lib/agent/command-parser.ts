@@ -97,6 +97,13 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "create_metrics_risk_reminders";
+      value: {
+        limit: number;
+      };
+      label: string;
+    }
+  | {
       type: "create_plan_item";
       value: {
         week: number;
@@ -901,6 +908,23 @@ function parseMetricsSnapshotOperation(text: string): ParsedAgentOperation | nul
   };
 }
 
+function parseMetricsRiskReminderOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(数据复盘|复盘风险|指标风险|渠道表现|表现数据|投放数据)/.test(text) ||
+    !/(生成|创建|加入|转成|变成).*(提醒|待办)/.test(text)
+  ) {
+    return null;
+  }
+
+  return {
+    type: "create_metrics_risk_reminders",
+    value: {
+      limit: 4,
+    },
+    label: "根据数据复盘风险生成提醒",
+  };
+}
+
 function parseMetricsPeriod(text: string) {
   const periodPatterns = [
     /20\d{2}[-/.年]\d{1,2}(?:\s*(?:第\s*\d+\s*周|周|月))?/,
@@ -1338,6 +1362,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(metricsOperation);
   }
 
+  const metricsRiskReminderOperation = parseMetricsRiskReminderOperation(text);
+  if (metricsRiskReminderOperation) {
+    operations.push(metricsRiskReminderOperation);
+  }
+
   const planItemOperation = parsePlanItemOperation(text);
   if (planItemOperation) {
     operations.push(planItemOperation);
@@ -1410,6 +1439,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "submit_content_package_review" ||
       operation.type === "decide_content_package_review" ||
       operation.type === "decide_review_task" ||
+      operation.type === "create_metrics_risk_reminders" ||
       operation.type === "create_missing_review_tasks",
   );
 

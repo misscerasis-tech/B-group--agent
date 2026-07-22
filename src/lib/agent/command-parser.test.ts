@@ -209,6 +209,19 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts metrics risk reminder generation requests", () => {
+    const parsed = parseAgentCommand("把数据复盘风险生成提醒。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_metrics_risk_reminders",
+      value: {
+        limit: 4,
+      },
+      label: "根据数据复盘风险生成提醒",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts content plan item creation requests", () => {
     const parsed = parseAgentCommand(
       "第2周 TikTok 做一条开箱短视频，主题新品认知，交付短视频脚本，截止 2026-08-07，可执行。",
