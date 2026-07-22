@@ -429,6 +429,62 @@ export async function applyPendingAgentOperation(input: {
   });
 }
 
+export async function rejectPendingAgentOperation(input: {
+  workspaceId: string;
+  userId: string;
+  operationId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const operation = await tx.agentOperation.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        id: input.operationId,
+        status: AgentOperationStatus.PENDING_CONFIRMATION,
+      }) as Prisma.AgentOperationWhereInput,
+    });
+
+    if (!operation || !operation.projectId) {
+      throw new Error("未找到需要拒绝的 Agent 操作。");
+    }
+
+    const updatedOperation = await tx.agentOperation.update({
+      where: {
+        id: operation.id,
+      },
+      data: {
+        status: AgentOperationStatus.REJECTED,
+        conflictCheck: "已由人工拒绝，未修改正式策略。",
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: operation.projectId,
+        entityType: "AgentOperation",
+        entityId: operation.id,
+        action: "agent_command_rejected",
+        summary: `拒绝 Agent 变更：${operation.summary}`,
+        before: operationToJson(operation),
+        after: operationToJson(updatedOperation),
+        actorUserId: input.userId,
+      },
+    });
+
+    if (operation.conversationId) {
+      await tx.agentMessage.create({
+        data: {
+          workspaceId: input.workspaceId,
+          conversationId: operation.conversationId,
+          role: AgentMessageRole.ASSISTANT,
+          content: `已拒绝本次变更，正式策略保持不变：${operation.summary}`,
+        },
+      });
+    }
+
+    return updatedOperation;
+  });
+}
+
 export async function confirmProjectStrategy(input: {
   workspaceId: string;
   userId: string;
@@ -779,6 +835,24 @@ function strategyToJson(strategy: ProjectStrategyRecord) {
     packageFrequency: strategy.packageFrequency,
     positioning: strategy.positioning,
     rationale: strategy.rationale,
+  };
+}
+
+function operationToJson(operation: {
+  id: string;
+  rawText: string;
+  summary: string;
+  operations: Prisma.JsonValue;
+  conflictCheck: string | null;
+  status: AgentOperationStatus;
+}) {
+  return {
+    id: operation.id,
+    rawText: operation.rawText,
+    summary: operation.summary,
+    operations: operation.operations,
+    conflictCheck: operation.conflictCheck,
+    status: operation.status,
   };
 }
 

@@ -6,6 +6,7 @@ import {
   applyPendingAgentOperation,
   confirmProjectStrategy,
   generateStarterPlan,
+  rejectPendingAgentOperation,
   submitAgentCommand,
 } from "@/lib/data/assistant";
 import { getWorkspaceContext } from "@/lib/workspace-context";
@@ -46,6 +47,21 @@ export async function applyPendingAgentOperationAction(formData: FormData) {
   const projectId = readRequiredText(formData, "projectId", "当前项目");
 
   await applyPendingAgentOperation({
+    workspaceId: context.currentWorkspace.id,
+    userId: context.user.id,
+    operationId,
+  });
+
+  revalidatePath("/b-agent");
+  redirect(bAgentReturnPath(projectId));
+}
+
+export async function rejectPendingAgentOperationAction(formData: FormData) {
+  const context = await getWorkspaceContext();
+  const operationId = readRequiredText(formData, "operationId", "待拒绝操作");
+  const projectId = readRequiredText(formData, "projectId", "当前项目");
+
+  await rejectPendingAgentOperation({
     workspaceId: context.currentWorkspace.id,
     userId: context.user.id,
     operationId,

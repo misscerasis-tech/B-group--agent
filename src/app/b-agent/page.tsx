@@ -16,6 +16,7 @@ import {
   applyPendingAgentOperationAction,
   confirmProjectStrategyAction,
   generateStarterPlanAction,
+  rejectPendingAgentOperationAction,
   submitAgentCommandAction,
 } from "@/app/actions/agent-actions";
 import { AppShell } from "@/components/app-shell";
@@ -354,13 +355,28 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                           </header>
                           <p>{operation.conflictCheck ?? operation.rawText}</p>
                           {operation.status === "PENDING_CONFIRMATION" ? (
-                            <form action={applyPendingAgentOperationAction} className="inline-form">
-                              <input name="operationId" type="hidden" value={operation.id} />
-                              <input name="projectId" type="hidden" value={selectedProject.id} />
-                              <button className="button" type="submit">
-                                确认并应用
-                              </button>
-                            </form>
+                            <div className="hero-actions">
+                              <form
+                                action={applyPendingAgentOperationAction}
+                                className="inline-form"
+                              >
+                                <input name="operationId" type="hidden" value={operation.id} />
+                                <input name="projectId" type="hidden" value={selectedProject.id} />
+                                <button className="button" type="submit">
+                                  确认并应用
+                                </button>
+                              </form>
+                              <form
+                                action={rejectPendingAgentOperationAction}
+                                className="inline-form"
+                              >
+                                <input name="operationId" type="hidden" value={operation.id} />
+                                <input name="projectId" type="hidden" value={selectedProject.id} />
+                                <button className="button secondary" type="submit">
+                                  拒绝变更
+                                </button>
+                              </form>
+                            </div>
                           ) : null}
                         </article>
                       ))
