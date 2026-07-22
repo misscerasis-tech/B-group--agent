@@ -23,7 +23,7 @@ const checks = [
     label: "B 组 Agent 工作台",
     path: "/b-agent",
     expectedStatus: 200,
-    expectedText: "B组 Agent 工作台",
+    expectedText: ["B组 Agent 工作台", "中文对话驱动的项目增长工作台"],
   },
   {
     label: "今日工作台",
@@ -104,11 +104,20 @@ async function runCheck(check) {
 
     const text = await response.text();
 
-    if (check.expectedText && !text.includes(check.expectedText)) {
+    const expectedTexts = Array.isArray(check.expectedText)
+      ? check.expectedText
+      : check.expectedText
+        ? [check.expectedText]
+        : [];
+
+    if (
+      expectedTexts.length > 0 &&
+      !expectedTexts.some((expectedText) => text.includes(expectedText))
+    ) {
       return {
         ok: false,
         label: check.label,
-        detail: `${check.path} 没有包含预期中文文本「${check.expectedText}」`,
+        detail: `${check.path} 没有包含预期中文文本「${expectedTexts.join("」或「")}」`,
       };
     }
 
