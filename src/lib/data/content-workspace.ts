@@ -1,6 +1,7 @@
 import {
   AssetStatus,
   ContentPackageStatus,
+  PlanItemStatus,
   Prisma,
   ProductFactStatus,
   ReminderSeverity,
@@ -36,6 +37,57 @@ export async function listWorkspacePlanItems(workspaceId: string) {
         createdAt: "asc",
       },
     ],
+  });
+}
+
+export async function updateContentPlanItemStatus(input: {
+  workspaceId: string;
+  userId: string;
+  planItemId: string;
+  status: PlanItemStatus;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const planItem = await tx.contentPlanItem.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        id: input.planItemId,
+      }) as Prisma.ContentPlanItemWhereInput,
+      include: {
+        project: true,
+      },
+    });
+
+    if (!planItem) {
+      throw new Error("未找到当前 Workspace 下的内容计划。");
+    }
+
+    const updatedPlanItem = await tx.contentPlanItem.update({
+      where: {
+        id: planItem.id,
+      },
+      data: {
+        status: input.status,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: planItem.projectId,
+        entityType: "ContentPlanItem",
+        entityId: planItem.id,
+        action: "plan_item_status_updated",
+        summary: `更新内容计划状态：${planItem.project.name} · 第${planItem.week}周 · ${planItem.title}`,
+        before: {
+          status: planItem.status,
+        },
+        after: {
+          status: updatedPlanItem.status,
+        },
+        actorUserId: input.userId,
+      },
+    });
+
+    return updatedPlanItem;
   });
 }
 

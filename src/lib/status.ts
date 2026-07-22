@@ -198,3 +198,11 @@ export function parseAssetKind(value: FormDataEntryValue | null): AssetKind {
 
   return "PRODUCT_IMAGE";
 }
+
+export function parsePlanItemStatus(value: FormDataEntryValue | null): PlanItemStatus {
+  if (value === "DRAFT" || value === "REVIEW_NEEDED" || value === "DONE") {
+    return value;
+  }
+
+  return "READY";
+}

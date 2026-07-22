@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, CheckCircle2, ClipboardCheck, PlayCircle } from "lucide-react";
+import { updateContentPlanItemStatusAction } from "@/app/actions/calendar-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -46,12 +47,41 @@ export default async function CalendarPage() {
                     <strong>
                       第{item.week}周 · {item.theme}
                     </strong>
-                    <StatusBadge label={planItemStatusLabels[item.status]} tone="neutral" />
+                    <StatusBadge
+                      label={planItemStatusLabels[item.status]}
+                      tone={planStatusTone(item.status)}
+                    />
                   </header>
                   <p>
                     {item.project.name} · {item.channel} · {item.title}
                   </p>
                   <small>{item.deliverable}</small>
+                  <form action={updateContentPlanItemStatusAction} className="inline-form">
+                    <input name="planItemId" type="hidden" value={item.id} />
+                    {item.status !== "READY" ? (
+                      <button className="button secondary" name="status" type="submit" value="READY">
+                        <PlayCircle size={16} aria-hidden="true" />
+                        设为可执行
+                      </button>
+                    ) : null}
+                    {item.status !== "REVIEW_NEEDED" ? (
+                      <button
+                        className="button secondary"
+                        name="status"
+                        type="submit"
+                        value="REVIEW_NEEDED"
+                      >
+                        <ClipboardCheck size={16} aria-hidden="true" />
+                        需审核
+                      </button>
+                    ) : null}
+                    {item.status !== "DONE" ? (
+                      <button className="button" name="status" type="submit" value="DONE">
+                        <CheckCircle2 size={16} aria-hidden="true" />
+                        标记完成
+                      </button>
+                    ) : null}
+                  </form>
                 </div>
               </article>
             ))}
@@ -75,4 +105,18 @@ export default async function CalendarPage() {
       </AppShell>
     );
   }
+}
+
+function planStatusTone(
+  status: "DRAFT" | "READY" | "REVIEW_NEEDED" | "DONE",
+): "neutral" | "success" | "warning" {
+  if (status === "DONE") {
+    return "success";
+  }
+
+  if (status === "REVIEW_NEEDED") {
+    return "warning";
+  }
+
+  return "neutral";
 }
