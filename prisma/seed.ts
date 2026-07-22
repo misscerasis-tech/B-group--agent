@@ -536,6 +536,149 @@ async function main() {
     },
   });
 
+  const gapProject = await prisma.project.upsert({
+    where: { id: "demo-project-mongolia-gap" },
+    update: {
+      workspaceId: workspace.id,
+      name: "蒙古夏季预热内容缺口项目",
+      description: "用于演示项目体检：已有市场方向和部分计划，但缺少产品关联、真实视觉素材和正式策略确认。",
+      status: ProjectStatus.ACTIVE,
+      deletedAt: null,
+    },
+    create: {
+      id: "demo-project-mongolia-gap",
+      workspaceId: workspace.id,
+      name: "蒙古夏季预热内容缺口项目",
+      description: "用于演示项目体检：已有市场方向和部分计划，但缺少产品关联、真实视觉素材和正式策略确认。",
+      status: ProjectStatus.ACTIVE,
+    },
+  });
+
+  const gapStrategy = await prisma.projectStrategy.upsert({
+    where: { id: "demo-strategy-mongolia-gap-v1" },
+    update: {
+      workspaceId: workspace.id,
+      projectId: gapProject.id,
+      version: 1,
+      status: StrategyStatus.DRAFT,
+      targetMarkets: ["蒙古"],
+      audiences: ["节日礼品购买者", "户外露营人群"],
+      channels: ["Facebook", "Instagram"],
+      contentDirections: ["那达慕", "夏季户外", "小抽奖活动"],
+      packageFrequency: ContentFrequency.MONTHLY,
+      positioning: "用于展示缺口项目如何从体检转成提醒，正式执行前必须补齐产品和素材。",
+      rationale: "蒙古市场演示草案，等待人工确认产品事实、视觉素材和活动规则。",
+      confirmedAt: null,
+    },
+    create: {
+      id: "demo-strategy-mongolia-gap-v1",
+      workspaceId: workspace.id,
+      projectId: gapProject.id,
+      version: 1,
+      status: StrategyStatus.DRAFT,
+      targetMarkets: ["蒙古"],
+      audiences: ["节日礼品购买者", "户外露营人群"],
+      channels: ["Facebook", "Instagram"],
+      contentDirections: ["那达慕", "夏季户外", "小抽奖活动"],
+      packageFrequency: ContentFrequency.MONTHLY,
+      positioning: "用于展示缺口项目如何从体检转成提醒，正式执行前必须补齐产品和素材。",
+      rationale: "蒙古市场演示草案，等待人工确认产品事实、视觉素材和活动规则。",
+    },
+  });
+
+  await prisma.contentPlanItem.upsert({
+    where: { id: "demo-gap-plan-week-1" },
+    update: {
+      workspaceId: workspace.id,
+      projectId: gapProject.id,
+      strategyId: gapStrategy.id,
+      week: 1,
+      channel: "Facebook",
+      theme: "那达慕预热",
+      title: "节日场景互动帖草案",
+      deliverable: "互动帖、活动机制、真实产品图占位",
+      status: PlanItemStatus.DRAFT,
+    },
+    create: {
+      id: "demo-gap-plan-week-1",
+      workspaceId: workspace.id,
+      projectId: gapProject.id,
+      strategyId: gapStrategy.id,
+      week: 1,
+      channel: "Facebook",
+      theme: "那达慕预热",
+      title: "节日场景互动帖草案",
+      deliverable: "互动帖、活动机制、真实产品图占位",
+      status: PlanItemStatus.DRAFT,
+    },
+  });
+
+  const gapContentPackage = await prisma.contentPackage.upsert({
+    where: { id: "demo-package-mongolia-gap-week-1" },
+    update: {
+      workspaceId: workspace.id,
+      projectId: gapProject.id,
+      strategyId: gapStrategy.id,
+      name: "蒙古预热第 1 周素材包草案",
+      period: "首月第 1 周",
+      frequency: ContentFrequency.MONTHLY,
+      status: ContentPackageStatus.DRAFT,
+      summary: "用于演示素材包可交付性阻塞：文件未生成，且缺少真实产品图和官方 Logo。",
+    },
+    create: {
+      id: "demo-package-mongolia-gap-week-1",
+      workspaceId: workspace.id,
+      projectId: gapProject.id,
+      strategyId: gapStrategy.id,
+      name: "蒙古预热第 1 周素材包草案",
+      period: "首月第 1 周",
+      frequency: ContentFrequency.MONTHLY,
+      status: ContentPackageStatus.DRAFT,
+      summary: "用于演示素材包可交付性阻塞：文件未生成，且缺少真实产品图和官方 Logo。",
+    },
+  });
+
+  for (const [id, name, fileType] of packageFiles) {
+    await prisma.contentPackageFile.upsert({
+      where: { id: `demo-gap-${id}` },
+      update: {
+        contentPackageId: gapContentPackage.id,
+        name,
+        fileType,
+        assetId: null,
+        status: PackageFileStatus.PLANNED,
+      },
+      create: {
+        id: `demo-gap-${id}`,
+        contentPackageId: gapContentPackage.id,
+        name,
+        fileType,
+        status: PackageFileStatus.PLANNED,
+      },
+    });
+  }
+
+  await prisma.reminder.upsert({
+    where: { id: "demo-gap-reminder-visual-source" },
+    update: {
+      workspaceId: workspace.id,
+      projectId: gapProject.id,
+      title: "蒙古项目缺少真实产品图和官方 Logo",
+      description: "该项目用于演示项目体检缺口；正式素材包生成前必须上传并审核真实产品图和 Logo。",
+      severity: ReminderSeverity.WARNING,
+      status: ReminderStatus.OPEN,
+    },
+    create: {
+      id: "demo-gap-reminder-visual-source",
+      workspaceId: workspace.id,
+      projectId: gapProject.id,
+      title: "蒙古项目缺少真实产品图和官方 Logo",
+      description: "该项目用于演示项目体检缺口；正式素材包生成前必须上传并审核真实产品图和 Logo。",
+      severity: ReminderSeverity.WARNING,
+      status: ReminderStatus.OPEN,
+    },
+  });
+
   const productImageFile = await writeSeedAssetFile(
     workspace.id,
     "seed-aurora-product.svg",
