@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      count: vi.fn(),
     },
     project: {
       findFirst: vi.fn(),
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => {
     },
     metricsSnapshot: {
       create: vi.fn(),
+      count: vi.fn(),
     },
     contentPlanItem: {
       count: vi.fn(),
@@ -41,6 +43,10 @@ const mocks = vi.hoisted(() => {
     productFact: {
       create: vi.fn(),
       update: vi.fn(),
+      count: vi.fn(),
+    },
+    asset: {
+      count: vi.fn(),
     },
     contentPackage: {
       count: vi.fn(),
@@ -349,6 +355,66 @@ describe("generateStarterPlan", () => {
         entityId: "fact-created-from-agent",
         action: "agent_product_fact_created",
         summary: "新增产品事实：核心卖点=24小时保温",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("creates project health reminders from a Chinese agent command", async () => {
+    mocks.tx.project.findFirst
+      .mockResolvedValueOnce({
+        id: "project-1",
+        workspaceId: "workspace-1",
+        name: "巴西新品首月增长",
+        description: "项目说明",
+        status: "ACTIVE",
+      })
+      .mockResolvedValueOnce({
+        id: "project-1",
+        name: "巴西新品首月增长",
+        status: "ACTIVE",
+        projectProducts: [],
+      });
+    mocks.tx.projectStrategy.count.mockResolvedValue(0);
+    mocks.tx.contentPlanItem.count.mockResolvedValue(0);
+    mocks.tx.contentPackage.count.mockResolvedValue(0);
+    mocks.tx.reviewTask.count.mockResolvedValue(0);
+    mocks.tx.asset.count.mockResolvedValue(0);
+    mocks.tx.metricsSnapshot.count.mockResolvedValue(0);
+    mocks.tx.reminder.count.mockResolvedValue(0);
+    mocks.tx.reminder.findFirst.mockResolvedValue(null);
+    mocks.tx.reminder.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: `reminder-${data.title}`,
+        ...data,
+      }),
+    );
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "把项目体检缺口生成提醒。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.reminder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        title: "巴西新品首月增长：关联至少一个产品",
+        severity: "WARNING",
+        status: "OPEN",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "Project",
+        entityId: "project-1",
+        action: "agent_project_health_reminders_generated",
+        summary: expect.stringContaining("新增"),
         actorUserId: "user-1",
       }),
     });

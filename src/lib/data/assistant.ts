@@ -16,6 +16,11 @@ import {
 } from "@prisma/client";
 import type { ParsedAgentOperation } from "@/lib/agent/command-parser";
 import { getConfiguredAgentTextProvider } from "@/lib/agent/provider";
+import {
+  buildProjectHealthReminderDrafts,
+  buildProjectHealthSummary,
+  collectProjectHealthInput,
+} from "@/lib/data/project-health";
 import { inferProductFactsFromText } from "@/lib/product-facts/extractor";
 import { prisma } from "@/lib/prisma";
 import { buildStrategyRecommendation } from "@/lib/strategy/recommender";
@@ -337,6 +342,9 @@ export async function submitAgentCommand(input: {
         parsed.operations.filter(isStrategyRecommendationOperation);
       const projectOperations = parsed.operations.filter(isProjectOperation);
       const reminderOperations = parsed.operations.filter(isReminderOperation);
+      const projectHealthReminderOperations = parsed.operations.filter(
+        isProjectHealthReminderOperation,
+      );
       const productFactOperations = parsed.operations.filter(isProductFactOperation);
       const starterPlanOperations = parsed.operations.filter(isStarterPlanOperation);
       const metricsOperations = parsed.operations.filter(isMetricsOperation);
@@ -414,6 +422,13 @@ export async function submitAgentCommand(input: {
         userId: input.userId,
         projectId: project.id,
         operations: reminderOperations,
+      });
+
+      await applyProjectHealthReminderOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        project,
+        operations: projectHealthReminderOperations,
       });
 
       await applyProductFactOperations(tx, {
@@ -535,6 +550,9 @@ export async function applyPendingAgentOperation(input: {
     );
     const projectOperations = parsedOperations.filter(isProjectOperation);
     const reminderOperations = parsedOperations.filter(isReminderOperation);
+    const projectHealthReminderOperations = parsedOperations.filter(
+      isProjectHealthReminderOperation,
+    );
     const productFactOperations = parsedOperations.filter(isProductFactOperation);
     const starterPlanOperations = parsedOperations.filter(isStarterPlanOperation);
     const metricsOperations = parsedOperations.filter(isMetricsOperation);
@@ -661,6 +679,29 @@ export async function applyPendingAgentOperation(input: {
       operations: reminderOperations,
     });
 
+    const projectForHealthReminders =
+      projectHealthReminderOperations.length > 0
+        ? await tx.project.findFirst({
+            where: scopedWhere(input.workspaceId, {
+              id: operation.projectId,
+              deletedAt: null,
+            }),
+          })
+        : null;
+
+    if (projectHealthReminderOperations.length > 0) {
+      if (!projectForHealthReminders) {
+        throw new Error("未找到当前 Workspace 下的项目，无法生成体检缺口提醒。");
+      }
+
+      await applyProjectHealthReminderOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        project: projectForHealthReminders,
+        operations: projectHealthReminderOperations,
+      });
+    }
+
     await applyProductFactOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -747,6 +788,7 @@ export async function applyPendingAgentOperation(input: {
         projectChanged: projectOperations.length > 0,
         strategyRecommended: strategyRecommendationOperations.length > 0,
         reminderChanged: reminderOperations.length > 0,
+        healthReminderChanged: projectHealthReminderOperations.length > 0,
         productFactChanged: productFactOperations.length > 0,
         starterPlanChanged: starterPlanOperations.length > 0,
         metricsChanged: metricsOperations.length > 0,
@@ -1438,6 +1480,118 @@ async function applyReminderOperations(
         action: "agent_reminder_created",
         summary: operation.label,
         after: reminderToJson(reminder),
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
+async function applyProjectHealthReminderOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    project: {
+      id: string;
+      name: string;
+      status: ProjectStatus;
+    };
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "create_project_health_reminders") {
+      continue;
+    }
+
+    const project = await tx.project.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        id: input.project.id,
+        deletedAt: null,
+      }),
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        projectProducts: {
+          select: {
+            productId: true,
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      continue;
+    }
+
+    const health = buildProjectHealthSummary(
+      await collectProjectHealthInput(tx, input.workspaceId, project),
+    );
+    const drafts = buildProjectHealthReminderDrafts(health, operation.value.limit);
+    let createdCount = 0;
+    let skippedCount = 0;
+
+    for (const draft of drafts) {
+      const existingReminder = await tx.reminder.findFirst({
+        where: scopedWhere(input.workspaceId, {
+          projectId: input.project.id,
+          title: draft.title,
+          status: ReminderStatus.OPEN,
+        }) as Prisma.ReminderWhereInput,
+      });
+
+      if (existingReminder) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const dueAt = new Date();
+      dueAt.setDate(dueAt.getDate() + draft.dueInDays);
+
+      const reminder = await tx.reminder.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: input.project.id,
+          title: draft.title,
+          description: draft.description,
+          severity: draft.severity,
+          status: ReminderStatus.OPEN,
+          dueAt,
+        },
+      });
+
+      await tx.changeLog.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: input.project.id,
+          entityType: "Reminder",
+          entityId: reminder.id,
+          action: "agent_project_health_reminder_created",
+          summary: `Agent 体检缺口生成提醒：${draft.title}`,
+          after: reminderToJson(reminder),
+          actorUserId: input.userId,
+        },
+      });
+
+      createdCount += 1;
+    }
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.project.id,
+        entityType: "Project",
+        entityId: input.project.id,
+        action: "agent_project_health_reminders_generated",
+        summary: `${operation.label}：新增 ${createdCount} 条，跳过重复 ${skippedCount} 条。`,
+        after: {
+          projectHealthScore: health.score,
+          projectHealthRating: health.rating,
+          createdCount,
+          skippedCount,
+          totalCandidates: drafts.length,
+        },
         actorUserId: input.userId,
       },
     });
@@ -2348,6 +2502,10 @@ function isReminderOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_reminder";
 }
 
+function isProjectHealthReminderOperation(operation: ParsedAgentOperation) {
+  return operation.type === "create_project_health_reminders";
+}
+
 function isProductFactOperation(operation: ParsedAgentOperation) {
   return (
     operation.type === "create_product_fact" ||
@@ -2455,6 +2613,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         value,
         severity,
         label: label || `创建提醒：${value}`,
+      });
+      continue;
+    }
+
+    if (type === "create_project_health_reminders" && isProjectHealthReminderValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || "根据项目体检缺口生成提醒",
       });
       continue;
     }
@@ -2662,6 +2829,19 @@ function isProductFactValue(value: unknown): value is Extract<
   );
 }
 
+function isProjectHealthReminderValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "create_project_health_reminders" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return Number.isInteger(record.limit) && Number(record.limit) >= 1 && Number(record.limit) <= 8;
+}
+
 function isProductFactSourceValue(value: unknown): value is Extract<
   ParsedAgentOperation,
   { type: "infer_product_facts_from_text" }
@@ -2780,6 +2960,7 @@ function buildConfirmedAssistantReply(input: {
   strategyRecommended: boolean;
   projectChanged: boolean;
   reminderChanged: boolean;
+  healthReminderChanged: boolean;
   productFactChanged: boolean;
   starterPlanChanged: boolean;
   metricsChanged: boolean;
@@ -2792,6 +2973,7 @@ function buildConfirmedAssistantReply(input: {
 }) {
   const starterPlanText = input.starterPlanChanged ? "，并生成首月计划和第一份素材包结构" : "";
   const strategyRecommendationText = input.strategyRecommended ? "，并生成新的策略推荐草案" : "";
+  const healthReminderText = input.healthReminderChanged ? "，并生成项目体检缺口提醒" : "";
   const productFactText = input.productFactChanged ? "，并新增待复核产品事实" : "";
   const metricsText = input.metricsChanged ? "，并录入渠道表现指标" : "";
   const planItemText = input.planItemChanged ? "，并新增内容计划" : "";
@@ -2804,26 +2986,30 @@ function buildConfirmedAssistantReply(input: {
   if (input.strategyChanged && input.strategyWasConfirmed) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${strategyRecommendationText}${projectText}${reminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认写入策略草案${strategyRecommendationText}${projectText}${reminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认写入策略草案${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyRecommended) {
-    return `已按你的确认生成策略推荐草案${projectTextForRecommendation(input.projectChanged)}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成策略推荐草案${projectTextForRecommendation(input.projectChanged)}${healthReminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认更新项目基础信息${reminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认更新项目基础信息${reminderText}${healthReminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderChanged) {
-    return `已按你的确认创建提醒${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建提醒${healthReminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.healthReminderChanged) {
+    return `已按你的确认生成项目体检缺口提醒${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.productFactChanged) {

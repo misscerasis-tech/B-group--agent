@@ -44,6 +44,13 @@ export type ParsedAgentOperation =
       severity: ReminderSeverity;
     }
   | {
+      type: "create_project_health_reminders";
+      value: {
+        limit: number;
+      };
+      label: string;
+    }
+  | {
       type: "create_product_fact";
       value: {
         label: string;
@@ -346,6 +353,23 @@ function parseReminderTitle(text: string) {
   }
 
   return title.slice(0, 80);
+}
+
+function parseProjectHealthReminderOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(项目体检|体检缺口|项目缺口|就绪度|健康检查)/.test(text) ||
+    !/(生成|创建|加入|转成|变成).*(提醒|待办)/.test(text)
+  ) {
+    return null;
+  }
+
+  return {
+    type: "create_project_health_reminders",
+    value: {
+      limit: 4,
+    },
+    label: "根据项目体检缺口生成提醒",
+  };
 }
 
 function parseProductFactOperation(text: string): ParsedAgentOperation | null {
@@ -1002,6 +1026,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     });
   }
 
+  const projectHealthReminderOperation = parseProjectHealthReminderOperation(text);
+  if (projectHealthReminderOperation) {
+    operations.push(projectHealthReminderOperation);
+  }
+
   const productFactOperation = parseProductFactOperation(text);
   if (productFactOperation) {
     operations.push(productFactOperation);
@@ -1116,6 +1145,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const hasCompleteWorkflowOperation = dedupedOperations.some(
     (operation) =>
       operation.type === "complete_reminder" ||
+      operation.type === "create_project_health_reminders" ||
       operation.type === "create_product_fact" ||
       operation.type === "infer_product_facts_from_text" ||
       operation.type === "recommend_strategy" ||

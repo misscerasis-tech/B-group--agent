@@ -75,6 +75,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "project_health_reminders",
+    category: "reminder",
+    title: "将项目体检缺口生成提醒",
+    example: "把项目体检缺口生成提醒。",
+    writesTo: ["Reminder", "Project", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "reminder_complete",
     category: "reminder",
     title: "完成项目提醒",

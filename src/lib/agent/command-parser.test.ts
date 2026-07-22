@@ -117,6 +117,19 @@ describe("parseAgentCommand", () => {
     });
   });
 
+  it("extracts project health reminder generation requests", () => {
+    const parsed = parseAgentCommand("把项目体检缺口生成提醒。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_project_health_reminders",
+      value: {
+        limit: 4,
+      },
+      label: "根据项目体检缺口生成提醒",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts product fact creation requests", () => {
     const parsed = parseAgentCommand("新增产品事实：卖点=24小时保温。");
 

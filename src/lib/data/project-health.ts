@@ -91,7 +91,7 @@ export async function getProjectHealthSummary(workspaceId: string, projectId: st
     return null;
   }
 
-  return buildProjectHealthSummary(await collectProjectHealthInput(workspaceId, project));
+  return buildProjectHealthSummary(await collectProjectHealthInput(prisma, workspaceId, project));
 }
 
 export async function getProjectHealthSummaries(workspaceId: string, take = 4) {
@@ -120,7 +120,7 @@ export async function getProjectHealthSummaries(workspaceId: string, take = 4) {
 
   return Promise.all(
     projects.map(async (project) =>
-      buildProjectHealthSummary(await collectProjectHealthInput(workspaceId, project)),
+      buildProjectHealthSummary(await collectProjectHealthInput(prisma, workspaceId, project)),
     ),
   );
 }
@@ -257,7 +257,8 @@ export function buildProjectHealthReminderDrafts(
   }));
 }
 
-async function collectProjectHealthInput(
+export async function collectProjectHealthInput(
+  client: Prisma.TransactionClient | typeof prisma,
   workspaceId: string,
   project: {
     id: string;
@@ -284,7 +285,7 @@ async function collectProjectHealthInput(
   const [confirmedFactCount, draftFactCount] =
     productIds.length > 0
       ? await Promise.all([
-          prisma.productFact.count({
+          client.productFact.count({
             where: scopedWhere(workspaceId, {
               productId: {
                 in: productIds,
@@ -292,7 +293,7 @@ async function collectProjectHealthInput(
               status: ProductFactStatus.CONFIRMED,
             }) as Prisma.ProductFactWhereInput,
           }),
-          prisma.productFact.count({
+          client.productFact.count({
             where: scopedWhere(workspaceId, {
               productId: {
                 in: productIds,
@@ -317,24 +318,24 @@ async function collectProjectHealthInput(
     metricsSnapshotCount,
     openReminderCount,
   ] = await Promise.all([
-    prisma.projectStrategy.count({
+    client.projectStrategy.count({
       where: scopedWhere(workspaceId, {
         projectId: project.id,
         status: StrategyStatus.CONFIRMED,
       }) as Prisma.ProjectStrategyWhereInput,
     }),
-    prisma.projectStrategy.count({
+    client.projectStrategy.count({
       where: scopedWhere(workspaceId, {
         projectId: project.id,
         status: StrategyStatus.DRAFT,
       }) as Prisma.ProjectStrategyWhereInput,
     }),
-    prisma.contentPlanItem.count({
+    client.contentPlanItem.count({
       where: scopedWhere(workspaceId, {
         projectId: project.id,
       }),
     }),
-    prisma.contentPlanItem.count({
+    client.contentPlanItem.count({
       where: scopedWhere(workspaceId, {
         projectId: project.id,
         status: {
@@ -342,12 +343,12 @@ async function collectProjectHealthInput(
         },
       }) as Prisma.ContentPlanItemWhereInput,
     }),
-    prisma.contentPackage.count({
+    client.contentPackage.count({
       where: scopedWhere(workspaceId, {
         projectId: project.id,
       }),
     }),
-    prisma.contentPackage.count({
+    client.contentPackage.count({
       where: scopedWhere(workspaceId, {
         projectId: project.id,
         status: {
@@ -359,32 +360,32 @@ async function collectProjectHealthInput(
         },
       }) as Prisma.ContentPackageWhereInput,
     }),
-    prisma.reviewTask.count({
+    client.reviewTask.count({
       where: scopedWhere(workspaceId, {
         projectId: project.id,
         status: ReviewTaskStatus.PENDING,
       }),
     }),
-    prisma.asset.count({
+    client.asset.count({
       where: scopedWhere(workspaceId, {
         kind: AssetKind.PRODUCT_IMAGE,
         status: AssetStatus.APPROVED,
         OR: assetScope,
       }) as Prisma.AssetWhereInput,
     }),
-    prisma.asset.count({
+    client.asset.count({
       where: scopedWhere(workspaceId, {
         kind: AssetKind.LOGO,
         status: AssetStatus.APPROVED,
         OR: assetScope,
       }) as Prisma.AssetWhereInput,
     }),
-    prisma.metricsSnapshot.count({
+    client.metricsSnapshot.count({
       where: scopedWhere(workspaceId, {
         projectId: project.id,
       }),
     }),
-    prisma.reminder.count({
+    client.reminder.count({
       where: scopedWhere(workspaceId, {
         projectId: project.id,
         status: ReminderStatus.OPEN,
