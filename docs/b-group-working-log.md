@@ -29,7 +29,7 @@
 - 提醒中心主动提醒、手动提醒、完成/忽略。
 - 主动提醒扫描会基于近期渠道表现发现低点击率、无转化和投放花费风险。
 - 今日工作台按待确认变更、审核、素材、策略、素材包和近期计划生成行动队列。
-- 数据复盘指标录入、CTR、点击转化率、单次转化成本和可下载复盘快照。
+- 数据复盘单条/批量指标录入、CTR、点击转化率、单次转化成本和可下载复盘快照。
 - 飞书占位连接、占位测试、停用旧连接和迁移记录。
 - 图片生成产品主体锁定护栏测试。
 - 素材包中心支持手动创建 11 项素材包结构、提交 Web 审核、审核任务联动和 ZIP 可交付文件包导出。
@@ -48,8 +48,8 @@ DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?sc
 
 最近一次测试结果：
 
-- Test Files：`17 passed`
-- Tests：`49 passed`
+- Test Files：`19 passed`
+- Tests：`54 passed`
 - Build：通过，包含 `/api/health`、`/b-agent`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
 
 ## 仍需人工完成

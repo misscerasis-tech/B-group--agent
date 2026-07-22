@@ -6,6 +6,7 @@ import {
   ReminderStatus,
   StrategyStatus,
 } from "@prisma/client";
+import type { MetricsImportRow } from "@/lib/metrics/importer";
 import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/workspace-scope";
 
@@ -207,6 +208,67 @@ export async function createMetricsSnapshot(input: {
     });
 
     return metricsSnapshot;
+  });
+}
+
+export async function createMetricsSnapshots(input: {
+  workspaceId: string;
+  userId: string;
+  projectId: string;
+  rows: MetricsImportRow[];
+}) {
+  if (input.rows.length === 0) {
+    throw new Error("没有可导入的指标数据。");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        id: input.projectId,
+        deletedAt: null,
+      }),
+    });
+
+    if (!project) {
+      throw new Error("未找到当前 Workspace 下的项目，无法批量导入指标。");
+    }
+
+    const createdSnapshots = [];
+
+    for (const row of input.rows) {
+      const metricsSnapshot = await tx.metricsSnapshot.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: project.id,
+          period: row.period,
+          channel: row.channel,
+          impressions: row.impressions,
+          clicks: row.clicks,
+          conversions: row.conversions,
+          spendCents: row.spendCents,
+          notes: row.notes,
+        },
+      });
+
+      createdSnapshots.push(metricsSnapshot);
+
+      await tx.changeLog.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: project.id,
+          entityType: "MetricsSnapshot",
+          entityId: metricsSnapshot.id,
+          action: "metrics_snapshot_imported",
+          summary: `导入 ${project.name} ${row.period} ${row.channel} 指标。`,
+          after: metricsSnapshotToJson(metricsSnapshot),
+          actorUserId: input.userId,
+        },
+      });
+    }
+
+    return {
+      count: createdSnapshots.length,
+    };
   });
 }
 

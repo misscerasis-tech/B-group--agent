@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createMetricsSnapshot } from "@/lib/data/recaps";
+import { createMetricsSnapshot, createMetricsSnapshots } from "@/lib/data/recaps";
+import { parseMetricsImportRows } from "@/lib/metrics/importer";
 import { getWorkspaceContext } from "@/lib/workspace-context";
 
 function readRequiredText(formData: FormData, key: string, label: string) {
@@ -67,5 +68,22 @@ export async function createMetricsSnapshotAction(formData: FormData) {
 
   revalidatePath("/recaps");
   revalidatePath("/dashboard");
+  redirect("/recaps");
+}
+
+export async function importMetricsSnapshotsAction(formData: FormData) {
+  const context = await getWorkspaceContext();
+  const rows = parseMetricsImportRows(readRequiredText(formData, "rows", "批量指标数据"));
+
+  await createMetricsSnapshots({
+    workspaceId: context.currentWorkspace.id,
+    userId: context.user.id,
+    projectId: readRequiredText(formData, "projectId", "项目"),
+    rows,
+  });
+
+  revalidatePath("/recaps");
+  revalidatePath("/dashboard");
+  revalidatePath("/reminders");
   redirect("/recaps");
 }

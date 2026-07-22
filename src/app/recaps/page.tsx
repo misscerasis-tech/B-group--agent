@@ -6,7 +6,10 @@ import {
   Lightbulb,
   PlusCircle,
 } from "lucide-react";
-import { createMetricsSnapshotAction } from "@/app/actions/recap-actions";
+import {
+  createMetricsSnapshotAction,
+  importMetricsSnapshotsAction,
+} from "@/app/actions/recap-actions";
 import { AppShell } from "@/components/app-shell";
 import { ErrorState } from "@/components/ui/error-state";
 import { getWorkspaceRecapSummary } from "@/lib/data/recaps";
@@ -127,6 +130,40 @@ export default async function RecapsPage() {
               </label>
               <button className="button" type="submit">
                 保存指标快照
+              </button>
+            </form>
+
+            <div style={{ borderTop: "1px solid var(--line)", margin: "18px 0" }} />
+
+            <h3>
+              <PlusCircle size={18} aria-hidden="true" />
+              批量导入指标
+            </h3>
+            <form action={importMetricsSnapshotsAction} className="form">
+              <label className="form-row">
+                <span className="field-label">项目</span>
+                <select name="projectId" required>
+                  {recap.projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-row">
+                <span className="field-label">表格文本</span>
+                <textarea
+                  name="rows"
+                  placeholder={[
+                    "周期,渠道,曝光,点击,转化,花费,备注",
+                    "2026-07 第3周,TikTok,10000,600,24,1234.56,首轮数据",
+                    "2026-07 第4周,Instagram,8000,240,8,560,素材包 A",
+                  ].join("\n")}
+                  required
+                />
+              </label>
+              <button className="button secondary" type="submit">
+                导入多条指标
               </button>
             </form>
           </div>
