@@ -7,6 +7,8 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { getProjectHealthSummary } from "@/lib/data/project-health";
 import { getProject } from "@/lib/data/projects";
 import { listProducts } from "@/lib/data/products";
 import { loadWorkspaceContextSafe } from "@/lib/page-context";
@@ -32,9 +34,10 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
   }
 
   try {
-    const [project, products] = await Promise.all([
+    const [project, products, projectHealth] = await Promise.all([
       getProject(context.currentWorkspace.id, id),
       listProducts(context.currentWorkspace.id),
+      getProjectHealthSummary(context.currentWorkspace.id, id),
     ]);
 
     if (!project) {
@@ -66,6 +69,58 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
             </Link>
           </div>
         </section>
+
+        {projectHealth ? (
+          <section className="panel" style={{ marginBottom: 16 }}>
+            <header style={{ alignItems: "flex-start", display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <h3>项目就绪度</h3>
+                <p className="muted">{projectHealth.summary}</p>
+              </div>
+              <StatusBadge
+                label={projectHealthRatingLabels[projectHealth.rating]}
+                tone={projectHealth.rating === "READY" ? "success" : "warning"}
+              />
+            </header>
+            <div
+              aria-label={`${projectHealth.projectName} 就绪度 ${projectHealth.score} 分`}
+              style={{
+                background: "#eef2f7",
+                borderRadius: 999,
+                height: 10,
+                marginTop: 12,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  background: projectHealth.rating === "READY" ? "#1f9d72" : "#f2a900",
+                  height: "100%",
+                  width: `${projectHealth.score}%`,
+                }}
+              />
+            </div>
+            <div className="card-list" style={{ marginTop: 14 }}>
+              {projectHealth.signals.map((signal) => (
+                <article className="item-card" key={signal.key}>
+                  <header>
+                    <h4>{signal.label}</h4>
+                    <StatusBadge
+                      label={projectHealthSignalLabels[signal.status]}
+                      tone={signal.status === "complete" ? "success" : "warning"}
+                    />
+                  </header>
+                  <p>{signal.summary}</p>
+                  {signal.status !== "complete" ? (
+                    <Link className="button secondary" href={signal.href}>
+                      {signal.action}
+                    </Link>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="grid two">
           <div className="panel">
@@ -135,3 +190,15 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
     );
   }
 }
+
+const projectHealthRatingLabels = {
+  READY: "可进入执行",
+  NEEDS_ATTENTION: "需要补齐",
+  BLOCKED: "存在阻塞",
+};
+
+const projectHealthSignalLabels = {
+  complete: "已完成",
+  warning: "需处理",
+  missing: "缺失",
+};

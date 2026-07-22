@@ -90,6 +90,58 @@ export default async function DashboardPage() {
           </div>
         </section>
 
+        <section className="panel" style={{ marginTop: 16 }}>
+          <h3>项目就绪度</h3>
+          {summary.projectHealthSummaries.length > 0 ? (
+            <div className="card-list">
+              {summary.projectHealthSummaries.map((health) => (
+                <article className="item-card" key={health.projectId}>
+                  <header>
+                    <h4>{health.projectName}</h4>
+                    <StatusBadge
+                      label={projectHealthRatingLabels[health.rating]}
+                      tone={health.rating === "READY" ? "success" : "warning"}
+                    />
+                  </header>
+                  <div
+                    aria-label={`${health.projectName} 就绪度 ${health.score} 分`}
+                    style={{
+                      background: "#eef2f7",
+                      borderRadius: 999,
+                      height: 8,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: health.rating === "READY" ? "#1f9d72" : "#f2a900",
+                        height: "100%",
+                        width: `${health.score}%`,
+                      }}
+                    />
+                  </div>
+                  <p>{health.summary}</p>
+                  {health.nextActions.length > 0 ? (
+                    <div className="hero-actions" style={{ marginTop: 0 }}>
+                      {health.nextActions.map((action) => (
+                        <Link className="button secondary" href={action.href} key={action.key}>
+                          {action.action}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <Link className="button secondary" href={`/b-agent?projectId=${health.projectId}`}>
+                      进入项目工作台
+                    </Link>
+                  )}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="还没有项目" description="创建项目后，这里会显示项目就绪度和下一步动作。" />
+          )}
+        </section>
+
         <section className="grid two" style={{ marginTop: 16 }}>
           <div className="panel">
             <h3>最近项目</h3>
@@ -199,4 +251,10 @@ const actionPriorityLabels = {
   high: "优先处理",
   medium: "需要推进",
   low: "可安排",
+};
+
+const projectHealthRatingLabels = {
+  READY: "可进入执行",
+  NEEDS_ATTENTION: "需要补齐",
+  BLOCKED: "存在阻塞",
 };

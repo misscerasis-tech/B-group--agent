@@ -10,6 +10,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/workspace-scope";
+import { getProjectHealthSummaries } from "./project-health";
 
 export type DashboardActionPriority = "high" | "medium" | "low";
 
@@ -73,6 +74,7 @@ export async function getDashboardSummary(workspaceId: string) {
     pendingAssets,
     draftPackages,
     upcomingPlanItems,
+    projectHealthSummaries,
   ] = await Promise.all([
     prisma.project.findMany({
       where: scopedWhere(workspaceId, {
@@ -194,6 +196,7 @@ export async function getDashboardSummary(workspaceId: string) {
       },
       take: 3,
     }),
+    getProjectHealthSummaries(workspaceId, 4),
   ]);
 
   return {
@@ -207,6 +210,7 @@ export async function getDashboardSummary(workspaceId: string) {
     recentProducts,
     openReminders,
     recentChangeLogs,
+    projectHealthSummaries,
     actionItems: buildDashboardActionItems({
       pendingOperations,
       draftStrategies,
