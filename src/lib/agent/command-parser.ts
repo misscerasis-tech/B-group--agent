@@ -1,4 +1,10 @@
-import { ContentFrequency, PlanItemStatus, ProjectStatus, ReminderSeverity } from "@prisma/client";
+import {
+  ContentFrequency,
+  PlanItemStatus,
+  ProjectStatus,
+  ReminderSeverity,
+  ReviewTaskStatus,
+} from "@prisma/client";
 
 export type ParsedAgentOperation =
   | {
@@ -76,6 +82,15 @@ export type ParsedAgentOperation =
       type: "submit_content_package_review";
       value: {
         keyword?: string;
+      };
+      label: string;
+    }
+  | {
+      type: "decide_content_package_review";
+      value: {
+        decision: typeof ReviewTaskStatus.APPROVED | typeof ReviewTaskStatus.CHANGES_REQUESTED;
+        keyword?: string;
+        decisionNote: string;
       };
       label: string;
     }
@@ -352,6 +367,43 @@ function parseSubmitContentPackageReviewOperation(text: string): ParsedAgentOper
   };
 }
 
+function parseDecideContentPackageReviewOperation(text: string): ParsedAgentOperation | null {
+  if (!/(素材包|内容包)/.test(text) || !/审核/.test(text)) {
+    return null;
+  }
+
+  const decision = parseReviewDecision(text);
+
+  if (!decision) {
+    return null;
+  }
+
+  const keyword = extractPackageKeyword(text);
+  const decisionText = decision === ReviewTaskStatus.APPROVED ? "审核通过" : "要求修改";
+
+  return {
+    type: "decide_content_package_review",
+    value: {
+      decision,
+      ...(keyword ? { keyword } : {}),
+      decisionNote: "由 B 组 Agent 中文指令处理。",
+    },
+    label: `${decisionText}：${keyword ?? "最新素材包"}`,
+  };
+}
+
+function parseReviewDecision(text: string) {
+  if (/要求修改|需要修改|退回修改|不通过|驳回|修改后再审|changes requested/i.test(text)) {
+    return ReviewTaskStatus.CHANGES_REQUESTED;
+  }
+
+  if (/审核通过|通过审核|批准|同意|可以通过|approve|approved/i.test(text)) {
+    return ReviewTaskStatus.APPROVED;
+  }
+
+  return null;
+}
+
 function parseContentPackagePeriod(text: string) {
   const explicitPeriod = text.match(/20\d{2}[-/.年]\d{1,2}(?:\s*(?:第\s*\d+\s*周|周|月))?/);
 
@@ -378,6 +430,7 @@ function extractPackageKeyword(text: string) {
   const keyword = text
     .replace(/请|麻烦|帮我|把|将|当前|这个|项目/g, "")
     .replace(/提交审核|发起审核|进入审核|提交|送审|送去|审核/g, "")
+    .replace(/审核通过|通过审核|通过|批准|同意|可以通过|要求修改|需要修改|退回修改|不通过|驳回|修改后再审|修改/g, "")
     .replace(/最新|最近|一份|一个|素材包|内容包/g, "")
     .replace(/，|。|！|!|：|:|；|;|、/g, " ")
     .replace(/\s+/g, " ")
@@ -798,6 +851,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(packageReviewOperation);
   }
 
+  const packageReviewDecisionOperation = parseDecideContentPackageReviewOperation(text);
+  if (packageReviewDecisionOperation) {
+    operations.push(packageReviewDecisionOperation);
+  }
+
   const metricsOperation = parseMetricsSnapshotOperation(text);
   if (metricsOperation) {
     operations.push(metricsOperation);
@@ -865,7 +923,8 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     (operation) =>
       operation.type === "complete_reminder" ||
       operation.type === "create_content_package" ||
-      operation.type === "submit_content_package_review",
+      operation.type === "submit_content_package_review" ||
+      operation.type === "decide_content_package_review",
   );
 
   return {

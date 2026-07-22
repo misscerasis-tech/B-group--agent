@@ -1,4 +1,10 @@
-import { ContentFrequency, PlanItemStatus, ProjectStatus, ReminderSeverity } from "@prisma/client";
+import {
+  ContentFrequency,
+  PlanItemStatus,
+  ProjectStatus,
+  ReminderSeverity,
+  ReviewTaskStatus,
+} from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { parseAgentCommand } from "./command-parser";
 
@@ -172,6 +178,20 @@ describe("parseAgentCommand", () => {
       type: "submit_content_package_review",
       value: {},
       label: "提交素材包审核：最新素材包",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("extracts content package review decision requests", () => {
+    const parsed = parseAgentCommand("最新素材包审核通过。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "decide_content_package_review",
+      value: {
+        decision: ReviewTaskStatus.APPROVED,
+        decisionNote: "由 B 组 Agent 中文指令处理。",
+      },
+      label: "审核通过：最新素材包",
     });
     expect(parsed.confidence).toBe("high");
   });

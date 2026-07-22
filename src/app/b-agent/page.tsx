@@ -199,6 +199,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                     <li>完成内容计划：第2周 TikTok 开箱短视频已完成</li>
                     <li>创建素材包：为 2026-08 第1周创建 TikTok 素材包</li>
                     <li>提交审核：提交最新素材包审核</li>
+                    <li>处理审核：最新素材包审核通过，或最新素材包要求修改</li>
                     <li>生成首月计划：请生成首月计划和第一份素材包结构</li>
                     <li>识别市场：巴西、蒙古、美国、日本、东南亚等</li>
                     <li>追加或删除内容方向：世界杯、那达慕、黑五、通勤、礼赠、小抽奖等</li>

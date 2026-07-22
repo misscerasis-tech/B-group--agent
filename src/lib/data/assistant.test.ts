@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     contentPackageFile: {
       createMany: vi.fn(),
@@ -48,8 +49,10 @@ const mocks = vi.hoisted(() => {
       update: vi.fn(),
     },
     reviewTask: {
+      count: vi.fn(),
       create: vi.fn(),
       findFirst: vi.fn(),
+      update: vi.fn(),
     },
     changeLog: {
       create: vi.fn(),
@@ -413,6 +416,72 @@ describe("generateStarterPlan", () => {
         entityId: "package-1",
         action: "agent_content_package_submitted_for_review",
         summary: "提交素材包审核：最新素材包",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("approves a pending content package review from a Chinese agent command", async () => {
+    const reviewTask = {
+      id: "review-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      subjectType: "CONTENT_PACKAGE",
+      subjectId: "package-1",
+      title: "审核素材包：2026-08 第1周 TikTok 素材包",
+      description: "巴西新品首月增长 · 11 个文件项",
+      status: "PENDING",
+      reviewerUserId: null,
+      decisionNote: null,
+      dueAt: null,
+      decidedAt: null,
+      createdAt: new Date("2026-07-22T00:00:00.000Z"),
+    };
+    mocks.tx.reviewTask.count.mockResolvedValue(1);
+    mocks.tx.reviewTask.findFirst.mockResolvedValue(reviewTask);
+    mocks.tx.reviewTask.update.mockResolvedValue({
+      ...reviewTask,
+      status: "APPROVED",
+      reviewerUserId: "user-1",
+      decisionNote: "由 B 组 Agent 中文指令处理。",
+      decidedAt: new Date("2026-07-22T01:00:00.000Z"),
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "最新素材包审核通过。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.contentPackage.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "package-1",
+        workspaceId: "workspace-1",
+      },
+      data: {
+        status: "APPROVED",
+      },
+    });
+    expect(mocks.tx.reviewTask.update).toHaveBeenCalledWith({
+      where: {
+        id: "review-1",
+      },
+      data: expect.objectContaining({
+        status: "APPROVED",
+        reviewerUserId: "user-1",
+        decisionNote: "由 B 组 Agent 中文指令处理。",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ReviewTask",
+        entityId: "review-1",
+        action: "agent_content_package_review_approved",
+        summary: "审核通过：最新素材包",
         actorUserId: "user-1",
       }),
     });
