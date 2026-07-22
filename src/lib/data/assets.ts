@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { AssetKind, AssetStatus } from "@prisma/client";
+import { AssetKind, AssetStatus, ReviewSubjectType, ReviewTaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/workspace-scope";
 
@@ -107,6 +107,18 @@ export async function createUploadedAsset(input: {
           projectId: asset.projectId,
         },
         actorUserId: input.userId,
+      },
+    });
+
+    await tx.reviewTask.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId || null,
+        subjectType: ReviewSubjectType.ASSET,
+        subjectId: asset.id,
+        title: `审核素材：${asset.name}`,
+        description: buildAssetReviewDescription(asset.kind, asset.originalFilename),
+        status: ReviewTaskStatus.PENDING,
       },
     });
 
@@ -218,4 +230,18 @@ async function updateAssetStatus(
 
     return updatedAsset;
   });
+}
+
+function buildAssetReviewDescription(kind: AssetKind, originalFilename: string | null) {
+  const filename = originalFilename ?? "无原始文件名";
+
+  if (kind === AssetKind.PRODUCT_IMAGE) {
+    return `${filename}。真实产品图必须确认来源、产品结构、颜色和比例，禁止 AI 重绘产品主体。`;
+  }
+
+  if (kind === AssetKind.LOGO) {
+    return `${filename}。官方 Logo 必须确认来源和版本，禁止静默替换或由图片模型重绘。`;
+  }
+
+  return `${filename}。请确认素材来源、用途和是否允许进入正式素材包。`;
 }
