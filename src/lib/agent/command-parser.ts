@@ -28,6 +28,11 @@ export type ParsedAgentOperation =
       value: string;
       label: string;
       severity: ReminderSeverity;
+    }
+  | {
+      type: "generate_starter_plan";
+      value: "first_month";
+      label: string;
     };
 
 export type ParsedAgentCommand = {
@@ -204,6 +209,10 @@ function parseReminderTitle(text: string) {
   return title.slice(0, 80);
 }
 
+function shouldGenerateStarterPlan(text: string) {
+  return /生成首月计划|创建首月计划|生成第一份素材包|创建第一份素材包|生成素材包结构|创建素材包结构/.test(text);
+}
+
 function operationKey(operation: ParsedAgentOperation) {
   return `${operation.type}:${operation.value}`;
 }
@@ -294,6 +303,14 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       type: "set_package_frequency",
       value: frequency,
       label: `素材包生成频率改为：${frequencyLabel[frequency]}`,
+    });
+  }
+
+  if (shouldGenerateStarterPlan(text)) {
+    operations.push({
+      type: "generate_starter_plan",
+      value: "first_month",
+      label: "生成首月计划和第一份素材包结构",
     });
   }
 

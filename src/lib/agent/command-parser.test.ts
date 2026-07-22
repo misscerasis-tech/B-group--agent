@@ -97,6 +97,16 @@ describe("parseAgentCommand", () => {
     });
   });
 
+  it("extracts starter plan generation requests", () => {
+    const parsed = parseAgentCommand("请生成首月计划和第一份素材包结构。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "generate_starter_plan",
+      value: "first_month",
+      label: "生成首月计划和第一份素材包结构",
+    });
+  });
+
   it("returns a low-confidence summary when no safe operation is detected", () => {
     const parsed = parseAgentCommand("帮我看看这个项目怎么样");
 

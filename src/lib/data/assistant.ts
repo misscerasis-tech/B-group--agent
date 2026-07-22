@@ -289,6 +289,7 @@ export async function submitAgentCommand(input: {
       const strategyOperations = parsed.operations.filter(isStrategyOperation);
       const projectOperations = parsed.operations.filter(isProjectOperation);
       const reminderOperations = parsed.operations.filter(isReminderOperation);
+      const starterPlanOperations = parsed.operations.filter(isStarterPlanOperation);
 
       if (strategyOperations.length > 0) {
         const before = strategyToJson(strategy);
@@ -346,6 +347,15 @@ export async function submitAgentCommand(input: {
         projectId: project.id,
         operations: reminderOperations,
       });
+
+      if (starterPlanOperations.length > 0) {
+        await createStarterPlanIfMissing(tx, {
+          workspaceId: input.workspaceId,
+          userId: input.userId,
+          projectId: project.id,
+          strategy: updatedStrategy,
+        });
+      }
     }
 
     await tx.agentMessage.create({
@@ -396,6 +406,7 @@ export async function applyPendingAgentOperation(input: {
     const strategyOperations = parsedOperations.filter(isStrategyOperation);
     const projectOperations = parsedOperations.filter(isProjectOperation);
     const reminderOperations = parsedOperations.filter(isReminderOperation);
+    const starterPlanOperations = parsedOperations.filter(isStarterPlanOperation);
     let updatedStrategy: ProjectStrategyRecord = strategy;
 
     if (strategyOperations.length > 0) {
@@ -490,6 +501,15 @@ export async function applyPendingAgentOperation(input: {
       operations: reminderOperations,
     });
 
+    if (starterPlanOperations.length > 0) {
+      await createStarterPlanIfMissing(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: operation.projectId,
+        strategy: updatedStrategy,
+      });
+    }
+
     await tx.agentOperation.update({
       where: {
         id: operation.id,
@@ -508,6 +528,7 @@ export async function applyPendingAgentOperation(input: {
         strategyChanged: strategyOperations.length > 0,
         projectChanged: projectOperations.length > 0,
         reminderChanged: reminderOperations.length > 0,
+        starterPlanChanged: starterPlanOperations.length > 0,
       });
 
       await tx.agentMessage.create({
@@ -645,103 +666,122 @@ export async function generateStarterPlan(input: {
 }) {
   return prisma.$transaction(async (tx) => {
     const strategy = await ensureProjectStrategy(tx, input.workspaceId, input.projectId);
-    const existingPlanCount = await tx.contentPlanItem.count({
-      where: scopedWhere(input.workspaceId, {
-        projectId: input.projectId,
-      }),
+
+    return createStarterPlanIfMissing(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: input.projectId,
+      strategy,
     });
-
-    if (existingPlanCount > 0) {
-      return {
-        created: false,
-        message: "该项目已经有首月计划，本次没有重复生成。",
-      };
-    }
-
-    const channels = strategy.channels.length > 0 ? strategy.channels : ["TikTok", "Instagram"];
-    const themes = ["新品认知", "场景种草", "礼品转化", "复盘加码"];
-    const today = new Date();
-
-    await Promise.all(
-      themes.map((theme, index) =>
-        tx.contentPlanItem.create({
-          data: {
-            workspaceId: input.workspaceId,
-            projectId: input.projectId,
-            strategyId: strategy.id,
-            week: index + 1,
-            channel: channels[index % channels.length],
-            theme,
-            title: `${theme}内容任务`,
-            deliverable: "平台文案、发布配文、模板化海报和审核清单",
-            dueDate: addDays(today, (index + 1) * 7),
-            status: PlanItemStatus.READY,
-          },
-        }),
-      ),
-    );
-
-    const contentPackage = await tx.contentPackage.create({
-      data: {
-        workspaceId: input.workspaceId,
-        projectId: input.projectId,
-        strategyId: strategy.id,
-        name: "首月第一份素材包",
-        period: "首月第 1 周",
-        frequency: strategy.packageFrequency,
-        status: ContentPackageStatus.DRAFT,
-        summary: "本地生成素材包结构清单，后续阶段接入真实文件导出。",
-      },
-    });
-
-    await tx.contentPackageFile.createMany({
-      data: [
-        ["素材包说明 PDF", "PDF"],
-        ["内容排期 XLSX", "XLSX"],
-        ["平台文案 DOCX", "DOCX"],
-        ["Hashtags TXT", "TXT"],
-        ["TikTok 视频脚本 DOCX", "DOCX"],
-        ["发布配文 TXT", "TXT"],
-        ["模板化海报图片", "PNG"],
-        ["设计 Brief PDF", "PDF"],
-        ["品牌与合规检查 PDF", "PDF"],
-        ["最终 ZIP 打包下载", "ZIP"],
-      ].map(([name, fileType]) => ({
-        contentPackageId: contentPackage.id,
-        name,
-        fileType,
-        status: PackageFileStatus.PLANNED,
-      })),
-    });
-
-    await tx.reminder.create({
-      data: {
-        workspaceId: input.workspaceId,
-        projectId: input.projectId,
-        title: "检查首月素材包中的活动规则",
-        description: "如果素材包包含抽奖或促销活动，请在发布前确认奖品、规则和合规免责声明。",
-        severity: ReminderSeverity.WARNING,
-        status: ReminderStatus.OPEN,
-      },
-    });
-
-    await tx.changeLog.create({
-      data: {
-        workspaceId: input.workspaceId,
-        projectId: input.projectId,
-        entityType: "ContentPlanItem",
-        entityId: input.projectId,
-        action: "starter_plan_generated",
-        summary: "生成首月计划和第一份素材包结构。",
-        actorUserId: input.userId,
-      },
-    });
-
-    return {
-      created: true,
-      message: "已生成首月计划和第一份素材包结构。",
-    };
   });
+}
+
+async function createStarterPlanIfMissing(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    strategy: ProjectStrategyRecord;
+  },
+) {
+  const existingPlanCount = await tx.contentPlanItem.count({
+    where: scopedWhere(input.workspaceId, {
+      projectId: input.projectId,
+    }),
+  });
+
+  if (existingPlanCount > 0) {
+    return {
+      created: false,
+      message: "该项目已经有首月计划，本次没有重复生成。",
+    };
+  }
+
+  const channels =
+    input.strategy.channels.length > 0 ? input.strategy.channels : ["TikTok", "Instagram"];
+  const themes = ["新品认知", "场景种草", "礼品转化", "复盘加码"];
+  const today = new Date();
+
+  await Promise.all(
+    themes.map((theme, index) =>
+      tx.contentPlanItem.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          strategyId: input.strategy.id,
+          week: index + 1,
+          channel: channels[index % channels.length],
+          theme,
+          title: `${theme}内容任务`,
+          deliverable: "平台文案、发布配文、模板化海报和审核清单",
+          dueDate: addDays(today, (index + 1) * 7),
+          status: PlanItemStatus.READY,
+        },
+      }),
+    ),
+  );
+
+  const contentPackage = await tx.contentPackage.create({
+    data: {
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      strategyId: input.strategy.id,
+      name: "首月第一份素材包",
+      period: "首月第 1 周",
+      frequency: input.strategy.packageFrequency,
+      status: ContentPackageStatus.DRAFT,
+      summary: "本地生成素材包结构清单，后续阶段接入真实文件导出。",
+    },
+  });
+
+  await tx.contentPackageFile.createMany({
+    data: [
+      ["素材包说明 PDF", "PDF"],
+      ["内容排期 XLSX", "XLSX"],
+      ["平台文案 DOCX", "DOCX"],
+      ["Hashtags TXT", "TXT"],
+      ["TikTok 视频脚本 DOCX", "DOCX"],
+      ["发布配文 TXT", "TXT"],
+      ["模板化海报图片", "PNG"],
+      ["设计 Brief PDF", "PDF"],
+      ["品牌与合规检查 PDF", "PDF"],
+      ["最终 ZIP 打包下载", "ZIP"],
+    ].map(([name, fileType]) => ({
+      contentPackageId: contentPackage.id,
+      name,
+      fileType,
+      status: PackageFileStatus.PLANNED,
+    })),
+  });
+
+  await tx.reminder.create({
+    data: {
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      title: "检查首月素材包中的活动规则",
+      description: "如果素材包包含抽奖或促销活动，请在发布前确认奖品、规则和合规免责声明。",
+      severity: ReminderSeverity.WARNING,
+      status: ReminderStatus.OPEN,
+    },
+  });
+
+  await tx.changeLog.create({
+    data: {
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      entityType: "ContentPlanItem",
+      entityId: input.projectId,
+      action: "starter_plan_generated",
+      summary: "生成首月计划和第一份素材包结构。",
+      actorUserId: input.userId,
+    },
+  });
+
+  return {
+    created: true,
+    message: "已生成首月计划和第一份素材包结构。",
+  };
 }
 
 async function ensureConversation(
@@ -942,7 +982,16 @@ async function applyReminderOperations(
 }
 
 function isStrategyOperation(operation: ParsedAgentOperation) {
-  return operation.type !== "set_project_status" && operation.type !== "create_reminder";
+  return (
+    operation.type === "add_channel" ||
+    operation.type === "remove_channel" ||
+    operation.type === "set_market" ||
+    operation.type === "add_audience" ||
+    operation.type === "remove_audience" ||
+    operation.type === "add_content_direction" ||
+    operation.type === "remove_content_direction" ||
+    operation.type === "set_package_frequency"
+  );
 }
 
 function isProjectOperation(operation: ParsedAgentOperation) {
@@ -951,6 +1000,10 @@ function isProjectOperation(operation: ParsedAgentOperation) {
 
 function isReminderOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_reminder";
+}
+
+function isStarterPlanOperation(operation: ParsedAgentOperation) {
+  return operation.type === "generate_starter_plan";
 }
 
 function isConfirmationSensitiveOperation(operation: ParsedAgentOperation) {
@@ -1023,6 +1076,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         value === ContentFrequency.MONTHLY)
     ) {
       operations.push({ type, value, label: label || value });
+      continue;
+    }
+
+    if (type === "generate_starter_plan" && value === "first_month") {
+      operations.push({
+        type,
+        value,
+        label: label || "生成首月计划和第一份素材包结构",
+      });
     }
   }
 
@@ -1052,26 +1114,33 @@ function buildConfirmedAssistantReply(input: {
   strategyChanged: boolean;
   projectChanged: boolean;
   reminderChanged: boolean;
+  starterPlanChanged: boolean;
 }) {
+  const starterPlanText = input.starterPlanChanged ? "，并生成首月计划和第一份素材包结构" : "";
+
   if (input.strategyChanged && input.strategyWasConfirmed) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}：${input.operationSummary}`;
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${starterPlanText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认写入策略草案${projectText}${reminderText}：${input.operationSummary}`;
+    return `已按你的确认写入策略草案${projectText}${reminderText}${starterPlanText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认更新项目基础信息${reminderText}：${input.operationSummary}`;
+    return `已按你的确认更新项目基础信息${reminderText}${starterPlanText}：${input.operationSummary}`;
   }
 
   if (input.reminderChanged) {
-    return `已按你的确认创建提醒：${input.operationSummary}`;
+    return `已按你的确认创建提醒${starterPlanText}：${input.operationSummary}`;
+  }
+
+  if (input.starterPlanChanged) {
+    return `已按你的确认生成首月计划和第一份素材包结构：${input.operationSummary}`;
   }
 
   return `已按你的确认处理：${input.operationSummary}`;
