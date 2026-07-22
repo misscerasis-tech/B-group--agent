@@ -37,6 +37,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: true,
   },
   {
+    key: "project_switch",
+    category: "project",
+    title: "切换当前项目",
+    example: "切换到蒙古项目工作台。",
+    writesTo: ["AgentConversation", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "strategy_channels",
     category: "strategy",
     title: "新增或删除渠道",

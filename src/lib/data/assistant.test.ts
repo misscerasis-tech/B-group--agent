@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     project: {
       create: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       update: vi.fn(),
     },
     product: {
@@ -185,6 +186,7 @@ describe("generateStarterPlan", () => {
     mocks.tx.productFact.createMany.mockResolvedValue({
       count: 3,
     });
+    mocks.tx.project.findMany.mockResolvedValue([]);
     mocks.tx.metricsSnapshot.create.mockImplementation(({ data }) =>
       Promise.resolve({
         id: "metric-1",
@@ -462,6 +464,93 @@ describe("generateStarterPlan", () => {
           content: expect.stringContaining("已启动新项目"),
         }),
       ]),
+    });
+    expect(mocks.tx.project.update).not.toHaveBeenCalled();
+  });
+
+  it("switches to a matching project from a Chinese agent command", async () => {
+    mocks.tx.project.findMany.mockResolvedValue([
+      {
+        id: "project-2",
+        workspaceId: "workspace-1",
+        name: "蒙古夏季预热内容缺口项目",
+        description: "蒙古 Facebook 和 Instagram 内容缺口",
+        status: "ACTIVE",
+      },
+    ]);
+    mocks.tx.agentConversation.create
+      .mockResolvedValueOnce({
+        id: "conversation-current",
+      })
+      .mockResolvedValueOnce({
+        id: "conversation-target",
+      });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "切换到蒙古项目工作台。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(result.targetProjectId).toBe("project-2");
+    expect(mocks.tx.project.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        workspaceId: "workspace-1",
+        deletedAt: null,
+      }),
+      orderBy: {
+        updatedAt: "desc",
+      },
+      take: 50,
+    });
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        conversationId: "conversation-target",
+        projectId: "project-2",
+        status: "APPLIED",
+        summary: "切换项目：蒙古",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-2",
+        entityType: "Project",
+        entityId: "project-2",
+        action: "agent_project_switched",
+        actorUserId: "user-1",
+      }),
+    });
+    expect(mocks.tx.project.update).not.toHaveBeenCalled();
+  });
+
+  it("fails project switch commands when no workspace project matches", async () => {
+    mocks.tx.project.findMany.mockResolvedValue([]);
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "切换到德国项目工作台。",
+    });
+
+    expect(result.status).toBe("FAILED");
+    expect(result.targetProjectId).toBe("project-1");
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        status: "FAILED",
+        conflictCheck: "未找到当前 Workspace 下匹配「德国」的项目，未切换项目。",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "agent_project_switched",
+      }),
     });
     expect(mocks.tx.project.update).not.toHaveBeenCalled();
   });

@@ -126,6 +126,28 @@ describe("parseAgentCommand", () => {
     expect(parsed.operations.some((operation) => operation.type === "kickoff_project")).toBe(false);
   });
 
+  it("extracts project switch requests without changing market strategy", () => {
+    const parsed = parseAgentCommand("切换到蒙古项目工作台。");
+
+    expect(parsed.operations).toEqual([
+      {
+        type: "switch_project",
+        value: {
+          keyword: "蒙古",
+        },
+        label: "切换项目：蒙古",
+      },
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("does not treat the project center route as a project switch", () => {
+    const parsed = parseAgentCommand("打开项目中心。");
+
+    expect(parsed.operations).toHaveLength(0);
+    expect(parsed.confidence).toBe("low");
+  });
+
   it("extracts product creation requests for the current project", () => {
     const parsed = parseAgentCommand(
       "新增产品：Aurora Cup 车载保温杯，600ml，不锈钢，适合通勤车主和礼品购买者。",

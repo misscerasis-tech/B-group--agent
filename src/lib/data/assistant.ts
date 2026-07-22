@@ -351,9 +351,20 @@ export async function submitAgentCommand(input: {
       projectId: project.id,
       operations: parsed.operations,
     });
+    const projectSwitchOperation = parsed.operations.find(isProjectSwitchOperation);
+    const projectSwitchTarget = projectSwitchOperation
+      ? await findProjectSwitchTarget(tx, {
+          workspaceId: input.workspaceId,
+          operation: projectSwitchOperation,
+        })
+      : null;
     const hasMissingCompletionTargets = completionTargetWarnings.length > 0;
+    const projectSwitchTargetWarning =
+      projectSwitchOperation && !projectSwitchTarget
+        ? `未找到当前 Workspace 下匹配「${projectSwitchOperation.value.keyword}」的项目`
+        : null;
     const operationStatus =
-      noSafeOperation || hasMissingCompletionTargets
+      noSafeOperation || hasMissingCompletionTargets || projectSwitchTargetWarning
         ? AgentOperationStatus.FAILED
         : requiresConfirmation
           ? AgentOperationStatus.PENDING_CONFIRMATION
@@ -366,6 +377,7 @@ export async function submitAgentCommand(input: {
       operations: parsed.operations,
       activePlanChannelUsage,
       completionTargetWarnings,
+      projectSwitchTargetWarning,
     });
     const projectKickoffOperation = parsed.operations.find(isProjectKickoffOperation);
 
@@ -427,10 +439,19 @@ export async function submitAgentCommand(input: {
       };
     }
 
+    const operationProject =
+      projectSwitchTarget && operationStatus === AgentOperationStatus.APPLIED
+        ? projectSwitchTarget
+        : project;
+    const operationConversation =
+      operationProject.id === project.id
+        ? conversation
+        : await ensureConversation(tx, input.workspaceId, operationProject.id);
+
     await tx.agentMessage.create({
       data: {
         workspaceId: input.workspaceId,
-        conversationId: conversation.id,
+        conversationId: operationConversation.id,
         role: AgentMessageRole.USER,
         content: text,
       },
@@ -439,8 +460,8 @@ export async function submitAgentCommand(input: {
     const operation = await tx.agentOperation.create({
       data: {
         workspaceId: input.workspaceId,
-        conversationId: conversation.id,
-        projectId: project.id,
+        conversationId: operationConversation.id,
+        projectId: operationProject.id,
         rawText: text,
         summary: parsed.summary,
         operations: parsed.operations as Prisma.InputJsonValue,
@@ -450,8 +471,10 @@ export async function submitAgentCommand(input: {
     });
 
     let updatedStrategy = strategy;
+    let targetProjectId = operationProject.id;
 
     if (operationStatus === AgentOperationStatus.APPLIED) {
+      const projectSwitchOperations = parsed.operations.filter(isProjectSwitchOperation);
       const strategyOperations = parsed.operations.filter(isStrategyOperation);
       const strategyRecommendationOperations =
         parsed.operations.filter(isStrategyRecommendationOperation);
@@ -506,6 +529,24 @@ export async function submitAgentCommand(input: {
       const reminderCompletionOperations = parsed.operations.filter(isReminderCompletionOperation);
       const reminderDismissalOperations = parsed.operations.filter(isReminderDismissalOperation);
       const planItemCompletionOperations = parsed.operations.filter(isPlanItemCompletionOperation);
+
+      if (projectSwitchOperations.length > 0 && projectSwitchTarget) {
+        targetProjectId = projectSwitchTarget.id;
+
+        await tx.changeLog.create({
+          data: {
+            workspaceId: input.workspaceId,
+            projectId: projectSwitchTarget.id,
+            entityType: "Project",
+            entityId: projectSwitchTarget.id,
+            action: "agent_project_switched",
+            summary: `B 组 Agent 切换到项目：${projectSwitchTarget.name}`,
+            before: projectToJson(project),
+            after: projectToJson(projectSwitchTarget),
+            actorUserId: input.userId,
+          },
+        });
+      }
 
       if (strategyOperations.length > 0) {
         const before = strategyToJson(strategy);
@@ -758,7 +799,7 @@ export async function submitAgentCommand(input: {
     await tx.agentMessage.create({
       data: {
         workspaceId: input.workspaceId,
-        conversationId: conversation.id,
+        conversationId: operationConversation.id,
         role: AgentMessageRole.ASSISTANT,
         content: buildAssistantReply(parsed.summary, operationStatus, conflictCheck),
       },
@@ -766,7 +807,7 @@ export async function submitAgentCommand(input: {
 
     await tx.agentConversation.update({
       where: {
-        id: conversation.id,
+        id: operationConversation.id,
       },
       data: {
         updatedAt: new Date(),
@@ -777,7 +818,7 @@ export async function submitAgentCommand(input: {
       operation,
       strategy: updatedStrategy,
       status: operationStatus,
-      targetProjectId: project.id,
+      targetProjectId,
     };
   });
 }
@@ -884,6 +925,53 @@ async function createProjectFromAgentKickoff(
     conversation,
     factCount: facts.length,
   };
+}
+
+async function findProjectSwitchTarget(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    operation: Extract<ParsedAgentOperation, { type: "switch_project" }>;
+  },
+) {
+  const keyword = normalizeProjectSwitchKeyword(input.operation.value.keyword);
+
+  if (!keyword) {
+    return null;
+  }
+
+  const projects = await tx.project.findMany({
+    where: scopedWhere(input.workspaceId, {
+      deletedAt: null,
+    }),
+    orderBy: {
+      updatedAt: "desc",
+    },
+    take: 50,
+  });
+
+  return (
+    projects.find((project) => {
+      const normalizedName = normalizeProjectSwitchKeyword(project.name);
+      const normalizedDescription = normalizeProjectSwitchKeyword(project.description ?? "");
+
+      return (
+        normalizedName === keyword ||
+        normalizedName.includes(keyword) ||
+        keyword.includes(normalizedName) ||
+        normalizedDescription.includes(keyword)
+      );
+    }) ?? null
+  );
+}
+
+function normalizeProjectSwitchKeyword(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[“”"'「」]/g, "")
+    .replace(/(当前|这个|那个|b组|B组|项目|工作台|页面|详情)/g, "")
+    .replace(/\s+/g, "")
+    .trim();
 }
 
 export async function applyPendingAgentOperation(input: {
@@ -1789,16 +1877,19 @@ function buildAgentConflictCheck(input: {
   operations: ParsedAgentOperation[];
   activePlanChannelUsage: ActivePlanChannelUsage[];
   completionTargetWarnings: string[];
+  projectSwitchTargetWarning?: string | null;
 }) {
   const base = input.noSafeOperation
     ? "未识别到足够明确的市场、渠道、频率、项目状态、产品事实、提醒、内容计划、素材包、审核或复盘动作，未写入数据库。"
     : input.completionTargetWarnings.length > 0
       ? `已识别到任务类指令，但${input.completionTargetWarnings.join("；")}，未写入数据库。`
-    : input.requiresConfirmation
-      ? "当前策略已被人工确认为正式版本，需要二次确认后才能修改核心项目配置。"
-      : input.hasConfirmationSensitiveOperation
-        ? "当前策略仍为草案，可直接应用。"
-        : "该操作不改动正式策略，已直接写入项目工作台。";
+      : input.projectSwitchTargetWarning
+        ? `${input.projectSwitchTargetWarning}，未切换项目。`
+        : input.requiresConfirmation
+          ? "当前策略已被人工确认为正式版本，需要二次确认后才能修改核心项目配置。"
+          : input.hasConfirmationSensitiveOperation
+            ? "当前策略仍为草案，可直接应用。"
+            : "该操作不改动正式策略，已直接写入项目工作台。";
   const risks = input.noSafeOperation ? [] : buildAgentRiskMessages(input);
 
   if (risks.length === 0) {
@@ -5188,6 +5279,12 @@ function isProjectKickoffOperation(
   operation: ParsedAgentOperation,
 ): operation is Extract<ParsedAgentOperation, { type: "kickoff_project" }> {
   return operation.type === "kickoff_project";
+}
+
+function isProjectSwitchOperation(
+  operation: ParsedAgentOperation,
+): operation is Extract<ParsedAgentOperation, { type: "switch_project" }> {
+  return operation.type === "switch_project";
 }
 
 function isStrategyRecommendationOperation(operation: ParsedAgentOperation) {

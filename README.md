@@ -92,6 +92,7 @@ AI 内容增长 Agent 是一个独立 Web 系统，面向新品品牌和多产�
 - `/b-agent` 可以直接通过、要求修改或取消当前项目的待审核任务，处理后留在当前项目工作台，并同步写回对应业务对象。
 - `/b-agent` 提供常用流程按钮，并可在主动提醒区直接完成或忽略提醒。
 - `/b-agent` 在已有项目时也能用中文 Brief 继续启动新项目，创建后自动切换到新项目工作台。
+- `/b-agent` 左侧中文指令可识别“切换到某项目工作台”，只在当前 Workspace 内匹配项目并跳转，未命中时不会误改业务数据。
 - `/b-agent` 左侧中文指令可识别“创建/启动新项目”，并在当前 Workspace 下创建 Project、Product、ProjectProduct、ProductFact、ProjectStrategy、AgentConversation、AgentOperation 和 ChangeLog。
 - `/b-agent` 左侧中文指令可给当前项目新增产品；系统会优先复用当前 Workspace 下同名产品，避免重复创建，并补充待确认产品事实。
 - `/b-agent` 的素材包预览会复用素材包中心的可交付性检查，直接展示文件生成、审核、真实产品图、官方 Logo 和包级审核阻塞项。

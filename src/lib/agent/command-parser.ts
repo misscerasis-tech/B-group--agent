@@ -47,6 +47,13 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "switch_project";
+      value: {
+        keyword: string;
+      };
+      label: string;
+    }
+  | {
       type: "recommend_strategy";
       value: {
         basis: "product_facts";
@@ -534,6 +541,48 @@ function extractProductCreationName(text: string) {
   )?.[1];
 
   return beforeProduct ? cleanProductKickoffName(beforeProduct) : null;
+}
+
+function parseProjectSwitchOperation(text: string): ParsedAgentOperation | null {
+  const compact = compactText(text);
+
+  if (/项目中心|新项目|新建|创建|启动|发起|新增/.test(compact)) {
+    return null;
+  }
+
+  if (!/(切换到|切到|切换|打开|进入|查看|跳到|转到).*(项目|工作台)/.test(text)) {
+    return null;
+  }
+
+  const keyword = extractProjectSwitchKeyword(text);
+
+  if (!keyword) {
+    return null;
+  }
+
+  return {
+    type: "switch_project",
+    value: {
+      keyword,
+    },
+    label: `切换项目：${keyword}`,
+  };
+}
+
+function extractProjectSwitchKeyword(text: string) {
+  const match = text.match(/(?:切换到|切到|切换|打开|进入|查看|跳到|转到)\s*([^，。；;\n]+)/)?.[1];
+
+  if (!match) {
+    return null;
+  }
+
+  const keyword = match
+    .replace(/^(一下|下|当前|这个|那个)/, "")
+    .replace(/(项目工作台|工作台|项目|页面|详情)$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return keyword.length >= 2 ? keyword.slice(0, 80) : null;
 }
 
 function hasProjectKickoffIntent(text: string) {
@@ -1996,6 +2045,19 @@ function summarizeOperations(operations: ParsedAgentOperation[]) {
 export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const text = rawText.trim();
   const operations: ParsedAgentOperation[] = [];
+  const projectSwitchOperation = parseProjectSwitchOperation(text);
+
+  if (projectSwitchOperation) {
+    operations.push(projectSwitchOperation);
+
+    return {
+      rawText: text,
+      operations,
+      summary: summarizeOperations(operations),
+      confidence: "high",
+    };
+  }
+
   const projectKickoffOperation = parseProjectKickoffOperation(text);
 
   if (projectKickoffOperation) {
@@ -2329,6 +2391,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "infer_product_facts_from_text" ||
       operation.type === "confirm_product_facts" ||
       operation.type === "kickoff_project" ||
+      operation.type === "switch_project" ||
       operation.type === "recommend_strategy" ||
       operation.type === "create_content_package" ||
       operation.type === "update_content_package_status" ||
