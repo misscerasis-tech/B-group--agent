@@ -11,12 +11,14 @@ import {
   MessageSquareText,
   PencilLine,
   Target,
+  XCircle,
 } from "lucide-react";
 import {
   applyPendingAgentOperationAction,
   confirmProjectStrategyAction,
   generateStarterPlanAction,
   rejectPendingAgentOperationAction,
+  resolveBAgentReminderAction,
   submitAgentCommandAction,
 } from "@/app/actions/agent-actions";
 import { submitContentPackageForReviewAction } from "@/app/actions/package-actions";
@@ -572,6 +574,31 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                               {reminder.title} · {reminderSeverityLabels[reminder.severity]}
                             </strong>
                             <p>{reminder.description ?? "暂无说明"}</p>
+                            {reminder.dueAt ? (
+                              <small>截止：{formatShortDate(reminder.dueAt)}</small>
+                            ) : null}
+                            <form action={resolveBAgentReminderAction} className="inline-form">
+                              <input name="reminderId" type="hidden" value={reminder.id} />
+                              <input name="projectId" type="hidden" value={selectedProject.id} />
+                              <button
+                                className="button secondary"
+                                name="status"
+                                type="submit"
+                                value="DONE"
+                              >
+                                <CheckCircle2 size={16} aria-hidden="true" />
+                                完成
+                              </button>
+                              <button
+                                className="button secondary"
+                                name="status"
+                                type="submit"
+                                value="DISMISSED"
+                              >
+                                <XCircle size={16} aria-hidden="true" />
+                                忽略
+                              </button>
+                            </form>
                           </div>
                         </article>
                       ))}

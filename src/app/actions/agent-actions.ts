@@ -1,5 +1,6 @@
 "use server";
 
+import { ReminderStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
@@ -9,6 +10,7 @@ import {
   rejectPendingAgentOperation,
   submitAgentCommand,
 } from "@/lib/data/assistant";
+import { resolveReminder } from "@/lib/data/content-workspace";
 import { getWorkspaceContext } from "@/lib/workspace-context";
 
 function readRequiredText(formData: FormData, key: string, label: string) {
@@ -23,6 +25,10 @@ function readRequiredText(formData: FormData, key: string, label: string) {
 
 function bAgentReturnPath(projectId: string) {
   return `/b-agent?projectId=${encodeURIComponent(projectId)}`;
+}
+
+function parseReminderResolution(value: FormDataEntryValue | null) {
+  return value === ReminderStatus.DISMISSED ? ReminderStatus.DISMISSED : ReminderStatus.DONE;
 }
 
 export async function submitAgentCommandAction(formData: FormData) {
@@ -41,6 +47,25 @@ export async function submitAgentCommandAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/calendar");
   revalidatePath("/packages");
+  revalidatePath("/reminders");
+  revalidatePath("/recaps");
+  redirect(bAgentReturnPath(projectId));
+}
+
+export async function resolveBAgentReminderAction(formData: FormData) {
+  const context = await getWorkspaceContext();
+  const reminderId = readRequiredText(formData, "reminderId", "提醒");
+  const projectId = readRequiredText(formData, "projectId", "当前项目");
+
+  await resolveReminder({
+    workspaceId: context.currentWorkspace.id,
+    userId: context.user.id,
+    reminderId,
+    status: parseReminderResolution(formData.get("status")),
+  });
+
+  revalidatePath("/b-agent");
+  revalidatePath("/dashboard");
   revalidatePath("/reminders");
   revalidatePath("/recaps");
   redirect(bAgentReturnPath(projectId));
