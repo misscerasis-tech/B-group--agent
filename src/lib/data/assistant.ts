@@ -15,6 +15,15 @@ import { parseAgentCommand, type ParsedAgentOperation } from "@/lib/agent/comman
 import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/workspace-scope";
 
+type ProjectStrategyRecord = Awaited<ReturnType<typeof ensureProjectStrategy>>;
+
+type StrategyMutableFields = {
+  targetMarkets: string[];
+  channels: string[];
+  contentDirections: string[];
+  packageFrequency: ContentFrequency;
+};
+
 export async function getAssistantState(workspaceId: string, projectId?: string) {
   const projects = await prisma.project.findMany({
     where: scopedWhere(workspaceId, {
@@ -322,12 +331,39 @@ export async function applyPendingAgentOperation(input: {
     const parsedOperations = parseStoredOperations(operation.operations);
     const before = strategyToJson(strategy);
     const nextData = applyOperationsToStrategy(strategy, parsedOperations);
-    const updatedStrategy = await tx.projectStrategy.update({
-      where: {
-        id: strategy.id,
-      },
-      data: nextData,
-    });
+    let updatedStrategy: ProjectStrategyRecord;
+    let changeAction = "agent_command_confirmed";
+    let changeSummary = operation.summary;
+    let changeEntityId = strategy.id;
+
+    if (strategy.status === StrategyStatus.CONFIRMED) {
+      updatedStrategy = await tx.projectStrategy.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: operation.projectId,
+          version: strategy.version + 1,
+          status: StrategyStatus.CONFIRMED,
+          targetMarkets: nextData.targetMarkets,
+          audiences: strategy.audiences,
+          channels: nextData.channels,
+          contentDirections: nextData.contentDirections,
+          packageFrequency: nextData.packageFrequency,
+          positioning: strategy.positioning,
+          rationale: strategy.rationale,
+          confirmedAt: new Date(),
+        },
+      });
+      changeAction = "strategy_version_created";
+      changeSummary = `确认变更并创建正式策略 v${updatedStrategy.version}：${operation.summary}`;
+      changeEntityId = updatedStrategy.id;
+    } else {
+      updatedStrategy = await tx.projectStrategy.update({
+        where: {
+          id: strategy.id,
+        },
+        data: nextData,
+      });
+    }
 
     await tx.agentOperation.update({
       where: {
@@ -344,9 +380,9 @@ export async function applyPendingAgentOperation(input: {
         workspaceId: input.workspaceId,
         projectId: operation.projectId,
         entityType: "ProjectStrategy",
-        entityId: strategy.id,
-        action: "agent_command_confirmed",
-        summary: operation.summary,
+        entityId: changeEntityId,
+        action: changeAction,
+        summary: changeSummary,
         before,
         after: strategyToJson(updatedStrategy),
         actorUserId: input.userId,
@@ -354,12 +390,17 @@ export async function applyPendingAgentOperation(input: {
     });
 
     if (operation.conversationId) {
+      const content =
+        strategy.status === StrategyStatus.CONFIRMED
+          ? `已按你的确认创建正式策略 v${updatedStrategy.version}：${operation.summary}`
+          : `已按你的确认写入策略草案：${operation.summary}`;
+
       await tx.agentMessage.create({
         data: {
           workspaceId: input.workspaceId,
           conversationId: operation.conversationId,
           role: AgentMessageRole.ASSISTANT,
-          content: `已按你的确认写入正式策略：${operation.summary}`,
+          content,
         },
       });
     }
@@ -609,9 +650,9 @@ async function ensureProjectStrategy(
 }
 
 function applyOperationsToStrategy(
-  strategy: Awaited<ReturnType<typeof ensureProjectStrategy>>,
+  strategy: ProjectStrategyRecord,
   operations: ParsedAgentOperation[],
-): Prisma.ProjectStrategyUpdateInput {
+): StrategyMutableFields {
   let targetMarkets = [...strategy.targetMarkets];
   let channels = [...strategy.channels];
   let contentDirections = [...strategy.contentDirections];
@@ -706,7 +747,7 @@ function buildAssistantReply(
   return `已写入项目工作台：${summary}。${conflictCheck}`;
 }
 
-function strategyToJson(strategy: Awaited<ReturnType<typeof ensureProjectStrategy>>) {
+function strategyToJson(strategy: ProjectStrategyRecord) {
   return {
     id: strategy.id,
     version: strategy.version,

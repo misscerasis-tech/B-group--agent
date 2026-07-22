@@ -32,7 +32,7 @@ AI 内容增长 Agent 是独立 Web 系统，不依赖飞书作为业务底座�
 - 中文指令先由本地规则型解析器处理，不调用真实 GPT。
 - 解析后的结构化操作保存为 `AgentOperation`。
 - 策略仍为草案时，安全操作可直接应用到 `ProjectStrategy`。
-- 策略已被人工确认后，后续操作进入 `PENDING_CONFIRMATION`，由用户确认后再写入正式策略。
+- 策略已被人工确认后，后续操作进入 `PENDING_CONFIRMATION`；用户确认后创建新的正式策略版本，旧版本保留用于复盘和回滚。
 - 所有操作写入 `ChangeLog`，保证可追踪和可回滚。
 - 内容日历、素材包中心、审核中心、提醒中心从同一套 Workspace 数据读取。
 
@@ -80,7 +80,7 @@ Foundation 已实现：
 B 组工作助手已新增：
 
 - `ProductFact`：产品事实，区分草稿、已确认、需复核。
-- `ProjectStrategy`：项目策略，支持目标市场、客群、渠道、内容方向、素材包频率和确认状态。
+- `ProjectStrategy`：项目策略，支持目标市场、客群、渠道、内容方向、素材包频率、确认状态和版本记录。
 - `ContentPlanItem`：首月内容计划项。
 - `ContentPackage` 与 `ContentPackageFile`：素材包结构和文件状态。
 - `Reminder`：基于项目风险和缺口生成的提醒。
