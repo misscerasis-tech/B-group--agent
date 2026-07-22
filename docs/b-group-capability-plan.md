@@ -142,11 +142,11 @@ V1 目标素材包：
 - `AgentOperation` 保存中文指令转换后的结构化操作。
 - `ChangeLog` 保存手工 CRUD、策略确认、指令应用、事实生成、计划生成、素材和提醒记录。
 - `Asset` 保存真实产品图、官方 Logo、资料和参考图，并带审核状态、文件校验和上传限制。
-- `ImageGenerationProviderConfig` 和 `ImageGenerationJob` 预留图片供应商评测与模板化合成任务；当前可创建内部模板化合成任务记录。
+- `ImageGenerationProviderConfig` 和 `ImageGenerationJob` 预留图片供应商评测与模板化合成任务；当前可生成内部 SVG 模板海报并写回 Asset。
 - `IntegrationConnection` 和 `IntegrationMigrationRecord` 保存飞书占位连接、停用状态和迁移记录。
 - `/projects` 支持中文 Brief 启动项目，一次创建项目、产品、关联、待确认事实、策略草案、对话和变更日志。
 - `/b-agent` 支持提交中文指令、确认正式策略、确认应用变更、修改项目状态、创建提醒、通过按钮或中文指令生成首月计划，并导出项目快照。
-- `/assets` 支持上传/下载素材、关联项目/产品、标记审核通过、同步审核任务和创建模板化合成任务。
+- `/assets` 支持上传/下载素材、关联项目/产品、标记审核通过、同步审核任务和生成本地 SVG 模板海报。
 - `/packages` 支持手动创建素材包结构、推进文件状态、提交 Web 审核和下载 ZIP 清单。
 - `/integrations` 支持登记飞书占位连接、占位测试、停用旧连接和保存迁移记录。
 - 内容日历、素材包中心、审核中心、提醒中心、数据复盘读取当前 Workspace 数据。

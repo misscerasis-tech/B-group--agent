@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Prisma } from "@prisma/client";
 import {
   AssetKind,
+  AssetSource,
   AssetStatus,
   ImageGenerationMode,
   ImageGenerationStatus,
@@ -130,6 +131,11 @@ export async function createTemplateCompositionJob(input: {
       await validateAssetProjectFit(tx, input.workspaceId, input.projectId, logo);
     }
 
+    const [width, height] = getCanvasSize(input.aspectRatio);
+    const [productImageDataUrl, logoDataUrl] = await Promise.all([
+      getAssetDataUrl(productImage),
+      getAssetDataUrl(logo),
+    ]);
     const job = await tx.imageGenerationJob.create({
       data: {
         workspaceId: input.workspaceId,
@@ -140,7 +146,65 @@ export async function createTemplateCompositionJob(input: {
         sourceAssetIds: [productImage.id, logo.id],
         generationMode: ImageGenerationMode.TEMPLATE_COMPOSITION,
         aspectRatio: input.aspectRatio,
-        status: ImageGenerationStatus.QUEUED,
+        status: ImageGenerationStatus.RUNNING,
+      },
+    });
+    const svg = buildTemplateCompositionSvg({
+      width,
+      height,
+      aspectRatio: input.aspectRatio,
+      productName: productImage.name,
+      headline: "新品内容增长素材",
+      subheadline: "真实产品图 + 官方 Logo 分层合成",
+      productImageDataUrl,
+      logoDataUrl,
+    });
+    const svgBuffer = Buffer.from(svg, "utf8");
+    const checksum = createHash("sha256").update(svgBuffer).digest("hex");
+    const relativeDir = path.join(LOCAL_ASSET_ROOT, input.workspaceId);
+    const absoluteDir = path.join(process.cwd(), relativeDir);
+    const storedFilename = `${Date.now()}-${job.id}-template-composition.svg`;
+    const storagePath = path.join(relativeDir, storedFilename);
+
+    await mkdir(absoluteDir, { recursive: true });
+    await writeFile(path.join(absoluteDir, storedFilename), svgBuffer);
+
+    const resultAsset = await tx.asset.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId ?? productImage.projectId ?? logo.projectId ?? null,
+        productId: productImage.productId ?? logo.productId ?? null,
+        name: `模板化海报 ${input.aspectRatio}`,
+        kind: AssetKind.GENERATED_IMAGE,
+        source: AssetSource.GENERATED,
+        status: AssetStatus.APPROVED,
+        mimeType: "image/svg+xml",
+        sizeBytes: svgBuffer.length,
+        storagePath,
+        originalFilename: storedFilename,
+        checksum,
+        metadata: {
+          storageProvider: "local",
+          generationMode: ImageGenerationMode.TEMPLATE_COMPOSITION,
+          productSubjectLocked: true,
+          layers: [
+            "Background Layer",
+            "Product Layer",
+            "Text Layer",
+            "Logo Layer",
+            "Decoration Layer",
+          ],
+          sourceAssetIds: [productImage.id, logo.id],
+        },
+      },
+    });
+    const updatedJob = await tx.imageGenerationJob.update({
+      where: {
+        id: job.id,
+      },
+      data: {
+        resultAssetId: resultAsset.id,
+        status: ImageGenerationStatus.SUCCEEDED,
       },
     });
 
@@ -149,23 +213,24 @@ export async function createTemplateCompositionJob(input: {
         workspaceId: input.workspaceId,
         projectId: input.projectId,
         entityType: "ImageGenerationJob",
-        entityId: job.id,
-        action: "template_composition_job_created",
-        summary: `创建模板化合成任务：${input.aspectRatio}`,
+        entityId: updatedJob.id,
+        action: "template_composition_asset_created",
+        summary: `生成模板化海报：${input.aspectRatio}`,
         after: {
-          provider: job.provider,
-          model: job.model,
-          promptVersion: job.promptVersion,
-          generationMode: job.generationMode,
-          aspectRatio: job.aspectRatio,
-          sourceAssetIds: job.sourceAssetIds,
-          status: job.status,
+          provider: updatedJob.provider,
+          model: updatedJob.model,
+          promptVersion: updatedJob.promptVersion,
+          generationMode: updatedJob.generationMode,
+          aspectRatio: updatedJob.aspectRatio,
+          sourceAssetIds: updatedJob.sourceAssetIds,
+          status: updatedJob.status,
+          resultAssetId: resultAsset.id,
         },
         actorUserId: input.userId,
       },
     });
 
-    return job;
+    return updatedJob;
   });
 }
 
@@ -289,6 +354,90 @@ export function resolveLocalAssetPath(storagePath: string) {
   }
 
   return absolutePath;
+}
+
+export function buildTemplateCompositionSvg(input: {
+  width: number;
+  height: number;
+  aspectRatio: string;
+  productName: string;
+  headline: string;
+  subheadline: string;
+  productImageDataUrl: string;
+  logoDataUrl: string;
+}) {
+  const margin = Math.round(input.width * 0.07);
+  const productBoxWidth = Math.round(input.width * 0.48);
+  const productBoxHeight = Math.round(input.height * 0.58);
+  const productX = input.width - margin - productBoxWidth;
+  const productY = Math.round(input.height * 0.22);
+  const textX = margin;
+  const textY = Math.round(input.height * 0.28);
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}" viewBox="0 0 ${input.width} ${input.height}" role="img" aria-label="${escapeXml(input.productName)} 模板化海报">
+  <g id="background-layer">
+    <rect width="100%" height="100%" fill="#f7f8fb"/>
+    <rect x="${margin}" y="${margin}" width="${input.width - margin * 2}" height="${input.height - margin * 2}" fill="#ffffff" stroke="#d9dee8" stroke-width="3"/>
+  </g>
+  <g id="decoration-layer">
+    <path d="M ${margin} ${input.height - margin * 1.6} H ${input.width - margin}" stroke="#6fb1a5" stroke-width="8" stroke-linecap="round"/>
+    <path d="M ${margin} ${input.height - margin * 1.25} H ${input.width - margin * 2.8}" stroke="#f0b35a" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <g id="logo-layer">
+    <image href="${input.logoDataUrl}" x="${margin}" y="${margin}" width="${Math.round(input.width * 0.18)}" height="${Math.round(input.height * 0.08)}" preserveAspectRatio="xMinYMid meet"/>
+  </g>
+  <g id="text-layer" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif" fill="#1d2433">
+    <text x="${textX}" y="${textY}" font-size="${Math.round(input.width * 0.06)}" font-weight="700">${escapeXml(input.headline)}</text>
+    <text x="${textX}" y="${textY + Math.round(input.width * 0.08)}" font-size="${Math.round(input.width * 0.032)}" fill="#4b5565">${escapeXml(input.subheadline)}</text>
+    <text x="${textX}" y="${textY + Math.round(input.width * 0.14)}" font-size="${Math.round(input.width * 0.03)}" fill="#657083">比例 ${escapeXml(input.aspectRatio)} · Product Layer 已锁定真实素材</text>
+  </g>
+  <g id="product-layer" data-product-subject-locked="true" data-allow-repaint="false" data-allow-geometry-change="false">
+    <image href="${input.productImageDataUrl}" x="${productX}" y="${productY}" width="${productBoxWidth}" height="${productBoxHeight}" preserveAspectRatio="xMidYMid meet"/>
+  </g>
+</svg>`;
+}
+
+function getCanvasSize(aspectRatio: string): [number, number] {
+  if (aspectRatio === "1:1") {
+    return [1080, 1080];
+  }
+
+  if (aspectRatio === "9:16") {
+    return [1080, 1920];
+  }
+
+  if (aspectRatio === "16:9") {
+    return [1600, 900];
+  }
+
+  return [1080, 1350];
+}
+
+async function getAssetDataUrl(asset: {
+  storagePath: string | null;
+  mimeType: string | null;
+  name: string;
+}) {
+  if (!asset.storagePath) {
+    throw new Error(`素材“${asset.name}”缺少本地文件路径。`);
+  }
+
+  if (!asset.mimeType?.startsWith("image/")) {
+    throw new Error(`素材“${asset.name}”不是可用于海报图层的图片文件。`);
+  }
+
+  const file = await readFile(resolveLocalAssetPath(asset.storagePath));
+  return `data:${asset.mimeType};base64,${file.toString("base64")}`;
+}
+
+function escapeXml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
 }
 
 function isImageAssetKind(kind: AssetKind) {

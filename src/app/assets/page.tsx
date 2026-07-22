@@ -136,7 +136,7 @@ export default async function AssetsPage() {
 
             <div style={{ borderTop: "1px solid var(--border)", margin: "20px 0" }} />
 
-            <h3>创建模板化合成任务</h3>
+            <h3>生成本地模板海报</h3>
             <form action={createTemplateCompositionJobAction} className="form">
               <label className="form-row">
                 <span className="field-label">关联项目</span>
@@ -186,7 +186,7 @@ export default async function AssetsPage() {
                 type="submit"
               >
                 <Layers size={16} aria-hidden="true" />
-                创建任务
+                生成模板海报
               </button>
               {approvedProductImages.length === 0 || approvedLogos.length === 0 ? (
                 <p className="muted">需要先审核通过至少一张真实产品图和一个官方 Logo。</p>
@@ -272,6 +272,14 @@ export default async function AssetsPage() {
                     <p>
                       来源素材 {job.sourceAssetIds.length} 个 · promptVersion {job.promptVersion}
                     </p>
+                    {job.resultAsset ? (
+                      <Link
+                        className="button secondary"
+                        href={`/assets/${job.resultAsset.id}/download`}
+                      >
+                        下载生成图
+                      </Link>
+                    ) : null}
                     {job.error ? <p>{job.error}</p> : null}
                   </article>
                 ))}
