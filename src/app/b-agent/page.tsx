@@ -194,6 +194,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                     <li>修改项目状态：暂停项目、恢复项目、归档项目或改回草稿</li>
                     <li>创建项目提醒：提醒我提前确认奖品、规则、Logo 或素材来源</li>
                     <li>录入渠道表现：记录 TikTok 本周曝光、点击、转化和花费</li>
+                    <li>新增内容计划：第2周 TikTok 做一条开箱短视频，主题新品认知</li>
                     <li>生成首月计划：请生成首月计划和第一份素材包结构</li>
                     <li>识别市场：巴西、蒙古、美国、日本、东南亚等</li>
                     <li>追加或删除内容方向：世界杯、那达慕、黑五、通勤、礼赠、小抽奖等</li>

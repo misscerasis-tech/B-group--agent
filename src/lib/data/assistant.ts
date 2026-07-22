@@ -310,6 +310,7 @@ export async function submitAgentCommand(input: {
       const reminderOperations = parsed.operations.filter(isReminderOperation);
       const starterPlanOperations = parsed.operations.filter(isStarterPlanOperation);
       const metricsOperations = parsed.operations.filter(isMetricsOperation);
+      const planItemOperations = parsed.operations.filter(isPlanItemOperation);
 
       if (strategyOperations.length > 0) {
         const before = strategyToJson(strategy);
@@ -375,6 +376,14 @@ export async function submitAgentCommand(input: {
         operations: metricsOperations,
       });
 
+      await applyPlanItemOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        strategyId: updatedStrategy.id,
+        operations: planItemOperations,
+      });
+
       if (starterPlanOperations.length > 0) {
         await createStarterPlanIfMissing(tx, {
           workspaceId: input.workspaceId,
@@ -435,6 +444,7 @@ export async function applyPendingAgentOperation(input: {
     const reminderOperations = parsedOperations.filter(isReminderOperation);
     const starterPlanOperations = parsedOperations.filter(isStarterPlanOperation);
     const metricsOperations = parsedOperations.filter(isMetricsOperation);
+    const planItemOperations = parsedOperations.filter(isPlanItemOperation);
     let updatedStrategy: ProjectStrategyRecord = strategy;
 
     if (strategyOperations.length > 0) {
@@ -536,6 +546,14 @@ export async function applyPendingAgentOperation(input: {
       operations: metricsOperations,
     });
 
+    await applyPlanItemOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      strategyId: updatedStrategy.id,
+      operations: planItemOperations,
+    });
+
     if (starterPlanOperations.length > 0) {
       await createStarterPlanIfMissing(tx, {
         workspaceId: input.workspaceId,
@@ -565,6 +583,7 @@ export async function applyPendingAgentOperation(input: {
         reminderChanged: reminderOperations.length > 0,
         starterPlanChanged: starterPlanOperations.length > 0,
         metricsChanged: metricsOperations.length > 0,
+        planItemChanged: planItemOperations.length > 0,
       });
 
       await tx.agentMessage.create({
@@ -691,7 +710,7 @@ function buildAgentConflictCheck(input: {
   activePlanChannelUsage: ActivePlanChannelUsage[];
 }) {
   const base = input.noSafeOperation
-    ? "未识别到足够明确的市场、渠道、频率、项目状态、提醒或内容方向，未写入数据库。"
+    ? "未识别到足够明确的市场、渠道、频率、项目状态、提醒、内容计划或内容方向，未写入数据库。"
     : input.requiresConfirmation
       ? "当前策略已被人工确认为正式版本，需要二次确认后才能修改核心项目配置。"
       : input.hasConfirmationSensitiveOperation
@@ -1192,6 +1211,60 @@ async function applyMetricsOperations(
   }
 }
 
+async function applyPlanItemOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    strategyId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "create_plan_item") {
+      continue;
+    }
+
+    const planItem = await tx.contentPlanItem.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        strategyId: input.strategyId,
+        week: operation.value.week,
+        channel: operation.value.channel,
+        theme: operation.value.theme,
+        title: operation.value.title,
+        deliverable: operation.value.deliverable,
+        dueDate: operation.value.dueDate ? new Date(`${operation.value.dueDate}T00:00:00`) : null,
+        status: operation.value.status,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ContentPlanItem",
+        entityId: planItem.id,
+        action: "agent_plan_item_created",
+        summary: operation.label,
+        after: {
+          id: planItem.id,
+          week: planItem.week,
+          channel: planItem.channel,
+          theme: planItem.theme,
+          title: planItem.title,
+          deliverable: planItem.deliverable,
+          dueDate: planItem.dueDate,
+          status: planItem.status,
+        },
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
 function isStrategyOperation(operation: ParsedAgentOperation) {
   return (
     operation.type === "add_channel" ||
@@ -1219,6 +1292,10 @@ function isStarterPlanOperation(operation: ParsedAgentOperation) {
 
 function isMetricsOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_metrics_snapshot";
+}
+
+function isPlanItemOperation(operation: ParsedAgentOperation) {
+  return operation.type === "create_plan_item";
 }
 
 function isConfirmationSensitiveOperation(operation: ParsedAgentOperation) {
@@ -1311,6 +1388,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
           label ||
           `录入指标：${value.period} · ${value.channel} · 曝光 ${value.impressions} / 点击 ${value.clicks} / 转化 ${value.conversions}`,
       });
+      continue;
+    }
+
+    if (type === "create_plan_item" && isPlanItemValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `新增内容计划：第${value.week}周 · ${value.channel} · ${value.title}`,
+      });
     }
   }
 
@@ -1337,6 +1423,32 @@ function isMetricsSnapshotValue(value: unknown): value is Extract<
     (record.notes === undefined || typeof record.notes === "string") &&
     record.clicks <= record.impressions &&
     record.conversions <= record.clicks
+  );
+}
+
+function isPlanItemValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "create_plan_item" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    Number.isInteger(record.week) &&
+    Number(record.week) >= 1 &&
+    Number(record.week) <= 12 &&
+    typeof record.channel === "string" &&
+    typeof record.theme === "string" &&
+    typeof record.title === "string" &&
+    typeof record.deliverable === "string" &&
+    (record.dueDate === undefined || typeof record.dueDate === "string") &&
+    (record.status === PlanItemStatus.DRAFT ||
+      record.status === PlanItemStatus.READY ||
+      record.status === PlanItemStatus.REVIEW_NEEDED ||
+      record.status === PlanItemStatus.DONE)
   );
 }
 
@@ -1369,37 +1481,43 @@ function buildConfirmedAssistantReply(input: {
   reminderChanged: boolean;
   starterPlanChanged: boolean;
   metricsChanged: boolean;
+  planItemChanged: boolean;
 }) {
   const starterPlanText = input.starterPlanChanged ? "，并生成首月计划和第一份素材包结构" : "";
   const metricsText = input.metricsChanged ? "，并录入渠道表现指标" : "";
+  const planItemText = input.planItemChanged ? "，并新增内容计划" : "";
 
   if (input.strategyChanged && input.strategyWasConfirmed) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${starterPlanText}${metricsText}：${input.operationSummary}`;
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认写入策略草案${projectText}${reminderText}${starterPlanText}${metricsText}：${input.operationSummary}`;
+    return `已按你的确认写入策略草案${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认更新项目基础信息${reminderText}${starterPlanText}${metricsText}：${input.operationSummary}`;
+    return `已按你的确认更新项目基础信息${reminderText}${starterPlanText}${metricsText}${planItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderChanged) {
-    return `已按你的确认创建提醒${starterPlanText}${metricsText}：${input.operationSummary}`;
+    return `已按你的确认创建提醒${starterPlanText}${metricsText}${planItemText}：${input.operationSummary}`;
   }
 
   if (input.starterPlanChanged) {
-    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}：${input.operationSummary}`;
+    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}${planItemText}：${input.operationSummary}`;
   }
 
   if (input.metricsChanged) {
-    return `已按你的确认录入渠道表现指标：${input.operationSummary}`;
+    return `已按你的确认录入渠道表现指标${planItemText}：${input.operationSummary}`;
+  }
+
+  if (input.planItemChanged) {
+    return `已按你的确认新增内容计划：${input.operationSummary}`;
   }
 
   return `已按你的确认处理：${input.operationSummary}`;

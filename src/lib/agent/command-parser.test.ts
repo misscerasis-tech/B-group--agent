@@ -1,4 +1,4 @@
-import { ContentFrequency, ProjectStatus, ReminderSeverity } from "@prisma/client";
+import { ContentFrequency, PlanItemStatus, ProjectStatus, ReminderSeverity } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { parseAgentCommand } from "./command-parser";
 
@@ -124,6 +124,27 @@ describe("parseAgentCommand", () => {
         notes: "由 B 组 Agent 中文指令录入。",
       },
       label: "录入指标：2026-07 第3周 · TikTok · 曝光 10000 / 点击 600 / 转化 24 / 花费 ¥1234.56",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("extracts content plan item creation requests", () => {
+    const parsed = parseAgentCommand(
+      "第2周 TikTok 做一条开箱短视频，主题新品认知，交付短视频脚本，截止 2026-08-07，可执行。",
+    );
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_plan_item",
+      value: {
+        week: 2,
+        channel: "TikTok",
+        theme: "新品认知",
+        title: "开箱短视频",
+        deliverable: "短视频脚本",
+        dueDate: "2026-08-07",
+        status: PlanItemStatus.READY,
+      },
+      label: "新增内容计划：第2周 · TikTok · 开箱短视频",
     });
     expect(parsed.confidence).toBe("high");
   });

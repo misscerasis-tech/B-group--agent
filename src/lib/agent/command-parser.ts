@@ -1,4 +1,4 @@
-import { ContentFrequency, ProjectStatus, ReminderSeverity } from "@prisma/client";
+import { ContentFrequency, PlanItemStatus, ProjectStatus, ReminderSeverity } from "@prisma/client";
 
 export type ParsedAgentOperation =
   | {
@@ -39,6 +39,19 @@ export type ParsedAgentOperation =
         conversions: number;
         spendCents: number;
         notes?: string;
+      };
+      label: string;
+    }
+  | {
+      type: "create_plan_item";
+      value: {
+        week: number;
+        channel: string;
+        theme: string;
+        title: string;
+        deliverable: string;
+        dueDate?: string;
+        status: PlanItemStatus;
       };
       label: string;
     }
@@ -304,6 +317,150 @@ function extractMetricNumber(text: string, labels: string[]) {
   return null;
 }
 
+function parsePlanItemOperation(text: string): ParsedAgentOperation | null {
+  if (!/(新增|创建|安排|加一条|加一个|做一条|做一个).*(计划|内容|视频|图文|脚本|海报|帖子|贴文)/.test(text)) {
+    return null;
+  }
+
+  const channel = CHANNELS.find((channelName) =>
+    text.toLowerCase().includes(channelName.toLowerCase()),
+  );
+  const week = parsePlanWeek(text);
+
+  if (!channel || !week) {
+    return null;
+  }
+
+  const theme = parsePlanTheme(text);
+  const title = parsePlanTitle(text, channel);
+  const deliverable = parsePlanDeliverable(text, title);
+  const dueDate = parsePlanDueDate(text);
+  const status = /可执行|ready|就绪|已准备/.test(text) ? PlanItemStatus.READY : PlanItemStatus.DRAFT;
+  const value = {
+    week,
+    channel,
+    theme,
+    title,
+    deliverable,
+    ...(dueDate ? { dueDate } : {}),
+    status,
+  };
+
+  return {
+    type: "create_plan_item",
+    value,
+    label: `新增内容计划：第${week}周 · ${channel} · ${title}`,
+  };
+}
+
+function parsePlanWeek(text: string) {
+  const weekMatch = text.match(/第\s*(\d{1,2})\s*周/);
+
+  if (weekMatch?.[1]) {
+    const week = Number.parseInt(weekMatch[1], 10);
+    return week >= 1 && week <= 12 ? week : null;
+  }
+
+  if (/首周|第一周/.test(text)) {
+    return 1;
+  }
+
+  if (/第二周/.test(text)) {
+    return 2;
+  }
+
+  if (/第三周/.test(text)) {
+    return 3;
+  }
+
+  if (/第四周/.test(text)) {
+    return 4;
+  }
+
+  return null;
+}
+
+function parsePlanTheme(text: string) {
+  const explicitTheme = extractTextAfterLabel(text, ["主题"]);
+
+  if (explicitTheme) {
+    return explicitTheme;
+  }
+
+  return DIRECTION_HINTS.find((direction) => text.includes(direction)) ?? "内容主题待确认";
+}
+
+function parsePlanTitle(text: string, channel: string) {
+  const explicitTitle = extractTextAfterLabel(text, ["标题", "内容"]);
+
+  if (explicitTitle) {
+    return explicitTitle;
+  }
+
+  const actionMatch = text.match(/(?:做一条|做一个|安排一条|安排一个|新增一条|新增一个|创建一条|创建一个)\s*([^，。,；;]+)/);
+
+  if (actionMatch?.[1]) {
+    return actionMatch[1].replace(channel, "").trim().slice(0, 80) || `${channel} 内容计划`;
+  }
+
+  return `${channel} 内容计划`;
+}
+
+function parsePlanDeliverable(text: string, title: string) {
+  const explicitDeliverable = extractTextAfterLabel(text, ["交付", "产出", "交付物"]);
+
+  if (explicitDeliverable) {
+    return explicitDeliverable;
+  }
+
+  if (/视频|短视频|脚本/.test(title)) {
+    return "短视频脚本和发布配文";
+  }
+
+  if (/图文|轮播|帖子|贴文/.test(title)) {
+    return "图文文案和配图";
+  }
+
+  if (/海报/.test(title)) {
+    return "海报文案和模板图";
+  }
+
+  return "内容草案";
+}
+
+function parsePlanDueDate(text: string) {
+  const isoDate = text.match(/20\d{2}[-/]\d{1,2}[-/]\d{1,2}/);
+
+  if (isoDate?.[0]) {
+    return normalizeDateText(isoDate[0]);
+  }
+
+  const zhDate = text.match(/(20\d{2})年(\d{1,2})月(\d{1,2})日?/);
+
+  if (zhDate?.[1] && zhDate[2] && zhDate[3]) {
+    return `${zhDate[1]}-${zhDate[2].padStart(2, "0")}-${zhDate[3].padStart(2, "0")}`;
+  }
+
+  return undefined;
+}
+
+function normalizeDateText(value: string) {
+  const [year, month, day] = value.replace(/\//g, "-").split("-");
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
+function extractTextAfterLabel(text: string, labels: string[]) {
+  for (const label of labels) {
+    const match = text.match(new RegExp(`${label}\\s*[:：]?\\s*([^，。,；;]+)`));
+
+    if (match?.[1]) {
+      return match[1].trim().slice(0, 80);
+    }
+  }
+
+  return null;
+}
+
 function operationKey(operation: ParsedAgentOperation) {
   return `${operation.type}:${
     typeof operation.value === "string" ? operation.value : JSON.stringify(operation.value)
@@ -412,6 +569,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(metricsOperation);
   }
 
+  const planItemOperation = parsePlanItemOperation(text);
+  if (planItemOperation) {
+    operations.push(planItemOperation);
+  }
+
   for (const audience of AUDIENCE_HINTS) {
     if (hasRemoveIntent(text, audience)) {
       operations.push({
@@ -456,13 +618,16 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const hasCompleteMetricsOperation = dedupedOperations.some(
     (operation) => operation.type === "create_metrics_snapshot",
   );
+  const hasCompletePlanItemOperation = dedupedOperations.some(
+    (operation) => operation.type === "create_plan_item",
+  );
 
   return {
     rawText: text,
     operations: dedupedOperations,
     summary: summarizeOperations(dedupedOperations),
     confidence:
-      dedupedOperations.length >= 2 || hasCompleteMetricsOperation
+      dedupedOperations.length >= 2 || hasCompleteMetricsOperation || hasCompletePlanItemOperation
         ? "high"
         : dedupedOperations.length === 1
           ? "medium"

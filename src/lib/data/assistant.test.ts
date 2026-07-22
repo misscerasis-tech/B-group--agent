@@ -237,6 +237,48 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("creates a content plan item from a Chinese agent command", async () => {
+    mocks.tx.contentPlanItem.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: "plan-created-from-agent",
+        ...data,
+      }),
+    );
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "第2周 TikTok 做一条开箱短视频，主题新品认知，交付短视频脚本，截止 2026-08-07，可执行。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.contentPlanItem.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        strategyId: "strategy-1",
+        week: 2,
+        channel: "TikTok",
+        theme: "新品认知",
+        title: "开箱短视频",
+        deliverable: "短视频脚本",
+        dueDate: new Date("2026-08-07T00:00:00"),
+        status: "READY",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPlanItem",
+        entityId: "plan-created-from-agent",
+        action: "agent_plan_item_created",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("warns when a confirmed strategy change removes an active plan channel", async () => {
     mocks.tx.projectStrategy.findFirst.mockResolvedValue({
       id: "strategy-1",

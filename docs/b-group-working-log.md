@@ -21,6 +21,7 @@
 - 项目、产品、产品事实、策略、计划、素材包、审核、提醒、复盘和集成占位数据模型。
 - `AgentTextProvider` 文本 Agent 抽象；当前 `local-rule` 支持市场、渠道、客群、内容方向、素材包频率、项目状态和提醒创建。
 - B 组 Agent 支持用中文录入渠道表现指标，并写入数据复盘和变更日志。
+- B 组 Agent 支持用中文新增内容日历计划项，并写入变更日志。
 - Agent 会对正式策略变更输出风险提示，覆盖渠道清空、删除计划仍使用的渠道、内容方向为空、频率降低和项目暂停/归档。
 - 正式策略二次确认、拒绝变更和策略版本历史。
 - 项目/产品手工操作、Agent 操作、素材、提醒、集成和指标录入的变更日志。
@@ -57,7 +58,7 @@ DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?sc
 最近一次测试结果：
 
 - Test Files：`23 passed`
-- Tests：`69 passed`
+- Tests：`71 passed`
 - Build：通过，包含 `/setup`、`/api/health`、`/b-agent`、`/workspace/export`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
 
 ## 仍需人工完成
