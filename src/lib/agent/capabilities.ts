@@ -139,6 +139,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "plan_item_status",
+    category: "planning",
+    title: "更新内容计划状态",
+    example: "第2周 TikTok 开箱短视频标记为需审核。",
+    writesTo: ["ContentPlanItem", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "calendar_gap_reminders",
     category: "planning",
     title: "将内容日历缺口生成提醒",

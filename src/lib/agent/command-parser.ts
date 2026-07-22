@@ -125,6 +125,16 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "update_plan_item_status";
+      value: {
+        status: PlanItemStatus;
+        keyword?: string;
+        week?: number;
+        channel?: string;
+      };
+      label: string;
+    }
+  | {
       type: "create_calendar_gap_reminders";
       value: {
         limit: number;
@@ -1255,6 +1265,83 @@ function parseCompletePlanItemOperation(text: string): ParsedAgentOperation | nu
   };
 }
 
+function parsePlanItemStatusUpdateOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(计划|内容|视频|图文|脚本|海报|帖子|贴文)/.test(text) ||
+    !/(标记|标为|设为|改为|改成|调整为|进入|退回|放回|暂缓|暂停)/.test(text)
+  ) {
+    return null;
+  }
+
+  const status = parsePlanItemStatus(text);
+
+  if (!status) {
+    return null;
+  }
+
+  const channel = CHANNELS.find((channelName) =>
+    text.toLowerCase().includes(channelName.toLowerCase()),
+  );
+  const week = parsePlanWeek(text) ?? undefined;
+  const keyword = extractPlanItemStatusKeyword(text, [
+    "计划",
+    "内容计划",
+    "内容",
+    "视频",
+    "短视频",
+    "图文",
+    "脚本",
+    "海报",
+    "帖子",
+    "贴文",
+    ...(channel ? [channel] : []),
+  ]);
+  const value = {
+    status,
+    ...(keyword ? { keyword } : {}),
+    ...(week ? { week } : {}),
+    ...(channel ? { channel } : {}),
+  };
+
+  if (!value.keyword && !value.week && !value.channel) {
+    return null;
+  }
+
+  const statusLabel: Record<PlanItemStatus, string> = {
+    DRAFT: "草稿",
+    READY: "可执行",
+    REVIEW_NEEDED: "需审核",
+    DONE: "已完成",
+  };
+  const scope = [
+    value.week ? `第${value.week}周` : null,
+    value.channel,
+    value.keyword,
+  ].filter(Boolean);
+
+  return {
+    type: "update_plan_item_status",
+    value,
+    label: `内容计划改为${statusLabel[status]}：${scope.join(" · ")}`,
+  };
+}
+
+function parsePlanItemStatus(text: string): PlanItemStatus | null {
+  if (/需审核|需要审核|待审核|进入审核|送审|待确认|复核/.test(text)) {
+    return PlanItemStatus.REVIEW_NEEDED;
+  }
+
+  if (/可执行|ready|就绪|已准备|准备好|可以执行/.test(text)) {
+    return PlanItemStatus.READY;
+  }
+
+  if (/草稿|待定|暂缓|暂停|退回|放回/.test(text)) {
+    return PlanItemStatus.DRAFT;
+  }
+
+  return null;
+}
+
 function hasCompletionIntent(text: string) {
   return /已完成|完成了|完成|已处理|处理完|处理掉|关闭|解决|搞定|标记完成|标为完成|设为完成|done/i.test(
     text,
@@ -1266,6 +1353,22 @@ function extractCompletionKeyword(text: string, removableTerms: string[]) {
     .replace(/请|麻烦|帮我|把|将|当前|这个|这个项目|项目/g, "")
     .replace(/标记为完成|标记完成|标为完成|设为完成/g, "")
     .replace(/已处理|处理完|处理掉|已完成|完成了|完成|关闭|解决|搞定|done/gi, "")
+    .replace(new RegExp(removableTerms.map(escapeRegExp).join("|"), "gi"), "")
+    .replace(/第\s*\d{1,2}\s*周/g, "")
+    .replace(/，|。|！|!|：|:|；|;|、/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return keyword.length >= 2 ? keyword.slice(0, 80) : null;
+}
+
+function extractPlanItemStatusKeyword(text: string, removableTerms: string[]) {
+  const keyword = text
+    .replace(/请|麻烦|帮我|把|将|当前|这个|这个项目|项目/g, "")
+    .replace(/标记为|标记|标为|设为|改为|改成|调整为|进入|退回|放回/g, "")
+    .replace(/需审核|需要审核|待审核|审核|待确认|复核|送审/g, "")
+    .replace(/可执行|ready|就绪|已准备|准备好|可以执行/gi, "")
+    .replace(/草稿|待定|暂缓|暂停/g, "")
     .replace(new RegExp(removableTerms.map(escapeRegExp).join("|"), "gi"), "")
     .replace(/第\s*\d{1,2}\s*周/g, "")
     .replace(/，|。|！|!|：|:|；|;|、/g, " ")
@@ -1618,6 +1721,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(calendarGapReminderOperation);
   }
 
+  const planItemStatusUpdateOperation = parsePlanItemStatusUpdateOperation(text);
+  if (planItemStatusUpdateOperation) {
+    operations.push(planItemStatusUpdateOperation);
+  }
+
   const planItemCompletionOperation = parseCompletePlanItemOperation(text);
   if (planItemCompletionOperation) {
     operations.push(planItemCompletionOperation);
@@ -1669,7 +1777,9 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   );
   const hasCompletePlanItemOperation = dedupedOperations.some(
     (operation) =>
-      operation.type === "create_plan_item" || operation.type === "complete_plan_item",
+      operation.type === "create_plan_item" ||
+      operation.type === "update_plan_item_status" ||
+      operation.type === "complete_plan_item",
   );
   const hasCompleteWorkflowOperation = dedupedOperations.some(
     (operation) =>
