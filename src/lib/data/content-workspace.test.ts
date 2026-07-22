@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { ReminderSeverity } from "@prisma/client";
 import {
   attachAssetToPackageFile,
+  buildMetricsReminderCandidates,
   createContentPackage,
   submitContentPackageForReview,
 } from "./content-workspace";
@@ -153,6 +155,54 @@ describe("createContentPackage", () => {
 
     expect(mocks.tx.contentPackage.create).not.toHaveBeenCalled();
     expect(mocks.tx.contentPackageFile.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("buildMetricsReminderCandidates", () => {
+  it("creates proactive reminders for weak click and conversion signals", () => {
+    const candidates = buildMetricsReminderCandidates([
+      {
+        projectId: "project-1",
+        project: {
+          name: "巴西新品首月增长",
+        },
+        period: "2026-07 第3周",
+        channel: "TikTok",
+        impressions: 3000,
+        clicks: 6,
+        conversions: 0,
+        spendCents: 12000,
+      },
+      {
+        projectId: "project-2",
+        project: {
+          name: "日本新品首月增长",
+        },
+        period: "2026-07 第3周",
+        channel: "Instagram",
+        impressions: 500,
+        clicks: 80,
+        conversions: 0,
+        spendCents: 0,
+      },
+    ]);
+
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: "点击率偏低：TikTok 2026-07 第3周",
+          severity: ReminderSeverity.WARNING,
+        }),
+        expect.objectContaining({
+          title: "有花费无转化：TikTok 2026-07 第3周",
+          severity: ReminderSeverity.WARNING,
+        }),
+        expect.objectContaining({
+          title: "有点击无转化：Instagram 2026-07 第3周",
+          severity: ReminderSeverity.WARNING,
+        }),
+      ]),
+    );
   });
 });
 

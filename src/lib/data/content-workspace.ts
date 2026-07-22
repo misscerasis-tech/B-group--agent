@@ -577,7 +577,7 @@ export async function createManualReminder(input: {
 
 export async function createProactiveReminders(input: { workspaceId: string; userId: string }) {
   return prisma.$transaction(async (tx) => {
-    const [projects, pendingReviews, draftStrategies, packageReviews, riskyPlanItems] =
+    const [projects, pendingReviews, draftStrategies, packageReviews, riskyPlanItems, recentMetrics] =
       await Promise.all([
         tx.project.findMany({
           where: scopedWhere(input.workspaceId, {
@@ -644,6 +644,16 @@ export async function createProactiveReminders(input: { workspaceId: string; use
           include: {
             project: true,
           },
+        }),
+        tx.metricsSnapshot.findMany({
+          where: scopedWhere(input.workspaceId),
+          include: {
+            project: true,
+          },
+          orderBy: {
+            capturedAt: "desc",
+          },
+          take: 12,
         }),
       ]);
 
@@ -722,6 +732,16 @@ export async function createProactiveReminders(input: { workspaceId: string; use
       });
     }
 
+    for (const candidate of buildMetricsReminderCandidates(recentMetrics)) {
+      createdCount += await createReminderIfMissing(tx, {
+        workspaceId: input.workspaceId,
+        projectId: candidate.projectId,
+        title: candidate.title,
+        description: candidate.description,
+        severity: candidate.severity,
+      });
+    }
+
     if (createdCount > 0) {
       await tx.changeLog.create({
         data: {
@@ -739,6 +759,73 @@ export async function createProactiveReminders(input: { workspaceId: string; use
       createdCount,
     };
   });
+}
+
+export function buildMetricsReminderCandidates(
+  metricsSnapshots: Array<{
+    projectId: string;
+    project: { name: string };
+    period: string;
+    channel: string;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    spendCents: number;
+  }>,
+) {
+  const candidates: Array<{
+    projectId: string;
+    title: string;
+    description: string;
+    severity: ReminderSeverity;
+  }> = [];
+
+  for (const snapshot of metricsSnapshots) {
+    const clickRate = snapshot.impressions > 0 ? snapshot.clicks / snapshot.impressions : null;
+
+    if (snapshot.impressions >= 1000 && snapshot.clicks === 0) {
+      candidates.push({
+        projectId: snapshot.projectId,
+        title: `曝光无点击：${snapshot.channel} ${snapshot.period}`,
+        description: `${snapshot.project.name} 在 ${snapshot.channel} 有 ${snapshot.impressions} 次曝光但没有点击，建议检查首屏创意、标题和 CTA。`,
+        severity: ReminderSeverity.CRITICAL,
+      });
+      continue;
+    }
+
+    if (clickRate !== null && snapshot.impressions >= 1000 && clickRate < 0.005) {
+      candidates.push({
+        projectId: snapshot.projectId,
+        title: `点击率偏低：${snapshot.channel} ${snapshot.period}`,
+        description: `${snapshot.project.name} 在 ${snapshot.channel} 的 CTR 为 ${formatPercent(
+          clickRate,
+        )}，建议复查素材钩子、平台比例和目标客群。`,
+        severity: ReminderSeverity.WARNING,
+      });
+    }
+
+    if (snapshot.clicks >= 50 && snapshot.conversions === 0) {
+      candidates.push({
+        projectId: snapshot.projectId,
+        title: `有点击无转化：${snapshot.channel} ${snapshot.period}`,
+        description: `${snapshot.project.name} 在 ${snapshot.channel} 已产生 ${snapshot.clicks} 次点击但没有转化，建议检查落地页、优惠机制和产品信任信息。`,
+        severity: ReminderSeverity.WARNING,
+      });
+    }
+
+    if (snapshot.spendCents >= 10000 && snapshot.conversions === 0) {
+      candidates.push({
+        projectId: snapshot.projectId,
+        title: `有花费无转化：${snapshot.channel} ${snapshot.period}`,
+        description: `${snapshot.project.name} 在 ${snapshot.channel} 已花费 ¥${(
+          snapshot.spendCents / 100
+        ).toFixed(2)} 但没有转化，建议暂停放量并复核策略。`,
+        severity: ReminderSeverity.WARNING,
+      });
+    }
+  }
+
+  return candidates.slice(0, 8);
 }
 
 export async function resolveReminder(input: {
@@ -1285,6 +1372,10 @@ function groupByProjectId(items: Array<{ projectId: string | null }>) {
   }
 
   return groups;
+}
+
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(2)}%`;
 }
 
 function reminderToJson(reminder: {
