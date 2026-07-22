@@ -434,6 +434,20 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts reminder due date update requests", () => {
+    const parsed = parseAgentCommand("把抽奖规则提醒截止日期改到 2026-08-10。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "update_reminder_due_date",
+      value: {
+        keyword: "抽奖规则",
+        dueAt: "2026-08-10",
+      },
+      label: "提醒截止日期改为 2026-08-10：抽奖规则",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts content plan completion requests", () => {
     const parsed = parseAgentCommand("第2周 TikTok 开箱短视频已完成。");
 

@@ -92,6 +92,14 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "update_reminder_due_date";
+      value: {
+        keyword: string;
+        dueAt: string;
+      };
+      label: string;
+    }
+  | {
       type: "create_metrics_snapshot";
       value: {
         period: string;
@@ -674,12 +682,58 @@ function parseDismissReminderOperation(text: string): ParsedAgentOperation | nul
   };
 }
 
+function parseReminderDueDateUpdateOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(提醒|待办)/.test(text) ||
+    !/(截止|到期|日期|时间|due)/i.test(text) ||
+    !/(改到|改为|改成|调整到|调整为|设为|定在|延后到|提前到|截止到|截止至)/.test(text)
+  ) {
+    return null;
+  }
+
+  const dueAt = parseReminderDueDate(text);
+
+  if (!dueAt) {
+    return null;
+  }
+
+  const keyword = extractReminderDueDateKeyword(text);
+
+  if (!keyword) {
+    return null;
+  }
+
+  return {
+    type: "update_reminder_due_date",
+    value: {
+      keyword,
+      dueAt,
+    },
+    label: `提醒截止日期改为 ${dueAt}：${keyword}`,
+  };
+}
+
 function hasDismissIntent(text: string) {
   return /忽略|取消提醒|取消待办|不需要提醒|无需提醒|dismiss/i.test(text);
 }
 
 function hasLeadingDismissReminderIntent(text: string) {
   return /^(请|麻烦|帮我)?\s*(忽略|取消|不需要|无需).*(提醒|待办)/.test(text);
+}
+
+function extractReminderDueDateKeyword(text: string) {
+  const keyword = text
+    .replace(/请|麻烦|帮我|把|将|当前|这个|这个项目|项目/g, "")
+    .replace(/20\d{2}[-/]\d{1,2}[-/]\d{1,2}/g, "")
+    .replace(/20\d{2}年\d{1,2}月\d{1,2}日?/g, "")
+    .replace(/截止日期|截止时间|到期日期|到期时间|截止|到期|日期|时间|due/gi, "")
+    .replace(/改到|改为|改成|调整到|调整为|设为|定在|延后到|提前到|截止到|截止至/g, "")
+    .replace(/提醒|待办/g, "")
+    .replace(/，|。|！|!|：|:|；|;|、/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return keyword.length >= 2 ? keyword.slice(0, 80) : null;
 }
 
 function extractDismissKeyword(text: string) {
@@ -1710,6 +1764,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(reminderCompletionOperation);
   }
 
+  const reminderDueDateOperation = parseReminderDueDateUpdateOperation(text);
+  if (reminderDueDateOperation) {
+    operations.push(reminderDueDateOperation);
+  }
+
   if (dismissReminderOperation) {
     operations.push(dismissReminderOperation);
   }
@@ -1873,6 +1932,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     (operation) =>
       operation.type === "complete_reminder" ||
       operation.type === "dismiss_reminder" ||
+      operation.type === "update_reminder_due_date" ||
       operation.type === "create_project_health_reminders" ||
       operation.type === "create_product_fact" ||
       operation.type === "infer_product_facts_from_text" ||

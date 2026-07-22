@@ -107,6 +107,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "reminder_due_date",
+    category: "reminder",
+    title: "调整项目提醒截止日期",
+    example: "把抽奖规则提醒截止日期改到 2026-08-10。",
+    writesTo: ["Reminder", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "metrics_create",
     category: "recap",
     title: "录入渠道表现",

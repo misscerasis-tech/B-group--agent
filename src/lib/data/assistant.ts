@@ -387,6 +387,7 @@ export async function submitAgentCommand(input: {
       const missingReviewTaskOperations = parsed.operations.filter(
         isMissingReviewTaskOperation,
       );
+      const reminderDueDateOperations = parsed.operations.filter(isReminderDueDateOperation);
       const reminderCompletionOperations = parsed.operations.filter(isReminderCompletionOperation);
       const reminderDismissalOperations = parsed.operations.filter(isReminderDismissalOperation);
       const planItemCompletionOperations = parsed.operations.filter(isPlanItemCompletionOperation);
@@ -587,6 +588,13 @@ export async function submitAgentCommand(input: {
         operations: missingReviewTaskOperations,
       });
 
+      await applyReminderDueDateOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: reminderDueDateOperations,
+      });
+
       await applyReminderCompletionOperations(tx, {
         workspaceId: input.workspaceId,
         userId: input.userId,
@@ -700,6 +708,7 @@ export async function applyPendingAgentOperation(input: {
       isReviewTaskCancellationOperation,
     );
     const missingReviewTaskOperations = parsedOperations.filter(isMissingReviewTaskOperation);
+    const reminderDueDateOperations = parsedOperations.filter(isReminderDueDateOperation);
     const reminderCompletionOperations = parsedOperations.filter(isReminderCompletionOperation);
     const reminderDismissalOperations = parsedOperations.filter(isReminderDismissalOperation);
     const planItemCompletionOperations = parsedOperations.filter(isPlanItemCompletionOperation);
@@ -963,6 +972,13 @@ export async function applyPendingAgentOperation(input: {
       operations: missingReviewTaskOperations,
     });
 
+    await applyReminderDueDateOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: reminderDueDateOperations,
+    });
+
     await applyReminderCompletionOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -1031,6 +1047,7 @@ export async function applyPendingAgentOperation(input: {
         reviewTaskDecided: reviewTaskDecisionOperations.length > 0,
         reviewTaskCanceled: reviewTaskCancellationOperations.length > 0,
         missingReviewTasksCreated: missingReviewTaskOperations.length > 0,
+        reminderDueDateChanged: reminderDueDateOperations.length > 0,
         reminderCompleted: reminderCompletionOperations.length > 0,
         reminderDismissed: reminderDismissalOperations.length > 0,
         planItemCompleted: planItemCompletionOperations.length > 0,
@@ -1177,6 +1194,20 @@ async function findCompletionTargetWarnings(
     }
 
     if (operation.type === "dismiss_reminder") {
+      const matchCount = await tx.reminder.count({
+        where: buildReminderCompletionWhere({
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          keyword: operation.value.keyword,
+        }),
+      });
+
+      if (matchCount === 0) {
+        warnings.push(`未找到标题或说明包含「${operation.value.keyword}」的开放提醒`);
+      }
+    }
+
+    if (operation.type === "update_reminder_due_date") {
       const matchCount = await tx.reminder.count({
         where: buildReminderCompletionWhere({
           workspaceId: input.workspaceId,
@@ -3780,6 +3811,65 @@ async function applyReminderDismissalOperations(
   }
 }
 
+async function applyReminderDueDateOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "update_reminder_due_date") {
+      continue;
+    }
+
+    const reminder = await tx.reminder.findFirst({
+      where: buildReminderCompletionWhere({
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        keyword: operation.value.keyword,
+      }),
+      orderBy: [
+        {
+          dueAt: "asc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+    });
+
+    if (!reminder) {
+      continue;
+    }
+
+    const updatedReminder = await tx.reminder.update({
+      where: {
+        id: reminder.id,
+      },
+      data: {
+        dueAt: new Date(`${operation.value.dueAt}T00:00:00`),
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "Reminder",
+        entityId: reminder.id,
+        action: "agent_reminder_due_date_updated",
+        summary: operation.label,
+        before: reminderToJson(reminder),
+        after: reminderToJson(updatedReminder),
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
 async function applyPlanItemCompletionOperations(
   tx: Prisma.TransactionClient,
   input: {
@@ -4647,6 +4737,10 @@ function isReminderDismissalOperation(operation: ParsedAgentOperation) {
   return operation.type === "dismiss_reminder";
 }
 
+function isReminderDueDateOperation(operation: ParsedAgentOperation) {
+  return operation.type === "update_reminder_due_date";
+}
+
 function isPlanItemCompletionOperation(operation: ParsedAgentOperation) {
   return operation.type === "complete_plan_item";
 }
@@ -4776,6 +4870,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         type,
         value,
         label: label || `忽略提醒：${value.keyword}`,
+      });
+      continue;
+    }
+
+    if (type === "update_reminder_due_date" && isReminderDueDateValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `提醒截止日期改为 ${value.dueAt}：${value.keyword}`,
       });
       continue;
     }
@@ -5267,6 +5370,24 @@ function isReminderCompletionValue(value: unknown): value is Extract<
   return typeof record.keyword === "string" && record.keyword.trim().length >= 2;
 }
 
+function isReminderDueDateValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "update_reminder_due_date" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    typeof record.keyword === "string" &&
+    record.keyword.trim().length >= 2 &&
+    typeof record.dueAt === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(record.dueAt)
+  );
+}
+
 function isPlanItemValue(value: unknown): value is Extract<
   ParsedAgentOperation,
   { type: "create_plan_item" }
@@ -5412,6 +5533,7 @@ function buildConfirmedAssistantReply(input: {
   reviewTaskDecided: boolean;
   reviewTaskCanceled: boolean;
   missingReviewTasksCreated: boolean;
+  reminderDueDateChanged: boolean;
   reminderCompleted: boolean;
   reminderDismissed: boolean;
   planItemCompleted: boolean;
@@ -5444,6 +5566,7 @@ function buildConfirmedAssistantReply(input: {
   const reviewTaskDecisionText = input.reviewTaskDecided ? "，并处理审核任务" : "";
   const reviewTaskCancellationText = input.reviewTaskCanceled ? "，并取消审核任务" : "";
   const missingReviewTaskText = input.missingReviewTasksCreated ? "，并补齐审核任务" : "";
+  const reminderDueDateText = input.reminderDueDateChanged ? "，并更新提醒截止日期" : "";
   const completedReminderText = input.reminderCompleted ? "，并完成项目提醒" : "";
   const dismissedReminderText = input.reminderDismissed ? "，并忽略项目提醒" : "";
   const completedPlanItemText = input.planItemCompleted ? "，并完成内容计划" : "";
@@ -5451,62 +5574,62 @@ function buildConfirmedAssistantReply(input: {
   if (input.strategyChanged && input.strategyWasConfirmed) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认写入策略草案${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认写入策略草案${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyRecommended) {
-    return `已按你的确认生成策略推荐草案${projectTextForRecommendation(input.projectChanged)}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成策略推荐草案${projectTextForRecommendation(input.projectChanged)}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认更新项目基础信息${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认更新项目基础信息${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderChanged) {
-    return `已按你的确认创建提醒${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建提醒${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.healthReminderChanged) {
-    return `已按你的确认生成项目体检缺口提醒${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成项目体检缺口提醒${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.productFactChanged) {
-    return `已按你的确认新增待复核产品事实${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认新增待复核产品事实${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.productFactsConfirmed) {
-    return `已按你的确认完成产品事实确认${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认完成产品事实确认${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.starterPlanChanged) {
-    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.metricsChanged) {
-    return `已按你的确认录入渠道表现指标${metricsRiskReminderText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认录入渠道表现指标${metricsRiskReminderText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.metricsRiskReminderChanged) {
-    return `已按你的确认生成数据复盘风险提醒${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成数据复盘风险提醒${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.planItemChanged) {
-    return `已按你的确认新增内容计划${planItemDueDateText}${planItemStatusText}${calendarGapReminderText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认新增内容计划${planItemDueDateText}${planItemStatusText}${calendarGapReminderText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.planItemDueDateChanged) {
-    return `已按你的确认更新内容计划截止日期${planItemStatusText}${calendarGapReminderText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认更新内容计划截止日期${planItemStatusText}${calendarGapReminderText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.planItemStatusChanged) {
-    return `已按你的确认更新内容计划状态${calendarGapReminderText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认更新内容计划状态${calendarGapReminderText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.calendarGapReminderChanged) {
@@ -5546,7 +5669,11 @@ function buildConfirmedAssistantReply(input: {
   }
 
   if (input.missingReviewTasksCreated) {
-    return `已按你的确认补齐审核任务${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认补齐审核任务${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.reminderDueDateChanged) {
+    return `已按你的确认更新提醒截止日期${completedReminderText}${dismissedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderCompleted) {
