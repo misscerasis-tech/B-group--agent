@@ -92,6 +92,20 @@ describe("parseAgentCommand", () => {
     });
   });
 
+  it("extracts strategy recommendation requests", () => {
+    const parsed = parseAgentCommand("请根据产品事实推荐一版巴西首月增长策略。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "recommend_strategy",
+      value: {
+        basis: "product_facts",
+        contextText: "请根据产品事实推荐一版巴西首月增长策略。",
+      },
+      label: "根据产品事实生成策略推荐草案",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts reminder creation requests", () => {
     const parsed = parseAgentCommand("提醒我提前确认巴西抽奖奖品和活动规则，这是重要风险。");
 

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
     projectStrategy: {
       findFirst: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
     },
     project: {
       findFirst: vi.fn(),
@@ -35,6 +36,7 @@ const mocks = vi.hoisted(() => {
     projectProduct: {
       count: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
     },
     productFact: {
       create: vi.fn(),
@@ -405,6 +407,97 @@ describe("generateStarterPlan", () => {
         entityId: "product-1",
         action: "agent_product_facts_inferred",
         summary: expect.stringContaining("新增 8 条"),
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("creates a new draft strategy recommendation without overwriting a confirmed strategy", async () => {
+    mocks.tx.projectProduct.findFirst.mockResolvedValue({
+      projectId: "project-1",
+      productId: "product-1",
+      product: {
+        id: "product-1",
+        workspaceId: "workspace-1",
+        facts: [
+          {
+            id: "fact-1",
+            label: "核心卖点",
+            value: "24小时保温、防漏便携、温度显示",
+            status: "CONFIRMED",
+          },
+        ],
+      },
+    });
+    mocks.tx.projectProduct.findMany.mockResolvedValue([
+      {
+        projectId: "project-1",
+        productId: "product-1",
+        product: {
+          id: "product-1",
+          workspaceId: "workspace-1",
+          name: "Aurora Cup",
+          description: "巴西上市新品",
+          facts: [
+            {
+              id: "fact-1",
+              label: "核心卖点",
+              value: "24小时保温、防漏便携、温度显示",
+              status: "CONFIRMED",
+            },
+            {
+              id: "fact-2",
+              label: "目标场景",
+              value: "通勤、健身、节日礼品",
+              status: "NEEDS_REVIEW",
+            },
+          ],
+        },
+      },
+    ]);
+    mocks.tx.projectStrategy.create.mockResolvedValue({
+      id: "strategy-2",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      version: 2,
+      status: "DRAFT",
+      targetMarkets: ["巴西"],
+      audiences: ["年轻通勤人群", "健身和户外用户", "礼品购买者"],
+      channels: ["TikTok", "Instagram", "Facebook"],
+      contentDirections: ["新品认知", "长效保温场景", "通勤随身", "运动户外", "节日礼赠"],
+      packageFrequency: "WEEKLY",
+      positioning: "Aurora Cup 面向 年轻通勤人群、健身和户外用户，以 新品认知、长效保温场景 切入 巴西。",
+      rationale: "基于 1 个关联产品和 2 条产品事实生成本地规则型策略草案。",
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "请根据产品事实推荐一版巴西首月增长策略。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.projectStrategy.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        version: 2,
+        status: "DRAFT",
+        targetMarkets: ["巴西"],
+        channels: expect.arrayContaining(["TikTok", "Instagram", "Facebook"]),
+        packageFrequency: "WEEKLY",
+      }),
+    });
+    expect(mocks.tx.projectStrategy.update).not.toHaveBeenCalled();
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ProjectStrategy",
+        entityId: "strategy-2",
+        action: "agent_strategy_recommended",
+        summary: "根据产品事实生成策略推荐草案",
         actorUserId: "user-1",
       }),
     });

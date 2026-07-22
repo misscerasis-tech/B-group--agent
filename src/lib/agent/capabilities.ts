@@ -26,6 +26,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: true,
   },
   {
+    key: "strategy_recommendation",
+    category: "strategy",
+    title: "根据产品事实推荐策略",
+    example: "请根据产品事实推荐一版巴西首月增长策略。",
+    writesTo: ["ProjectStrategy", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
     key: "strategy_audiences",
     category: "strategy",
     title: "新增或删除客群",

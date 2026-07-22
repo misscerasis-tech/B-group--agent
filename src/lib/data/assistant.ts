@@ -18,6 +18,7 @@ import type { ParsedAgentOperation } from "@/lib/agent/command-parser";
 import { getConfiguredAgentTextProvider } from "@/lib/agent/provider";
 import { inferProductFactsFromText } from "@/lib/product-facts/extractor";
 import { prisma } from "@/lib/prisma";
+import { buildStrategyRecommendation } from "@/lib/strategy/recommender";
 import { scopedWhere } from "@/lib/workspace-scope";
 
 type ProjectStrategyRecord = Awaited<ReturnType<typeof ensureProjectStrategy>>;
@@ -332,6 +333,8 @@ export async function submitAgentCommand(input: {
 
     if (operationStatus === AgentOperationStatus.APPLIED) {
       const strategyOperations = parsed.operations.filter(isStrategyOperation);
+      const strategyRecommendationOperations =
+        parsed.operations.filter(isStrategyRecommendationOperation);
       const projectOperations = parsed.operations.filter(isProjectOperation);
       const reminderOperations = parsed.operations.filter(isReminderOperation);
       const productFactOperations = parsed.operations.filter(isProductFactOperation);
@@ -369,6 +372,16 @@ export async function submitAgentCommand(input: {
             after: strategyToJson(updatedStrategy),
             actorUserId: input.userId,
           },
+        });
+      }
+
+      if (strategyRecommendationOperations.length > 0) {
+        updatedStrategy = await applyStrategyRecommendationOperations(tx, {
+          workspaceId: input.workspaceId,
+          userId: input.userId,
+          project,
+          strategy: updatedStrategy,
+          operations: strategyRecommendationOperations,
         });
       }
 
@@ -517,6 +530,9 @@ export async function applyPendingAgentOperation(input: {
     const strategy = await ensureProjectStrategy(tx, input.workspaceId, operation.projectId);
     const parsedOperations = parseStoredOperations(operation.operations);
     const strategyOperations = parsedOperations.filter(isStrategyOperation);
+    const strategyRecommendationOperations = parsedOperations.filter(
+      isStrategyRecommendationOperation,
+    );
     const projectOperations = parsedOperations.filter(isProjectOperation);
     const reminderOperations = parsedOperations.filter(isReminderOperation);
     const productFactOperations = parsedOperations.filter(isProductFactOperation);
@@ -580,6 +596,27 @@ export async function applyPendingAgentOperation(input: {
           after: strategyToJson(updatedStrategy),
           actorUserId: input.userId,
         },
+      });
+    }
+
+    if (strategyRecommendationOperations.length > 0) {
+      const project = await tx.project.findFirst({
+        where: scopedWhere(input.workspaceId, {
+          id: operation.projectId,
+          deletedAt: null,
+        }),
+      });
+
+      if (!project) {
+        throw new Error("未找到当前 Workspace 下的项目，无法生成策略推荐。");
+      }
+
+      updatedStrategy = await applyStrategyRecommendationOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        project,
+        strategy: updatedStrategy,
+        operations: strategyRecommendationOperations,
       });
     }
 
@@ -708,6 +745,7 @@ export async function applyPendingAgentOperation(input: {
         strategyVersion: updatedStrategy.version,
         strategyChanged: strategyOperations.length > 0,
         projectChanged: projectOperations.length > 0,
+        strategyRecommended: strategyRecommendationOperations.length > 0,
         reminderChanged: reminderOperations.length > 0,
         productFactChanged: productFactOperations.length > 0,
         starterPlanChanged: starterPlanOperations.length > 0,
@@ -925,6 +963,31 @@ async function findCompletionTargetWarnings(
 
       if (linkedProductCount === 0) {
         warnings.push("当前项目还没有关联产品，无法从产品资料提取事实");
+      }
+    }
+
+    if (operation.type === "recommend_strategy") {
+      const projectProduct = await tx.projectProduct.findFirst({
+        where: buildProjectProductWhere({
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+        }),
+        include: {
+          product: {
+            include: {
+              facts: {
+                where: {
+                  workspaceId: input.workspaceId,
+                },
+                take: 1,
+              },
+            },
+          },
+        },
+      });
+
+      if (!projectProduct || projectProduct.product.facts.length === 0) {
+        warnings.push("当前项目还没有可用于推荐策略的产品事实，请先录入或提取产品事实");
       }
     }
   }
@@ -1524,6 +1587,123 @@ async function applyProductFactOperations(
       },
     });
   }
+}
+
+async function applyStrategyRecommendationOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    project: {
+      id: string;
+      name: string;
+      description: string | null;
+    };
+    strategy: ProjectStrategyRecord;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  let latestStrategy = input.strategy;
+
+  for (const operation of input.operations) {
+    if (operation.type !== "recommend_strategy") {
+      continue;
+    }
+
+    const linkedProducts = await tx.projectProduct.findMany({
+      where: buildProjectProductWhere({
+        workspaceId: input.workspaceId,
+        projectId: input.project.id,
+      }),
+      include: {
+        product: {
+          include: {
+            facts: {
+              where: {
+                workspaceId: input.workspaceId,
+              },
+              orderBy: {
+                createdAt: "asc",
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    if (linkedProducts.length === 0) {
+      continue;
+    }
+
+    const recommendation = buildStrategyRecommendation({
+      projectName: input.project.name,
+      products: linkedProducts.map(({ product }) => ({
+        name: product.name,
+        description: product.description,
+        facts: product.facts.map((fact) => ({
+          label: fact.label,
+          value: fact.value,
+          status: fact.status,
+        })),
+      })),
+      contextText: operation.value.contextText,
+    });
+    const before = strategyToJson(latestStrategy);
+
+    if (latestStrategy.status === StrategyStatus.CONFIRMED) {
+      latestStrategy = await tx.projectStrategy.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: input.project.id,
+          version: latestStrategy.version + 1,
+          status: StrategyStatus.DRAFT,
+          targetMarkets: recommendation.targetMarkets,
+          audiences: recommendation.audiences,
+          channels: recommendation.channels,
+          contentDirections: recommendation.contentDirections,
+          packageFrequency: recommendation.packageFrequency,
+          positioning: recommendation.positioning,
+          rationale: recommendation.rationale,
+        },
+      });
+    } else {
+      latestStrategy = await tx.projectStrategy.update({
+        where: {
+          id: latestStrategy.id,
+        },
+        data: {
+          status: StrategyStatus.DRAFT,
+          targetMarkets: recommendation.targetMarkets,
+          audiences: recommendation.audiences,
+          channels: recommendation.channels,
+          contentDirections: recommendation.contentDirections,
+          packageFrequency: recommendation.packageFrequency,
+          positioning: recommendation.positioning,
+          rationale: recommendation.rationale,
+          confirmedAt: null,
+        },
+      });
+    }
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.project.id,
+        entityType: "ProjectStrategy",
+        entityId: latestStrategy.id,
+        action: "agent_strategy_recommended",
+        summary: operation.label,
+        before,
+        after: strategyToJson(latestStrategy),
+        actorUserId: input.userId,
+      },
+    });
+  }
+
+  return latestStrategy;
 }
 
 async function applyMetricsOperations(
@@ -2160,6 +2340,10 @@ function isProjectOperation(operation: ParsedAgentOperation) {
   return operation.type === "set_project_status";
 }
 
+function isStrategyRecommendationOperation(operation: ParsedAgentOperation) {
+  return operation.type === "recommend_strategy";
+}
+
 function isReminderOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_reminder";
 }
@@ -2246,6 +2430,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         value === ProjectStatus.ARCHIVED)
     ) {
       operations.push({ type, value, label: label || value });
+      continue;
+    }
+
+    if (type === "recommend_strategy" && isStrategyRecommendationValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || "根据产品事实生成策略推荐草案",
+      });
       continue;
     }
 
@@ -2486,6 +2679,22 @@ function isProductFactSourceValue(value: unknown): value is Extract<
   );
 }
 
+function isStrategyRecommendationValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "recommend_strategy" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    record.basis === "product_facts" &&
+    (record.contextText === undefined || typeof record.contextText === "string")
+  );
+}
+
 function isReminderCompletionValue(value: unknown): value is Extract<
   ParsedAgentOperation,
   { type: "complete_reminder" }
@@ -2568,6 +2777,7 @@ function buildConfirmedAssistantReply(input: {
   strategyWasConfirmed: boolean;
   strategyVersion: number;
   strategyChanged: boolean;
+  strategyRecommended: boolean;
   projectChanged: boolean;
   reminderChanged: boolean;
   productFactChanged: boolean;
@@ -2581,6 +2791,7 @@ function buildConfirmedAssistantReply(input: {
   planItemCompleted: boolean;
 }) {
   const starterPlanText = input.starterPlanChanged ? "，并生成首月计划和第一份素材包结构" : "";
+  const strategyRecommendationText = input.strategyRecommended ? "，并生成新的策略推荐草案" : "";
   const productFactText = input.productFactChanged ? "，并新增待复核产品事实" : "";
   const metricsText = input.metricsChanged ? "，并录入渠道表现指标" : "";
   const planItemText = input.planItemChanged ? "，并新增内容计划" : "";
@@ -2593,13 +2804,17 @@ function buildConfirmedAssistantReply(input: {
   if (input.strategyChanged && input.strategyWasConfirmed) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${strategyRecommendationText}${projectText}${reminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认写入策略草案${projectText}${reminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认写入策略草案${strategyRecommendationText}${projectText}${reminderText}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.strategyRecommended) {
+    return `已按你的确认生成策略推荐草案${projectTextForRecommendation(input.projectChanged)}${productFactText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${packageReviewDecisionText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
@@ -2648,6 +2863,10 @@ function buildConfirmedAssistantReply(input: {
   }
 
   return `已按你的确认处理：${input.operationSummary}`;
+}
+
+function projectTextForRecommendation(projectChanged: boolean) {
+  return projectChanged ? "，同步更新项目基础信息" : "";
 }
 
 function strategyToJson(strategy: ProjectStrategyRecord) {

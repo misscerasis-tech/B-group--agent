@@ -30,6 +30,14 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "recommend_strategy";
+      value: {
+        basis: "product_facts";
+        contextText?: string;
+      };
+      label: string;
+    }
+  | {
       type: "create_reminder";
       value: string;
       label: string;
@@ -287,6 +295,26 @@ function parseProjectStatus(text: string): ProjectStatus | null {
   }
 
   return null;
+}
+
+function parseStrategyRecommendationOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !(
+      /(推荐|生成|制定|输出).*(增长策略|项目策略|内容策略|市场策略|策略推荐)/.test(text) ||
+      /推荐.*(市场|客群|渠道|平台|内容方向)/.test(text)
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    type: "recommend_strategy",
+    value: {
+      basis: "product_facts",
+      contextText: text.slice(0, 500),
+    },
+    label: "根据产品事实生成策略推荐草案",
+  };
 }
 
 function parseReminderSeverity(text: string): ReminderSeverity {
@@ -899,6 +927,19 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     };
   }
 
+  const strategyRecommendationOperation = parseStrategyRecommendationOperation(text);
+
+  if (strategyRecommendationOperation) {
+    operations.push(strategyRecommendationOperation);
+
+    return {
+      rawText: text,
+      operations,
+      summary: summarizeOperations(operations),
+      confidence: "high",
+    };
+  }
+
   for (const [market, aliases] of MARKET_ALIASES) {
     if (includesAny(text, aliases)) {
       operations.push({
@@ -1077,6 +1118,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "complete_reminder" ||
       operation.type === "create_product_fact" ||
       operation.type === "infer_product_facts_from_text" ||
+      operation.type === "recommend_strategy" ||
       operation.type === "create_content_package" ||
       operation.type === "submit_content_package_review" ||
       operation.type === "decide_content_package_review",
