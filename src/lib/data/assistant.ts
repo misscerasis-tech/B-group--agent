@@ -460,6 +460,7 @@ export async function submitAgentCommand(input: {
       const projectHealthReminderOperations = parsed.operations.filter(
         isProjectHealthReminderOperation,
       );
+      const productCreationOperations = parsed.operations.filter(isProductCreationOperation);
       const productFactOperations = parsed.operations.filter(isProductFactOperation);
       const productFactConfirmationOperations = parsed.operations.filter(
         isProductFactConfirmationOperation,
@@ -578,6 +579,13 @@ export async function submitAgentCommand(input: {
         userId: input.userId,
         project,
         operations: projectHealthReminderOperations,
+      });
+
+      await applyProductCreationOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: productCreationOperations,
       });
 
       await applyProductFactOperations(tx, {
@@ -906,6 +914,7 @@ export async function applyPendingAgentOperation(input: {
     const projectHealthReminderOperations = parsedOperations.filter(
       isProjectHealthReminderOperation,
     );
+    const productCreationOperations = parsedOperations.filter(isProductCreationOperation);
     const productFactOperations = parsedOperations.filter(isProductFactOperation);
     const productFactConfirmationOperations = parsedOperations.filter(
       isProductFactConfirmationOperation,
@@ -1078,6 +1087,13 @@ export async function applyPendingAgentOperation(input: {
         operations: projectHealthReminderOperations,
       });
     }
+
+    await applyProductCreationOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: productCreationOperations,
+    });
 
     await applyProductFactOperations(tx, {
       workspaceId: input.workspaceId,
@@ -1265,6 +1281,7 @@ export async function applyPendingAgentOperation(input: {
         strategyRecommended: strategyRecommendationOperations.length > 0,
         reminderChanged: reminderOperations.length > 0,
         healthReminderChanged: projectHealthReminderOperations.length > 0,
+        productCreated: productCreationOperations.length > 0,
         productFactChanged: productFactOperations.length > 0,
         productFactsConfirmed: productFactConfirmationOperations.length > 0,
         starterPlanChanged: starterPlanOperations.length > 0,
@@ -2319,6 +2336,94 @@ async function applyProjectHealthReminderOperations(
           createdCount,
           skippedCount,
           totalCandidates: drafts.length,
+        },
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
+async function applyProductCreationOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: Extract<ParsedAgentOperation, { type: "create_product" }>[];
+  },
+) {
+  for (const operation of input.operations) {
+    const existingProduct = await tx.product.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        name: operation.value.name,
+        deletedAt: null,
+      }) as Prisma.ProductWhereInput,
+    });
+    const product =
+      existingProduct ??
+      (await tx.product.create({
+        data: {
+          workspaceId: input.workspaceId,
+          name: operation.value.name,
+          description: operation.value.description,
+          status: ProductStatus.ACTIVE,
+        },
+      }));
+    const existingProjectProduct = await tx.projectProduct.findFirst({
+      where: buildProjectProductWhere({
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        productId: product.id,
+      }),
+    });
+    let linkedToProject = Boolean(existingProjectProduct);
+    let factCount = 0;
+
+    if (!existingProjectProduct) {
+      await tx.projectProduct.create({
+        data: {
+          projectId: input.projectId,
+          productId: product.id,
+        },
+      });
+      linkedToProject = true;
+    }
+
+    if (!existingProduct) {
+      const facts = inferProductFactsFromText({
+        productName: product.name,
+        description: operation.value.description,
+      });
+
+      if (facts.length > 0) {
+        await tx.productFact.createMany({
+          data: facts.map((fact) => ({
+            workspaceId: input.workspaceId,
+            productId: product.id,
+            label: fact.label,
+            value: fact.value,
+            confidence: fact.confidence,
+            source: "B组 Agent 中文指令新增产品",
+            status: ProductFactStatus.DRAFT,
+          })),
+        });
+        factCount = facts.length;
+      }
+    }
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "Product",
+        entityId: product.id,
+        action: existingProduct ? "agent_product_linked" : "agent_product_created_and_linked",
+        summary: `${existingProduct ? "关联已有产品" : "新增并关联产品"}：${product.name}`,
+        after: {
+          product: productToJson(product),
+          linkedToProject,
+          createdNewProduct: !existingProduct,
+          factCount,
         },
         actorUserId: input.userId,
       },
@@ -4821,9 +4926,10 @@ function findPosterPackageFile(
   );
 }
 
-function buildProjectProductWhere(input: { workspaceId: string; projectId: string }) {
+function buildProjectProductWhere(input: { workspaceId: string; projectId: string; productId?: string }) {
   return {
     projectId: input.projectId,
+    ...(input.productId ? { productId: input.productId } : {}),
     project: {
       workspaceId: input.workspaceId,
       deletedAt: null,
@@ -5104,6 +5210,12 @@ function isProductFactOperation(operation: ParsedAgentOperation) {
   );
 }
 
+function isProductCreationOperation(
+  operation: ParsedAgentOperation,
+): operation is Extract<ParsedAgentOperation, { type: "create_product" }> {
+  return operation.type === "create_product";
+}
+
 function isProductFactConfirmationOperation(operation: ParsedAgentOperation) {
   return operation.type === "confirm_product_facts";
 }
@@ -5290,6 +5402,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         type,
         value,
         label: label || `新增产品事实：${value.label}=${value.value}`,
+      });
+      continue;
+    }
+
+    if (type === "create_product" && isProductCreationValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `新增并关联产品：${value.name}`,
       });
       continue;
     }
@@ -5792,6 +5913,24 @@ function isProductFactValue(value: unknown): value is Extract<
   );
 }
 
+function isProductCreationValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "create_product" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    typeof record.name === "string" &&
+    record.name.trim().length > 0 &&
+    typeof record.description === "string" &&
+    record.description.trim().length > 0
+  );
+}
+
 function isProjectHealthReminderValue(value: unknown): value is Extract<
   ParsedAgentOperation,
   { type: "create_project_health_reminders" }
@@ -6040,6 +6179,7 @@ function buildConfirmedAssistantReply(input: {
   projectChanged: boolean;
   reminderChanged: boolean;
   healthReminderChanged: boolean;
+  productCreated: boolean;
   productFactChanged: boolean;
   productFactsConfirmed: boolean;
   starterPlanChanged: boolean;
@@ -6067,6 +6207,7 @@ function buildConfirmedAssistantReply(input: {
   const starterPlanText = input.starterPlanChanged ? "，并生成首月计划和第一份素材包结构" : "";
   const strategyRecommendationText = input.strategyRecommended ? "，并生成新的策略推荐草案" : "";
   const healthReminderText = input.healthReminderChanged ? "，并生成项目体检缺口提醒" : "";
+  const productCreatedText = input.productCreated ? "，并新增关联产品" : "";
   const productFactText = input.productFactChanged ? "，并新增待复核产品事实" : "";
   const productFactsConfirmedText = input.productFactsConfirmed ? "，并确认产品事实" : "";
   const metricsText = input.metricsChanged ? "，并录入渠道表现指标" : "";
@@ -6103,22 +6244,22 @@ function buildConfirmedAssistantReply(input: {
   if (input.strategyChanged && input.strategyWasConfirmed) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productCreatedText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认写入策略草案${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认写入策略草案${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productCreatedText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyRecommended) {
-    return `已按你的确认生成策略推荐草案${projectTextForRecommendation(input.projectChanged)}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成策略推荐草案${projectTextForRecommendation(input.projectChanged)}${healthReminderText}${productCreatedText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认更新项目基础信息${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认更新项目基础信息${reminderText}${healthReminderText}${productCreatedText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderChanged) {
@@ -6126,7 +6267,11 @@ function buildConfirmedAssistantReply(input: {
   }
 
   if (input.healthReminderChanged) {
-    return `已按你的确认生成项目体检缺口提醒${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成项目体检缺口提醒${productCreatedText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.productCreated) {
+    return `已按你的确认新增并关联产品${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${contentPackageText}${packageReviewText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.productFactChanged) {

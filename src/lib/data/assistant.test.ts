@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
     },
     product: {
       create: vi.fn(),
+      findFirst: vi.fn(),
     },
     agentConversation: {
       findFirst: vi.fn(),
@@ -461,6 +462,69 @@ describe("generateStarterPlan", () => {
           content: expect.stringContaining("已启动新项目"),
         }),
       ]),
+    });
+    expect(mocks.tx.project.update).not.toHaveBeenCalled();
+  });
+
+  it("creates and links a new product to the current project from a Chinese agent command", async () => {
+    mocks.tx.product.findFirst.mockResolvedValue(null);
+    mocks.tx.projectProduct.findFirst.mockResolvedValue(null);
+    mocks.tx.product.create.mockResolvedValue({
+      id: "product-added",
+      workspaceId: "workspace-1",
+      name: "Aurora Cup 车载保温杯",
+      description: "新增产品说明",
+      status: "ACTIVE",
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "新增产品：Aurora Cup 车载保温杯，600ml，不锈钢，适合通勤车主和礼品购买者。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(result.targetProjectId).toBe("project-1");
+    expect(mocks.tx.product.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        workspaceId: "workspace-1",
+        name: "Aurora Cup 车载保温杯",
+        deletedAt: null,
+      }),
+    });
+    expect(mocks.tx.product.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        name: "Aurora Cup 车载保温杯",
+        status: "ACTIVE",
+      }),
+    });
+    expect(mocks.tx.projectProduct.create).toHaveBeenCalledWith({
+      data: {
+        projectId: "project-1",
+        productId: "product-added",
+      },
+    });
+    expect(mocks.tx.productFact.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          workspaceId: "workspace-1",
+          productId: "product-added",
+          source: "B组 Agent 中文指令新增产品",
+        }),
+      ]),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "Product",
+        entityId: "product-added",
+        action: "agent_product_created_and_linked",
+        summary: "新增并关联产品：Aurora Cup 车载保温杯",
+        actorUserId: "user-1",
+      }),
     });
     expect(mocks.tx.project.update).not.toHaveBeenCalled();
   });

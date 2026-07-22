@@ -126,6 +126,30 @@ describe("parseAgentCommand", () => {
     expect(parsed.operations.some((operation) => operation.type === "kickoff_project")).toBe(false);
   });
 
+  it("extracts product creation requests for the current project", () => {
+    const parsed = parseAgentCommand(
+      "新增产品：Aurora Cup 车载保温杯，600ml，不锈钢，适合通勤车主和礼品购买者。",
+    );
+
+    expect(parsed.operations).toEqual([
+      {
+        type: "create_product",
+        value: {
+          name: "Aurora Cup 车载保温杯",
+          description: "新增产品：Aurora Cup 车载保温杯，600ml，不锈钢，适合通勤车主和礼品购买者。",
+        },
+        label: "新增并关联产品：Aurora Cup 车载保温杯",
+      },
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("does not treat product facts as product creation", () => {
+    const parsed = parseAgentCommand("新增产品事实：卖点=24小时保温。");
+
+    expect(parsed.operations.some((operation) => operation.type === "create_product")).toBe(false);
+  });
+
   it("extracts strategy recommendation requests", () => {
     const parsed = parseAgentCommand("请根据产品事实推荐一版巴西首月增长策略。");
 

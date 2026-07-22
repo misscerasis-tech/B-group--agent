@@ -77,6 +77,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: true,
   },
   {
+    key: "product_create",
+    category: "product_brain",
+    title: "新增并关联产品",
+    example: "新增产品：Aurora Cup 车载保温杯，600ml，不锈钢，适合通勤车主和礼品购买者。",
+    writesTo: ["Product", "ProjectProduct", "ProductFact", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
     key: "product_fact_update",
     category: "product_brain",
     title: "校准产品事实",

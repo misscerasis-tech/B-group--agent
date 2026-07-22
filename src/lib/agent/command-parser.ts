@@ -78,6 +78,14 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "create_product";
+      value: {
+        name: string;
+        description: string;
+      };
+      label: string;
+    }
+  | {
       type: "update_product_fact";
       value: {
         label: string;
@@ -473,6 +481,59 @@ function parseProjectKickoffOperation(text: string): ParsedAgentOperation | null
     },
     label: `启动新项目：${projectName}`,
   };
+}
+
+function parseCreateProductOperation(text: string): ParsedAgentOperation | null {
+  if (!hasProductCreationIntent(text)) {
+    return null;
+  }
+
+  const name = extractProductCreationName(text);
+
+  if (!name) {
+    return null;
+  }
+
+  return {
+    type: "create_product",
+    value: {
+      name,
+      description: text.slice(0, MAX_PRODUCT_FACT_SOURCE_TEXT_LENGTH),
+    },
+    label: `新增并关联产品：${name}`,
+  };
+}
+
+function hasProductCreationIntent(text: string) {
+  const compact = compactText(text);
+
+  if (/产品事实|事实确认|事实提取|提取产品/.test(compact)) {
+    return false;
+  }
+
+  return /(新增|创建|添加|加入|补充).*(产品|新品|商品|SKU|sku)/.test(text);
+}
+
+function extractProductCreationName(text: string) {
+  const explicit = text.match(/(?:产品|新品|商品|SKU|sku)(?:名称|名)?[：:]\s*([^，。；;\n]+)/)?.[1];
+
+  if (explicit) {
+    return cleanProductKickoffName(explicit);
+  }
+
+  const described = text.match(
+    /(?:新增|创建|添加|加入|补充)(?:一个|1个)?(?:产品|新品|商品|SKU|sku)(?:是|为|叫)\s*([^，。；;\n]+)/,
+  )?.[1];
+
+  if (described) {
+    return cleanProductKickoffName(described);
+  }
+
+  const beforeProduct = text.match(
+    /(?:新增|创建|添加|加入|补充)(?:一个|1个)?\s*([^，。；;\n]{2,50}?)(?:产品|新品|商品)/,
+  )?.[1];
+
+  return beforeProduct ? cleanProductKickoffName(beforeProduct) : null;
 }
 
 function hasProjectKickoffIntent(text: string) {
@@ -1948,6 +2009,19 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     };
   }
 
+  const productCreationOperation = parseCreateProductOperation(text);
+
+  if (productCreationOperation) {
+    operations.push(productCreationOperation);
+
+    return {
+      rawText: text,
+      operations,
+      summary: summarizeOperations(operations),
+      confidence: "high",
+    };
+  }
+
   const inferredProductFactsOperation = parseInferProductFactsFromTextOperation(text);
 
   if (inferredProductFactsOperation) {
@@ -2250,6 +2324,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "update_reminder_due_date" ||
       operation.type === "create_project_health_reminders" ||
       operation.type === "create_product_fact" ||
+      operation.type === "create_product" ||
       operation.type === "update_product_fact" ||
       operation.type === "infer_product_facts_from_text" ||
       operation.type === "confirm_product_facts" ||
