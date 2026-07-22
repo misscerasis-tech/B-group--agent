@@ -282,6 +282,19 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts missing review task generation requests", () => {
+    const parsed = parseAgentCommand("补齐当前项目审核中心任务。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_missing_review_tasks",
+      value: {
+        scope: "current_project",
+      },
+      label: "补齐当前项目审核任务",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts reminder completion requests", () => {
     const parsed = parseAgentCommand("把抽奖规则提醒标记完成。");
 

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
       update: vi.fn(),
       count: vi.fn(),
+      findMany: vi.fn(),
     },
     project: {
       findFirst: vi.fn(),
@@ -55,6 +56,7 @@ const mocks = vi.hoisted(() => {
       count: vi.fn(),
       create: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
     },
@@ -901,6 +903,110 @@ describe("generateStarterPlan", () => {
         entityId: "review-1",
         action: "agent_content_package_review_approved",
         summary: "审核通过：最新素材包",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("creates missing review tasks for the current project", async () => {
+    mocks.tx.project.findFirst
+      .mockResolvedValueOnce({
+        id: "project-1",
+        workspaceId: "workspace-1",
+        name: "巴西新品首月增长",
+        description: "项目说明",
+        status: "ACTIVE",
+      })
+      .mockResolvedValueOnce({
+        id: "project-1",
+        name: "巴西新品首月增长",
+        projectProducts: [
+          {
+            productId: "product-1",
+          },
+        ],
+      });
+    mocks.tx.projectStrategy.findMany.mockResolvedValue([
+      {
+        id: "strategy-draft-1",
+        version: 2,
+      },
+    ]);
+    mocks.tx.contentPackage.findMany.mockResolvedValue([
+      {
+        id: "package-1",
+        name: "2026-08 第1周 TikTok 素材包",
+        summary: "待审核素材包。",
+        files: [
+          {
+            id: "file-1",
+          },
+        ],
+      },
+    ]);
+    mocks.tx.asset.findMany.mockResolvedValue([
+      {
+        id: "asset-1",
+        name: "产品主图.png",
+        projectId: "project-1",
+      },
+    ]);
+    mocks.tx.productFact.findMany.mockResolvedValue([
+      {
+        id: "fact-1",
+        label: "核心卖点",
+        value: "24小时保温",
+      },
+    ]);
+    mocks.tx.reviewTask.findFirst.mockResolvedValue(null);
+    mocks.tx.reviewTask.create.mockResolvedValue({
+      id: "review-created",
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "补齐当前项目审核中心任务。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.reviewTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        subjectType: "PROJECT_STRATEGY",
+        subjectId: "strategy-draft-1",
+        title: "确认策略草案：巴西新品首月增长 v2",
+        status: "PENDING",
+      }),
+    });
+    expect(mocks.tx.reviewTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        subjectType: "CONTENT_PACKAGE",
+        subjectId: "package-1",
+      }),
+    });
+    expect(mocks.tx.reviewTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        subjectType: "ASSET",
+        subjectId: "asset-1",
+      }),
+    });
+    expect(mocks.tx.reviewTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        subjectType: "PRODUCT_FACT",
+        subjectId: "fact-1",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ReviewTask",
+        entityId: "project-1",
+        action: "agent_missing_review_tasks_created",
+        summary: "补齐当前项目审核任务：新增 4 条。",
         actorUserId: "user-1",
       }),
     });

@@ -142,6 +142,13 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "create_missing_review_tasks";
+      value: {
+        scope: "current_project";
+      };
+      label: string;
+    }
+  | {
       type: "complete_plan_item";
       value: {
         keyword?: string;
@@ -633,6 +640,23 @@ function parseDecideContentPackageReviewOperation(text: string): ParsedAgentOper
       decisionNote: "由 B 组 Agent 中文指令处理。",
     },
     label: `${decisionText}：${keyword ?? "最新素材包"}`,
+  };
+}
+
+function parseMissingReviewTasksOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(审核任务|审核中心|待审核事项|待确认事项|复核事项)/.test(text) ||
+    !/(补齐|生成|创建|整理|加入)/.test(text)
+  ) {
+    return null;
+  }
+
+  return {
+    type: "create_missing_review_tasks",
+    value: {
+      scope: "current_project",
+    },
+    label: "补齐当前项目审核任务",
   };
 }
 
@@ -1159,6 +1183,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(packageReviewDecisionOperation);
   }
 
+  const missingReviewTasksOperation = parseMissingReviewTasksOperation(text);
+  if (missingReviewTasksOperation) {
+    operations.push(missingReviewTasksOperation);
+  }
+
   const metricsOperation = parseMetricsSnapshotOperation(text);
   if (metricsOperation) {
     operations.push(metricsOperation);
@@ -1233,7 +1262,8 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "create_content_package" ||
       operation.type === "create_content_package_readiness_reminders" ||
       operation.type === "submit_content_package_review" ||
-      operation.type === "decide_content_package_review",
+      operation.type === "decide_content_package_review" ||
+      operation.type === "create_missing_review_tasks",
   );
 
   return {

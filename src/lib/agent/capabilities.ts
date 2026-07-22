@@ -155,6 +155,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: true,
   },
   {
+    key: "review_tasks_create_missing",
+    category: "review",
+    title: "补齐当前项目审核任务",
+    example: "补齐当前项目审核中心任务。",
+    writesTo: ["ReviewTask", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "starter_plan",
     category: "planning",
     title: "生成首月计划",

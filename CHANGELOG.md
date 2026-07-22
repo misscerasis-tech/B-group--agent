@@ -77,6 +77,7 @@
 - B 组 Agent 支持把素材包可交付性阻塞项转换为提醒，覆盖文件生成和真实产品图/Logo 缺口。
 - B 组 Agent 支持通过中文指令提交素材包审核，自动更新素材包状态并创建缺失审核任务。
 - B 组 Agent 支持通过中文指令处理素材包审核通过或要求修改，只匹配当前项目下已有待审核任务。
+- B 组 Agent 支持补齐当前项目审核任务，覆盖策略草案、素材包、待审核素材和待复核产品事实。
 - 增加 `smoke` 冒烟检查脚本，可检查 `/setup`、`/api/health`、`/b-agent` 和 `/dashboard` 是否在指定端口响应。
 - 新增 `prisma.config.ts`，将 Prisma seed 配置从弃用的 `package.json#prisma` 迁移到 Prisma 配置文件。
 - 增加 `AgentTextProvider` 抽象，当前通过 `local-rule` Provider 解析中文指令，未来真实 GPT 接入不需要改业务写入路径。
