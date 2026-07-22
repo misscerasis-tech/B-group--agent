@@ -704,6 +704,7 @@ export async function generateStarterPlan(input: {
         ["发布配文 TXT", "TXT"],
         ["模板化海报图片", "PNG"],
         ["设计 Brief PDF", "PDF"],
+        ["品牌与合规检查 PDF", "PDF"],
         ["最终 ZIP 打包下载", "ZIP"],
       ].map(([name, fileType]) => ({
         contentPackageId: contentPackage.id,

@@ -1,5 +1,6 @@
 import {
   AssetStatus,
+  ContentFrequency,
   ContentPackageStatus,
   PackageFileStatus,
   PlanItemStatus,
@@ -19,6 +20,18 @@ type ReviewDecision =
   | typeof ReviewTaskStatus.CHANGES_REQUESTED;
 
 type ReminderResolution = typeof ReminderStatus.DONE | typeof ReminderStatus.DISMISSED;
+const DEFAULT_CONTENT_PACKAGE_FILES: Array<[string, string]> = [
+  ["素材包说明 PDF", "PDF"],
+  ["内容排期 XLSX", "XLSX"],
+  ["平台文案 DOCX", "DOCX"],
+  ["Hashtags TXT", "TXT"],
+  ["TikTok 视频脚本 DOCX", "DOCX"],
+  ["发布配文 TXT", "TXT"],
+  ["模板化海报图片", "PNG"],
+  ["设计 Brief PDF", "PDF"],
+  ["品牌与合规检查 PDF", "PDF"],
+  ["最终 ZIP 打包下载", "ZIP"],
+];
 
 export async function listWorkspacePlanItems(workspaceId: string) {
   return prisma.contentPlanItem.findMany({
@@ -179,6 +192,92 @@ export async function listWorkspaceContentPackages(workspaceId: string) {
     orderBy: {
       updatedAt: "desc",
     },
+  });
+}
+
+export async function createContentPackage(input: {
+  workspaceId: string;
+  userId: string;
+  projectId: string;
+  name: string;
+  period: string;
+  frequency: ContentFrequency;
+  summary?: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        id: input.projectId,
+        deletedAt: null,
+      }),
+    });
+
+    if (!project) {
+      throw new Error("未找到当前 Workspace 下的项目，无法创建素材包。");
+    }
+
+    const strategy = await tx.projectStrategy.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        projectId: input.projectId,
+        status: {
+          not: StrategyStatus.ARCHIVED,
+        },
+      }) as Prisma.ProjectStrategyWhereInput,
+      orderBy: [
+        {
+          version: "desc",
+        },
+        {
+          updatedAt: "desc",
+        },
+      ],
+    });
+
+    const contentPackage = await tx.contentPackage.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: project.id,
+        strategyId: strategy?.id ?? null,
+        name: input.name,
+        period: input.period,
+        frequency: input.frequency,
+        status: ContentPackageStatus.DRAFT,
+        summary: input.summary,
+      },
+    });
+
+    await tx.contentPackageFile.createMany({
+      data: DEFAULT_CONTENT_PACKAGE_FILES.map(([name, fileType]) => ({
+        contentPackageId: contentPackage.id,
+        name,
+        fileType,
+        status: PackageFileStatus.PLANNED,
+      })),
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: project.id,
+        entityType: "ContentPackage",
+        entityId: contentPackage.id,
+        action: "content_package_created",
+        summary: `创建素材包结构：${contentPackage.name}`,
+        after: {
+          id: contentPackage.id,
+          projectId: contentPackage.projectId,
+          strategyId: contentPackage.strategyId,
+          name: contentPackage.name,
+          period: contentPackage.period,
+          frequency: contentPackage.frequency,
+          status: contentPackage.status,
+          fileCount: DEFAULT_CONTENT_PACKAGE_FILES.length,
+        },
+        actorUserId: input.userId,
+      },
+    });
+
+    return contentPackage;
   });
 }
 

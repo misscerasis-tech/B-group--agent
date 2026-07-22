@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { CheckCircle2, Download, FileArchive, FileText, PlayCircle } from "lucide-react";
-import { updateContentPackageFileStatusAction } from "@/app/actions/package-actions";
+import {
+  createContentPackageAction,
+  updateContentPackageFileStatusAction,
+} from "@/app/actions/package-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { listWorkspaceContentPackages } from "@/lib/data/content-workspace";
+import { listProjects } from "@/lib/data/projects";
 import { loadWorkspaceContextSafe } from "@/lib/page-context";
 import {
   contentFrequencyLabels,
@@ -27,7 +31,10 @@ export default async function PackagesPage() {
   }
 
   try {
-    const packages = await listWorkspaceContentPackages(context.currentWorkspace.id);
+    const [packages, projects] = await Promise.all([
+      listWorkspaceContentPackages(context.currentWorkspace.id),
+      listProjects(context.currentWorkspace.id),
+    ]);
 
     return (
       <AppShell activePath="/packages" context={context} returnTo="/packages">
@@ -43,8 +50,51 @@ export default async function PackagesPage() {
           </Link>
         </section>
 
+        <section className="panel">
+          <h3>新建素材包结构</h3>
+          <form action={createContentPackageAction} className="form">
+            <div className="grid two">
+              <label className="form-row">
+                <span className="field-label">项目</span>
+                <select name="projectId" required>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-row">
+                <span className="field-label">频率</span>
+                <select defaultValue="WEEKLY" name="frequency">
+                  <option value="WEEKLY">每周一次</option>
+                  <option value="BIWEEKLY">每两周一次</option>
+                  <option value="MONTHLY">每月一次</option>
+                </select>
+              </label>
+              <label className="form-row">
+                <span className="field-label">素材包名称</span>
+                <input name="name" placeholder="例如：8 月第 1 周 TikTok 素材包" required />
+              </label>
+              <label className="form-row">
+                <span className="field-label">周期</span>
+                <input name="period" placeholder="例如：2026-08 第1周" required />
+              </label>
+            </div>
+            <label className="form-row">
+              <span className="field-label">说明</span>
+              <textarea name="summary" placeholder="说明目标市场、渠道、主题或审核重点。" />
+            </label>
+            <button className="button" disabled={projects.length === 0} type="submit">
+              <FileArchive size={16} aria-hidden="true" />
+              创建素材包
+            </button>
+            {projects.length === 0 ? <p className="muted">请先在项目中心创建项目。</p> : null}
+          </form>
+        </section>
+
         {packages.length > 0 ? (
-          <section className="package-list">
+          <section className="package-list" style={{ marginTop: 16 }}>
             {packages.map((contentPackage) => (
               <article className="package-card" key={contentPackage.id}>
                 <header>

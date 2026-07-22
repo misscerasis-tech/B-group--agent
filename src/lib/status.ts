@@ -214,3 +214,11 @@ export function parsePackageFileStatus(value: FormDataEntryValue | null): Packag
 
   return "PLANNED";
 }
+
+export function parseContentFrequency(value: FormDataEntryValue | null): ContentFrequency {
+  if (value === "WEEKLY" || value === "BIWEEKLY") {
+    return value;
+  }
+
+  return "MONTHLY";
+}
