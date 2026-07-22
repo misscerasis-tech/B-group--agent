@@ -23,6 +23,10 @@ export type ContentPackageReadinessInput = {
   id: string;
   name: string;
   status: ContentPackageStatus;
+  sourceAssets?: Array<{
+    kind: AssetKind;
+    status: AssetStatus;
+  }>;
   files: Array<{
     status: PackageFileStatus;
     asset: {
@@ -56,10 +60,14 @@ export function buildContentPackageReadiness(
   const linkedApprovedAssets = input.files
     .map((file) => file.asset)
     .filter((asset): asset is NonNullable<typeof asset> => asset?.status === AssetStatus.APPROVED);
+  const approvedSourceAssets = (input.sourceAssets ?? []).filter(
+    (asset) => asset.status === AssetStatus.APPROVED,
+  );
+  const approvedAssets = [...linkedApprovedAssets, ...approvedSourceAssets];
   const hasApprovedProductImage = linkedApprovedAssets.some(
     (asset) => asset.kind === AssetKind.PRODUCT_IMAGE,
-  );
-  const hasApprovedLogo = linkedApprovedAssets.some((asset) => asset.kind === AssetKind.LOGO);
+  ) || approvedSourceAssets.some((asset) => asset.kind === AssetKind.PRODUCT_IMAGE);
+  const hasApprovedLogo = approvedAssets.some((asset) => asset.kind === AssetKind.LOGO);
   const signals = [
     buildFileGenerationSignal(fileCount, generatedFileCount, plannedFileCount),
     buildFileApprovalSignal(fileCount, approvedFileCount),

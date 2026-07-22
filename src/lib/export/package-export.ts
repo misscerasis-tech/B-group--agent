@@ -83,8 +83,14 @@ export async function buildContentPackageZip(data: ContentPackageExportData) {
 
 export function buildContentPackageExportFiles(data: ContentPackageExportData): ZipFileInput[] {
   const { contentPackage, planItems } = data;
-  const readiness = buildContentPackageReadiness(contentPackage);
   const products = contentPackage.project.projectProducts.map(({ product }) => product);
+  const approvedAssets = products.flatMap((product) =>
+    product.assets.filter((asset) => asset.status === "APPROVED"),
+  );
+  const readiness = buildContentPackageReadiness({
+    ...contentPackage,
+    sourceAssets: approvedAssets,
+  });
   const strategy = contentPackage.strategy;
   const channels = strategy?.channels.length
     ? strategy.channels
@@ -93,9 +99,6 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
   const contentDirections = strategy?.contentDirections.length
     ? strategy.contentDirections
     : unique(planItems.map((item) => item.theme));
-  const approvedAssets = products.flatMap((product) =>
-    product.assets.filter((asset) => asset.status === "APPROVED"),
-  );
   const linkedPackageFiles = contentPackage.files.filter((file) => file.asset);
   const calendarRows = [
     ["周次", "截止日期", "渠道", "主题", "标题", "交付物", "状态"],

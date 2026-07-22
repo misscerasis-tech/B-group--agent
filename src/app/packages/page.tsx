@@ -104,7 +104,17 @@ export default async function PackagesPage() {
         {packages.length > 0 ? (
           <section className="package-list" style={{ marginTop: 16 }}>
             {packages.map((contentPackage) => {
-              const readiness = buildContentPackageReadiness(contentPackage);
+              const productIds = new Set(
+                contentPackage.project.projectProducts.map((projectProduct) => projectProduct.productId),
+              );
+              const readiness = buildContentPackageReadiness({
+                ...contentPackage,
+                sourceAssets: assets.filter(
+                  (asset) =>
+                    asset.projectId === contentPackage.projectId ||
+                    Boolean(asset.productId && productIds.has(asset.productId)),
+                ),
+              });
 
               return (
                 <article className="package-card" key={contentPackage.id}>

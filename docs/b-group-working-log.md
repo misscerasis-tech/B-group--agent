@@ -55,7 +55,7 @@ DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?sc
 最近一次测试结果：
 
 - Test Files：`22 passed`
-- Tests：`66 passed`
+- Tests：`67 passed`
 - Build：通过，包含 `/setup`、`/api/health`、`/b-agent`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
 
 ## 仍需人工完成

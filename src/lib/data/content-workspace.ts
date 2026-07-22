@@ -183,7 +183,15 @@ export async function listWorkspaceContentPackages(workspaceId: string) {
   return prisma.contentPackage.findMany({
     where: scopedWhere(workspaceId),
     include: {
-      project: true,
+      project: {
+        include: {
+          projectProducts: {
+            select: {
+              productId: true,
+            },
+          },
+        },
+      },
       files: {
         include: {
           asset: true,

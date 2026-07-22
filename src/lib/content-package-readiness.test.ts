@@ -54,4 +54,38 @@ describe("buildContentPackageReadiness", () => {
     ]);
     expect(readiness.summary).toContain("关联真实产品图和 Logo");
   });
+
+  it("accepts project-level approved real visual source assets", () => {
+    const readiness = buildContentPackageReadiness({
+      id: "package-1",
+      name: "巴西首周素材包",
+      status: ContentPackageStatus.REVIEW_NEEDED,
+      sourceAssets: [
+        {
+          kind: AssetKind.PRODUCT_IMAGE,
+          status: AssetStatus.APPROVED,
+        },
+        {
+          kind: AssetKind.LOGO,
+          status: AssetStatus.APPROVED,
+        },
+      ],
+      files: [
+        {
+          status: PackageFileStatus.GENERATED,
+          asset: {
+            kind: AssetKind.GENERATED_IMAGE,
+            status: AssetStatus.APPROVED,
+          },
+        },
+      ],
+    });
+
+    expect(readiness.signals).toContainEqual(
+      expect.objectContaining({
+        key: "visual-source",
+        status: "complete",
+      }),
+    );
+  });
 });
