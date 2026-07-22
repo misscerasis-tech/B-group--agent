@@ -1,7 +1,15 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { AssetKind, AssetStatus, ReviewSubjectType, ReviewTaskStatus } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import {
+  AssetKind,
+  AssetStatus,
+  ImageGenerationMode,
+  ImageGenerationStatus,
+  ReviewSubjectType,
+  ReviewTaskStatus,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/workspace-scope";
 
@@ -41,6 +49,97 @@ export async function listWorkspaceImageProviderConfigs(workspaceId: string) {
     orderBy: {
       provider: "asc",
     },
+  });
+}
+
+export async function createTemplateCompositionJob(input: {
+  workspaceId: string;
+  userId: string;
+  projectId?: string;
+  productImageAssetId: string;
+  logoAssetId: string;
+  aspectRatio: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    if (input.projectId) {
+      const project = await tx.project.findFirst({
+        where: scopedWhere(input.workspaceId, {
+          id: input.projectId,
+          deletedAt: null,
+        }),
+      });
+
+      if (!project) {
+        throw new Error("所选项目不属于当前 Workspace。");
+      }
+    }
+
+    const [productImage, logo] = await Promise.all([
+      tx.asset.findFirst({
+        where: scopedWhere(input.workspaceId, {
+          id: input.productImageAssetId,
+          kind: AssetKind.PRODUCT_IMAGE,
+          status: AssetStatus.APPROVED,
+        }),
+      }),
+      tx.asset.findFirst({
+        where: scopedWhere(input.workspaceId, {
+          id: input.logoAssetId,
+          kind: AssetKind.LOGO,
+          status: AssetStatus.APPROVED,
+        }),
+      }),
+    ]);
+
+    if (!productImage) {
+      throw new Error("请选择已审核的真实产品图。");
+    }
+
+    if (!logo) {
+      throw new Error("请选择已审核的官方 Logo。");
+    }
+
+    if (input.projectId) {
+      await validateAssetProjectFit(tx, input.workspaceId, input.projectId, productImage);
+      await validateAssetProjectFit(tx, input.workspaceId, input.projectId, logo);
+    }
+
+    const job = await tx.imageGenerationJob.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId ?? null,
+        provider: "internal-template-composer",
+        model: "v1-template-record",
+        promptVersion: "template-composition-v1",
+        sourceAssetIds: [productImage.id, logo.id],
+        generationMode: ImageGenerationMode.TEMPLATE_COMPOSITION,
+        aspectRatio: input.aspectRatio,
+        status: ImageGenerationStatus.QUEUED,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ImageGenerationJob",
+        entityId: job.id,
+        action: "template_composition_job_created",
+        summary: `创建模板化合成任务：${input.aspectRatio}`,
+        after: {
+          provider: job.provider,
+          model: job.model,
+          promptVersion: job.promptVersion,
+          generationMode: job.generationMode,
+          aspectRatio: job.aspectRatio,
+          sourceAssetIds: job.sourceAssetIds,
+          status: job.status,
+        },
+        actorUserId: input.userId,
+      },
+    });
+
+    return job;
   });
 }
 
@@ -124,6 +223,38 @@ export async function createUploadedAsset(input: {
 
     return asset;
   });
+}
+
+async function validateAssetProjectFit(
+  tx: Prisma.TransactionClient,
+  workspaceId: string,
+  projectId: string,
+  asset: {
+    projectId: string | null;
+    productId: string | null;
+    name: string;
+  },
+) {
+  if (asset.projectId === projectId) {
+    return;
+  }
+
+  if (!asset.productId) {
+    return;
+  }
+
+  const projectProduct = await tx.projectProduct.findUnique({
+    where: {
+      projectId_productId: {
+        projectId,
+        productId: asset.productId,
+      },
+    },
+  });
+
+  if (!projectProduct) {
+    throw new Error(`素材“${asset.name}”未关联到当前项目或项目产品。`);
+  }
 }
 
 export async function approveAsset(workspaceId: string, userId: string, assetId: string) {

@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { approveAsset, createUploadedAsset, rejectAsset } from "@/lib/data/assets";
+import {
+  approveAsset,
+  createTemplateCompositionJob,
+  createUploadedAsset,
+  rejectAsset,
+} from "@/lib/data/assets";
 import { parseAssetKind } from "@/lib/status";
 import { getWorkspaceContext } from "@/lib/workspace-context";
 
@@ -64,5 +69,23 @@ export async function rejectAssetAction(formData: FormData) {
   revalidatePath("/assets");
   revalidatePath("/reviews");
   revalidatePath("/dashboard");
+  redirect("/assets");
+}
+
+export async function createTemplateCompositionJobAction(formData: FormData) {
+  const context = await getWorkspaceContext();
+
+  await createTemplateCompositionJob({
+    workspaceId: context.currentWorkspace.id,
+    userId: context.user.id,
+    projectId: readOptionalId(formData, "projectId"),
+    productImageAssetId: readRequiredText(formData, "productImageAssetId", "真实产品图"),
+    logoAssetId: readRequiredText(formData, "logoAssetId", "官方 Logo"),
+    aspectRatio: readRequiredText(formData, "aspectRatio", "画布比例"),
+  });
+
+  revalidatePath("/assets");
+  revalidatePath("/dashboard");
+  revalidatePath("/recaps");
   redirect("/assets");
 }

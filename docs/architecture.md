@@ -100,6 +100,8 @@ B 组工作助手已新增：
 
 项目工作台快照导出为 Workspace 作用域 JSON，包含项目、关联产品事实、素材审核状态、最新策略与版本历史、内容计划、素材包、提醒、审核任务、最近 Agent 操作和变更日志。该导出不包含密钥、飞书 token 或本地文件二进制，只用于演示备份、复盘和迁移核对。
 
+V1 的模板化合成任务通过 `ImageGenerationJob` 入库，provider 固定为内部模板记录器 `internal-template-composer`，不会调用外部图片模型。创建任务时必须选择已审核的真实产品图和官方 Logo，系统保存 sourceAssetIds、generationMode、aspectRatio 和状态，后续可由真实模板渲染器或图片供应商适配器接管。
+
 仍预留：
 
 - `FeishuConnection`

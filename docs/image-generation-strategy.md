@@ -26,6 +26,8 @@ V1 模板化海报采用图层化结构：
 
 Product Layer 和 Logo Layer 必须保留素材来源，不允许图片模型重绘。
 
+当前素材库可以创建 `template_composition` 任务记录，必须选择已审核真实产品图和官方 Logo；任务先入库并保留 sourceAssetIds、aspectRatio 与状态，不调用外部模型。
+
 ## 可插拔供应商
 
 图片生成能力必须通过 `ImageGenerationProvider` 或等价适配器接入，不在页面、业务服务或数据库中写死某个模型或平台。
@@ -143,6 +145,7 @@ API 密钥只能保存在服务端环境变量，或未来的加密集成配置�
 - `ImageGenerationProviderConfig` Workspace 级候选供应商配置。
 - `ImageGenerationJob` 图片生成/模板合成任务模型。
 - `/assets` 素材库页面，可上传真实产品图、官方 Logo、资料和参考图。
+- `/assets` 可用已审核真实产品图和官方 Logo 创建模板化合成任务记录。
 - 不调用真实图片生成 API。
 - 不保存供应商密钥。
 

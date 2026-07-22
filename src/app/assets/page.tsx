@@ -1,6 +1,7 @@
 import { Image as ImageIcon, Layers, Sparkles } from "lucide-react";
 import {
   approveAssetAction,
+  createTemplateCompositionJobAction,
   rejectAssetAction,
   uploadAssetAction,
 } from "@/app/actions/asset-actions";
@@ -45,6 +46,12 @@ export default async function AssetsPage() {
       listProjects(context.currentWorkspace.id),
       listProducts(context.currentWorkspace.id),
     ]);
+    const approvedProductImages = assets.filter(
+      (asset) => asset.kind === "PRODUCT_IMAGE" && asset.status === "APPROVED",
+    );
+    const approvedLogos = assets.filter(
+      (asset) => asset.kind === "LOGO" && asset.status === "APPROVED",
+    );
 
     return (
       <AppShell activePath="/assets" context={context} returnTo="/assets">
@@ -125,6 +132,65 @@ export default async function AssetsPage() {
                 </article>
               ))}
             </div>
+
+            <div style={{ borderTop: "1px solid var(--border)", margin: "20px 0" }} />
+
+            <h3>创建模板化合成任务</h3>
+            <form action={createTemplateCompositionJobAction} className="form">
+              <label className="form-row">
+                <span className="field-label">关联项目</span>
+                <select defaultValue="" name="projectId">
+                  <option value="">不关联项目</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-row">
+                <span className="field-label">Product Layer</span>
+                <select name="productImageAssetId" required>
+                  <option value="">选择已审核真实产品图</option>
+                  {approvedProductImages.map((asset) => (
+                    <option key={asset.id} value={asset.id}>
+                      {asset.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-row">
+                <span className="field-label">Logo Layer</span>
+                <select name="logoAssetId" required>
+                  <option value="">选择已审核官方 Logo</option>
+                  {approvedLogos.map((asset) => (
+                    <option key={asset.id} value={asset.id}>
+                      {asset.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-row">
+                <span className="field-label">画布比例</span>
+                <select defaultValue="4:5" name="aspectRatio">
+                  <option value="4:5">Instagram / Facebook 4:5</option>
+                  <option value="1:1">通用方图 1:1</option>
+                  <option value="9:16">TikTok / Reels 9:16</option>
+                  <option value="16:9">横版 16:9</option>
+                </select>
+              </label>
+              <button
+                className="button"
+                disabled={approvedProductImages.length === 0 || approvedLogos.length === 0}
+                type="submit"
+              >
+                <Layers size={16} aria-hidden="true" />
+                创建任务
+              </button>
+              {approvedProductImages.length === 0 || approvedLogos.length === 0 ? (
+                <p className="muted">需要先审核通过至少一张真实产品图和一个官方 Logo。</p>
+              ) : null}
+            </form>
           </div>
         </section>
 
