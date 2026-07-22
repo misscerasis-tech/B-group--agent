@@ -85,21 +85,29 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
           </div>
 
           {state.projects.length > 0 ? (
-            <form action="/b-agent" className="project-switcher">
-              <label className="field-label compact" htmlFor="projectId">
-                当前项目
-              </label>
-              <select defaultValue={selectedProject?.id} id="projectId" name="projectId">
-                {state.projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-              <button className="button secondary" type="submit">
-                切换
-              </button>
-            </form>
+            <div className="hero-actions">
+              {selectedProject ? (
+                <Link className="button secondary" href={`/projects/${selectedProject.id}/export`}>
+                  <Download size={16} aria-hidden="true" />
+                  导出快照
+                </Link>
+              ) : null}
+              <form action="/b-agent" className="project-switcher">
+                <label className="field-label compact" htmlFor="projectId">
+                  当前项目
+                </label>
+                <select defaultValue={selectedProject?.id} id="projectId" name="projectId">
+                  {state.projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+                <button className="button secondary" type="submit">
+                  切换
+                </button>
+              </form>
+            </div>
           ) : null}
         </section>
 

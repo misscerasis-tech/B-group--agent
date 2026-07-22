@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download } from "lucide-react";
 import {
   updateProjectAction,
   updateProjectProductsAction,
@@ -55,9 +56,15 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
             <h2>{project.name}</h2>
             <p className="muted">编辑项目基础信息，并管理它关联的产品。</p>
           </div>
-          <Link className="button secondary" href="/projects">
-            返回项目中心
-          </Link>
+          <div className="hero-actions">
+            <Link className="button secondary" href={`/projects/${project.id}/export`}>
+              <Download size={16} aria-hidden="true" />
+              导出快照
+            </Link>
+            <Link className="button secondary" href="/projects">
+              返回项目中心
+            </Link>
+          </div>
         </section>
 
         <section className="grid two">
@@ -128,4 +135,3 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
     );
   }
 }
-

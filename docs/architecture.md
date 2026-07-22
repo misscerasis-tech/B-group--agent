@@ -98,6 +98,8 @@ B 组工作助手已新增：
 
 当前素材包导出先使用服务端本地 ZIP 清单生成器，输出说明、排期 CSV、文案、Hashtags、TikTok 脚本、设计 Brief、合规检查和 manifest。导出查询必须按当前 Workspace 限制；后续 PDF、DOCX、XLSX、PNG 生成器可以逐个替换同一导出入口。
 
+项目工作台快照导出为 Workspace 作用域 JSON，包含项目、关联产品事实、素材审核状态、最新策略与版本历史、内容计划、素材包、提醒、审核任务、最近 Agent 操作和变更日志。该导出不包含密钥、飞书 token 或本地文件二进制，只用于演示备份、复盘和迁移核对。
+
 仍预留：
 
 - `FeishuConnection`
