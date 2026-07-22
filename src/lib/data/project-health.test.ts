@@ -1,6 +1,10 @@
 import { ProjectStatus } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { buildProjectHealthSummary, type ProjectHealthInput } from "./project-health";
+import {
+  buildProjectHealthReminderDrafts,
+  buildProjectHealthSummary,
+  type ProjectHealthInput,
+} from "./project-health";
 
 const baseInput: ProjectHealthInput = {
   project: {
@@ -71,5 +75,27 @@ describe("buildProjectHealthSummary", () => {
         action: "确认正式策略",
       }),
     );
+  });
+
+  it("turns health gaps into reminder drafts", () => {
+    const summary = buildProjectHealthSummary({
+      ...baseInput,
+      approvedProductImageCount: 0,
+      approvedLogoCount: 0,
+      metricsSnapshotCount: 0,
+    });
+    const drafts = buildProjectHealthReminderDrafts(summary);
+
+    expect(drafts[0]).toMatchObject({
+      signalKey: "approved-assets",
+      title: "巴西新品首月增长：上传并审核真实素材",
+      severity: "WARNING",
+      dueInDays: 3,
+    });
+    expect(drafts.at(-1)).toMatchObject({
+      signalKey: "metrics",
+      severity: "INFO",
+      dueInDays: 7,
+    });
   });
 });

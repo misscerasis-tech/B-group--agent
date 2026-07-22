@@ -4,6 +4,7 @@ import {
   updateProjectAction,
   updateProjectProductsAction,
 } from "@/app/actions/project-actions";
+import { createProjectHealthRemindersAction } from "@/app/actions/project-health-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -72,15 +73,29 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
 
         {projectHealth ? (
           <section className="panel" style={{ marginBottom: 16 }}>
-            <header style={{ alignItems: "flex-start", display: "flex", justifyContent: "space-between", gap: 12 }}>
+            <header
+              style={{ alignItems: "flex-start", display: "flex", justifyContent: "space-between", gap: 12 }}
+            >
               <div>
                 <h3>项目就绪度</h3>
                 <p className="muted">{projectHealth.summary}</p>
               </div>
-              <StatusBadge
-                label={projectHealthRatingLabels[projectHealth.rating]}
-                tone={projectHealth.rating === "READY" ? "success" : "warning"}
-              />
+              <div className="hero-actions" style={{ marginTop: 0 }}>
+                {projectHealth.nextActions.length > 0 ? (
+                  <form
+                    action={createProjectHealthRemindersAction.bind(null, project.id)}
+                    className="inline-form"
+                  >
+                    <button className="button secondary" type="submit">
+                      生成缺口提醒
+                    </button>
+                  </form>
+                ) : null}
+                <StatusBadge
+                  label={projectHealthRatingLabels[projectHealth.rating]}
+                  tone={projectHealth.rating === "READY" ? "success" : "warning"}
+                />
+              </div>
             </header>
             <div
               aria-label={`${projectHealth.projectName} 就绪度 ${projectHealth.score} 分`}

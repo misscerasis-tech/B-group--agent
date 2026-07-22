@@ -5,6 +5,7 @@ import {
   PlanItemStatus,
   ProductFactStatus,
   ProjectStatus,
+  ReminderSeverity,
   ReminderStatus,
   ReviewTaskStatus,
   StrategyStatus,
@@ -58,6 +59,14 @@ export type ProjectHealthSummary = {
   summary: string;
   signals: ProjectHealthSignal[];
   nextActions: ProjectHealthSignal[];
+};
+
+export type ProjectHealthReminderDraft = {
+  signalKey: string;
+  title: string;
+  description: string;
+  severity: ReminderSeverity;
+  dueInDays: number;
 };
 
 export async function getProjectHealthSummary(workspaceId: string, projectId: string) {
@@ -116,6 +125,84 @@ export async function getProjectHealthSummaries(workspaceId: string, take = 4) {
   );
 }
 
+export async function createProjectHealthReminders(input: {
+  workspaceId: string;
+  projectId: string;
+  userId: string;
+}) {
+  const health = await getProjectHealthSummary(input.workspaceId, input.projectId);
+
+  if (!health) {
+    throw new Error("未找到当前 Workspace 下的项目，无法生成缺口提醒。");
+  }
+
+  const drafts = buildProjectHealthReminderDrafts(health);
+
+  return prisma.$transaction(async (tx) => {
+    let createdCount = 0;
+    let skippedCount = 0;
+
+    for (const draft of drafts) {
+      const existingReminder = await tx.reminder.findFirst({
+        where: scopedWhere(input.workspaceId, {
+          projectId: input.projectId,
+          title: draft.title,
+          status: ReminderStatus.OPEN,
+        }) as Prisma.ReminderWhereInput,
+      });
+
+      if (existingReminder) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const dueAt = new Date();
+      dueAt.setDate(dueAt.getDate() + draft.dueInDays);
+
+      const reminder = await tx.reminder.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          title: draft.title,
+          description: draft.description,
+          severity: draft.severity,
+          status: ReminderStatus.OPEN,
+          dueAt,
+        },
+      });
+
+      await tx.changeLog.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          entityType: "Reminder",
+          entityId: reminder.id,
+          action: "project_health_reminder_created",
+          summary: `项目体检生成提醒：${draft.title}`,
+          after: {
+            id: reminder.id,
+            signalKey: draft.signalKey,
+            title: reminder.title,
+            description: reminder.description,
+            severity: reminder.severity,
+            status: reminder.status,
+            dueAt: reminder.dueAt,
+          },
+          actorUserId: input.userId,
+        },
+      });
+
+      createdCount += 1;
+    }
+
+    return {
+      createdCount,
+      skippedCount,
+      totalCandidates: drafts.length,
+    };
+  });
+}
+
 export function buildProjectHealthSummary(input: ProjectHealthInput): ProjectHealthSummary {
   const projectHref = `/projects/${input.project.id}`;
   const agentHref = `/b-agent?projectId=${input.project.id}`;
@@ -155,6 +242,19 @@ export function buildProjectHealthSummary(input: ProjectHealthInput): ProjectHea
     signals,
     nextActions,
   };
+}
+
+export function buildProjectHealthReminderDrafts(
+  health: ProjectHealthSummary,
+  limit = 4,
+): ProjectHealthReminderDraft[] {
+  return health.nextActions.slice(0, limit).map((action) => ({
+    signalKey: action.key,
+    title: `${health.projectName}：${action.action}`,
+    description: `${action.summary} 来源：项目就绪度体检。处理后请回到项目详情页重新查看评分。`,
+    severity: action.blocking ? ReminderSeverity.WARNING : ReminderSeverity.INFO,
+    dueInDays: action.blocking ? 3 : 7,
+  }));
 }
 
 async function collectProjectHealthInput(
