@@ -26,6 +26,7 @@
 - 素材包 ZIP 可交付文件包导出、项目工作台 JSON 快照导出和 Workspace 复盘 JSON 快照导出。
 - 内容日历状态推进、首月计划截止日期。
 - 提醒中心主动提醒、手动提醒、完成/忽略。
+- 今日工作台按待确认变更、审核、素材、策略、素材包和近期计划生成行动队列。
 - 数据复盘指标录入、CTR、点击转化率、单次转化成本和可下载复盘快照。
 - 飞书占位连接、占位测试、停用旧连接和迁移记录。
 - 图片生成产品主体锁定护栏测试。
@@ -45,8 +46,8 @@ DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?sc
 
 最近一次测试结果：
 
-- Test Files：`15 passed`
-- Tests：`44 passed`
+- Test Files：`16 passed`
+- Tests：`46 passed`
 - Build：通过，包含 `/api/health`、`/b-agent`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
 
 ## 仍需人工完成

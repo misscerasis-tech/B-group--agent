@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, ClipboardCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, ClipboardCheck } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -65,6 +65,28 @@ export default async function DashboardPage() {
           <div className="panel stat">
             <span className="muted">素材包结构</span>
             <strong>{summary.contentPackageCount}</strong>
+          </div>
+        </section>
+
+        <section className="panel" style={{ marginTop: 16 }}>
+          <h3>今日行动队列</h3>
+          <div className="card-list">
+            {summary.actionItems.map((item) => (
+              <Link className="item-card" href={item.href} key={item.id}>
+                <header>
+                  <h4>{item.title}</h4>
+                  <StatusBadge
+                    label={actionPriorityLabels[item.priority]}
+                    tone={item.priority === "high" ? "warning" : "neutral"}
+                  />
+                </header>
+                <p>{item.description}</p>
+                <small className="muted" style={{ alignItems: "center", display: "inline-flex", gap: 6 }}>
+                  去处理
+                  <ArrowRight size={14} aria-hidden="true" />
+                </small>
+              </Link>
+            ))}
           </div>
         </section>
 
@@ -172,3 +194,9 @@ export default async function DashboardPage() {
     );
   }
 }
+
+const actionPriorityLabels = {
+  high: "优先处理",
+  medium: "需要推进",
+  low: "可安排",
+};
