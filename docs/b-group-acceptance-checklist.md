@@ -43,6 +43,18 @@ http://127.0.0.1:3002/api/health
 
 `/setup` 应显示中文诊断和下一步建议；`/api/health` 返回 `database.status: "ok"` 后再验收页面。如果返回 `unavailable`，先检查 Docker PostgreSQL 和 `.env`。
 
+Web 启动后可运行冒烟检查：
+
+```bash
+npx pnpm@10.13.1 run smoke
+```
+
+如果使用 3003：
+
+```bash
+npx pnpm@10.13.1 run smoke -- --url http://127.0.0.1:3003
+```
+
 ## 必验流程
 
 - 顶部可以在 `演示增长团队` 与 `欧洲增长演示团队` 之间切换，项目和产品数据不会串到另一个 Workspace。

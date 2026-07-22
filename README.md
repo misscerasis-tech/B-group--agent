@@ -175,6 +175,24 @@ http://127.0.0.1:3002/api/health
 
 如果页面打不开，优先打开 `/setup` 查看中文排障建议；机器可读状态可看 `/api/health`。如果 `database.status` 是 `unavailable`，通常是 PostgreSQL/Docker 没有启动或 `.env` 的 `DATABASE_URL` 不正确。
 
+演示前冒烟检查：
+
+```bash
+npx pnpm@10.13.1 run smoke
+```
+
+如果 B 组临时跑在 3003：
+
+```bash
+npx pnpm@10.13.1 run smoke -- --url http://127.0.0.1:3003
+```
+
+若只是想确认 Web 服务和页面路由已启动、暂时允许数据库不可用：
+
+```bash
+npx pnpm@10.13.1 run smoke -- --allow-unhealthy-db
+```
+
 ## 演示用户
 
 第一阶段使用本地演示用户模拟登录：
