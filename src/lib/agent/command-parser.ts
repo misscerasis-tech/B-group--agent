@@ -1,4 +1,4 @@
-import { ContentFrequency } from "@prisma/client";
+import { ContentFrequency, ProjectStatus } from "@prisma/client";
 
 export type ParsedAgentOperation =
   | {
@@ -16,6 +16,11 @@ export type ParsedAgentOperation =
   | {
       type: "set_package_frequency";
       value: ContentFrequency;
+      label: string;
+    }
+  | {
+      type: "set_project_status";
+      value: ProjectStatus;
       label: string;
     };
 
@@ -140,6 +145,28 @@ function parseFrequency(text: string): ContentFrequency | null {
   return null;
 }
 
+function parseProjectStatus(text: string): ProjectStatus | null {
+  const compact = compactText(text);
+
+  if (/归档项目|项目归档|结束项目|关闭项目/.test(compact)) {
+    return ProjectStatus.ARCHIVED;
+  }
+
+  if (/暂停项目|项目暂停|暂停这个项目|当前项目暂停|暂缓项目|暂停投放/.test(compact)) {
+    return ProjectStatus.PAUSED;
+  }
+
+  if (/启动项目|恢复项目|重启项目|继续推进|继续这个项目|开始执行/.test(compact)) {
+    return ProjectStatus.ACTIVE;
+  }
+
+  if (/项目草稿|改回草稿|暂存草稿/.test(compact)) {
+    return ProjectStatus.DRAFT;
+  }
+
+  return null;
+}
+
 function operationKey(operation: ParsedAgentOperation) {
   return `${operation.type}:${operation.value}`;
 }
@@ -183,6 +210,22 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
         label: `新增渠道：${channel}`,
       });
     }
+  }
+
+  const projectStatus = parseProjectStatus(text);
+  if (projectStatus) {
+    const projectStatusLabel: Record<ProjectStatus, string> = {
+      DRAFT: "草稿",
+      ACTIVE: "进行中",
+      PAUSED: "暂停",
+      ARCHIVED: "已归档",
+    };
+
+    operations.push({
+      type: "set_project_status",
+      value: projectStatus,
+      label: `项目状态改为：${projectStatusLabel[projectStatus]}`,
+    });
   }
 
   const frequency = parseFrequency(text);

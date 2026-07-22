@@ -1,4 +1,4 @@
-import { ContentFrequency } from "@prisma/client";
+import { ContentFrequency, ProjectStatus } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { parseAgentCommand } from "./command-parser";
 
@@ -68,6 +68,21 @@ describe("parseAgentCommand", () => {
       type: "remove_content_direction",
       value: "小抽奖",
       label: "删除内容方向：小抽奖",
+    });
+  });
+
+  it("extracts project status changes", () => {
+    const parsed = parseAgentCommand("暂停这个项目，新增 TikTok，下个月每周生成一次素材包。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "set_project_status",
+      value: ProjectStatus.PAUSED,
+      label: "项目状态改为：暂停",
+    });
+    expect(parsed.operations).toContainEqual({
+      type: "add_channel",
+      value: "TikTok",
+      label: "新增渠道：TikTok",
     });
   });
 

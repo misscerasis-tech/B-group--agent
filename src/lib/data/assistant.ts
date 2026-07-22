@@ -280,29 +280,58 @@ export async function submitAgentCommand(input: {
     let updatedStrategy = strategy;
 
     if (operationStatus === AgentOperationStatus.APPLIED) {
-      const before = strategyToJson(strategy);
-      const nextData = applyOperationsToStrategy(strategy, parsed.operations);
+      const strategyOperations = parsed.operations.filter(isStrategyOperation);
+      const projectOperations = parsed.operations.filter(isProjectOperation);
 
-      updatedStrategy = await tx.projectStrategy.update({
-        where: {
-          id: strategy.id,
-        },
-        data: nextData,
-      });
+      if (strategyOperations.length > 0) {
+        const before = strategyToJson(strategy);
+        const nextData = applyOperationsToStrategy(strategy, strategyOperations);
 
-      await tx.changeLog.create({
-        data: {
-          workspaceId: input.workspaceId,
-          projectId: project.id,
-          entityType: "ProjectStrategy",
-          entityId: strategy.id,
-          action: "agent_command_applied",
-          summary: parsed.summary,
-          before,
-          after: strategyToJson(updatedStrategy),
-          actorUserId: input.userId,
-        },
-      });
+        updatedStrategy = await tx.projectStrategy.update({
+          where: {
+            id: strategy.id,
+          },
+          data: nextData,
+        });
+
+        await tx.changeLog.create({
+          data: {
+            workspaceId: input.workspaceId,
+            projectId: project.id,
+            entityType: "ProjectStrategy",
+            entityId: strategy.id,
+            action: "agent_command_applied",
+            summary: parsed.summary,
+            before,
+            after: strategyToJson(updatedStrategy),
+            actorUserId: input.userId,
+          },
+        });
+      }
+
+      if (projectOperations.length > 0) {
+        const before = projectToJson(project);
+        const updatedProject = await tx.project.update({
+          where: {
+            id: project.id,
+          },
+          data: applyOperationsToProject(project, projectOperations),
+        });
+
+        await tx.changeLog.create({
+          data: {
+            workspaceId: input.workspaceId,
+            projectId: project.id,
+            entityType: "Project",
+            entityId: project.id,
+            action: "agent_project_updated",
+            summary: parsed.summary,
+            before,
+            after: projectToJson(updatedProject),
+            actorUserId: input.userId,
+          },
+        });
+      }
     }
 
     await tx.agentMessage.create({
@@ -350,39 +379,92 @@ export async function applyPendingAgentOperation(input: {
 
     const strategy = await ensureProjectStrategy(tx, input.workspaceId, operation.projectId);
     const parsedOperations = parseStoredOperations(operation.operations);
-    const before = strategyToJson(strategy);
-    const nextData = applyOperationsToStrategy(strategy, parsedOperations);
-    let updatedStrategy: ProjectStrategyRecord;
-    let changeAction = "agent_command_confirmed";
-    let changeSummary = operation.summary;
-    let changeEntityId = strategy.id;
+    const strategyOperations = parsedOperations.filter(isStrategyOperation);
+    const projectOperations = parsedOperations.filter(isProjectOperation);
+    let updatedStrategy: ProjectStrategyRecord = strategy;
 
-    if (strategy.status === StrategyStatus.CONFIRMED) {
-      updatedStrategy = await tx.projectStrategy.create({
+    if (strategyOperations.length > 0) {
+      const before = strategyToJson(strategy);
+      const nextData = applyOperationsToStrategy(strategy, strategyOperations);
+      let changeAction = "agent_command_confirmed";
+      let changeSummary = operation.summary;
+      let changeEntityId = strategy.id;
+
+      if (strategy.status === StrategyStatus.CONFIRMED) {
+        updatedStrategy = await tx.projectStrategy.create({
+          data: {
+            workspaceId: input.workspaceId,
+            projectId: operation.projectId,
+            version: strategy.version + 1,
+            status: StrategyStatus.CONFIRMED,
+            targetMarkets: nextData.targetMarkets,
+            audiences: nextData.audiences,
+            channels: nextData.channels,
+            contentDirections: nextData.contentDirections,
+            packageFrequency: nextData.packageFrequency,
+            positioning: strategy.positioning,
+            rationale: strategy.rationale,
+            confirmedAt: new Date(),
+          },
+        });
+        changeAction = "strategy_version_created";
+        changeSummary = `确认变更并创建正式策略 v${updatedStrategy.version}：${operation.summary}`;
+        changeEntityId = updatedStrategy.id;
+      } else {
+        updatedStrategy = await tx.projectStrategy.update({
+          where: {
+            id: strategy.id,
+          },
+          data: nextData,
+        });
+      }
+
+      await tx.changeLog.create({
         data: {
           workspaceId: input.workspaceId,
           projectId: operation.projectId,
-          version: strategy.version + 1,
-          status: StrategyStatus.CONFIRMED,
-          targetMarkets: nextData.targetMarkets,
-          audiences: nextData.audiences,
-          channels: nextData.channels,
-          contentDirections: nextData.contentDirections,
-          packageFrequency: nextData.packageFrequency,
-          positioning: strategy.positioning,
-          rationale: strategy.rationale,
-          confirmedAt: new Date(),
+          entityType: "ProjectStrategy",
+          entityId: changeEntityId,
+          action: changeAction,
+          summary: changeSummary,
+          before,
+          after: strategyToJson(updatedStrategy),
+          actorUserId: input.userId,
         },
       });
-      changeAction = "strategy_version_created";
-      changeSummary = `确认变更并创建正式策略 v${updatedStrategy.version}：${operation.summary}`;
-      changeEntityId = updatedStrategy.id;
-    } else {
-      updatedStrategy = await tx.projectStrategy.update({
+    }
+
+    if (projectOperations.length > 0) {
+      const project = await tx.project.findFirst({
+        where: scopedWhere(input.workspaceId, {
+          id: operation.projectId,
+          deletedAt: null,
+        }),
+      });
+
+      if (!project) {
+        throw new Error("未找到当前 Workspace 下的项目，无法应用项目状态变更。");
+      }
+
+      const updatedProject = await tx.project.update({
         where: {
-          id: strategy.id,
+          id: project.id,
         },
-        data: nextData,
+        data: applyOperationsToProject(project, projectOperations),
+      });
+
+      await tx.changeLog.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: operation.projectId,
+          entityType: "Project",
+          entityId: operation.projectId,
+          action: "agent_project_confirmed",
+          summary: `确认项目变更：${operation.summary}`,
+          before: projectToJson(project),
+          after: projectToJson(updatedProject),
+          actorUserId: input.userId,
+        },
       });
     }
 
@@ -392,29 +474,18 @@ export async function applyPendingAgentOperation(input: {
       },
       data: {
         status: AgentOperationStatus.APPLIED,
-        conflictCheck: "已由人工确认并应用到正式策略。",
-      },
-    });
-
-    await tx.changeLog.create({
-      data: {
-        workspaceId: input.workspaceId,
-        projectId: operation.projectId,
-        entityType: "ProjectStrategy",
-        entityId: changeEntityId,
-        action: changeAction,
-        summary: changeSummary,
-        before,
-        after: strategyToJson(updatedStrategy),
-        actorUserId: input.userId,
+        conflictCheck: "已由人工确认并应用到项目工作台。",
       },
     });
 
     if (operation.conversationId) {
-      const content =
-        strategy.status === StrategyStatus.CONFIRMED
-          ? `已按你的确认创建正式策略 v${updatedStrategy.version}：${operation.summary}`
-          : `已按你的确认写入策略草案：${operation.summary}`;
+      const content = buildConfirmedAssistantReply({
+        operationSummary: operation.summary,
+        strategyWasConfirmed: strategy.status === StrategyStatus.CONFIRMED,
+        strategyVersion: updatedStrategy.version,
+        strategyChanged: strategyOperations.length > 0,
+        projectChanged: projectOperations.length > 0,
+      });
 
       await tx.agentMessage.create({
         data: {
@@ -785,6 +856,33 @@ function applyOperationsToStrategy(
   };
 }
 
+function applyOperationsToProject(
+  project: {
+    status: ProjectStatus;
+  },
+  operations: ParsedAgentOperation[],
+) {
+  let status = project.status;
+
+  for (const operation of operations) {
+    if (operation.type === "set_project_status") {
+      status = operation.value;
+    }
+  }
+
+  return {
+    status,
+  };
+}
+
+function isStrategyOperation(operation: ParsedAgentOperation) {
+  return operation.type !== "set_project_status";
+}
+
+function isProjectOperation(operation: ParsedAgentOperation) {
+  return operation.type === "set_project_status";
+}
+
 function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] {
   if (!Array.isArray(value)) {
     return [];
@@ -803,7 +901,7 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
     const value = record.value;
 
     if (
-      (type === "add_channel" ||
+        (type === "add_channel" ||
         type === "remove_channel" ||
         type === "set_market" ||
         type === "add_audience" ||
@@ -811,6 +909,17 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         type === "add_content_direction" ||
         type === "remove_content_direction") &&
       typeof value === "string"
+    ) {
+      operations.push({ type, value, label: label || value });
+      continue;
+    }
+
+    if (
+      type === "set_project_status" &&
+      (value === ProjectStatus.DRAFT ||
+        value === ProjectStatus.ACTIVE ||
+        value === ProjectStatus.PAUSED ||
+        value === ProjectStatus.ARCHIVED)
     ) {
       operations.push({ type, value, label: label || value });
       continue;
@@ -845,6 +954,30 @@ function buildAssistantReply(
   return `已写入项目工作台：${summary}。${conflictCheck}`;
 }
 
+function buildConfirmedAssistantReply(input: {
+  operationSummary: string;
+  strategyWasConfirmed: boolean;
+  strategyVersion: number;
+  strategyChanged: boolean;
+  projectChanged: boolean;
+}) {
+  if (input.strategyChanged && input.strategyWasConfirmed) {
+    const projectText = input.projectChanged ? "，并同步更新项目基础信息" : "";
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}：${input.operationSummary}`;
+  }
+
+  if (input.strategyChanged) {
+    const projectText = input.projectChanged ? "，并同步更新项目基础信息" : "";
+    return `已按你的确认写入策略草案${projectText}：${input.operationSummary}`;
+  }
+
+  if (input.projectChanged) {
+    return `已按你的确认更新项目基础信息：${input.operationSummary}`;
+  }
+
+  return `已按你的确认处理：${input.operationSummary}`;
+}
+
 function strategyToJson(strategy: ProjectStrategyRecord) {
   return {
     id: strategy.id,
@@ -857,6 +990,20 @@ function strategyToJson(strategy: ProjectStrategyRecord) {
     packageFrequency: strategy.packageFrequency,
     positioning: strategy.positioning,
     rationale: strategy.rationale,
+  };
+}
+
+function projectToJson(project: {
+  id: string;
+  name: string;
+  description: string | null;
+  status: ProjectStatus;
+}) {
+  return {
+    id: project.id,
+    name: project.name,
+    description: project.description,
+    status: project.status,
   };
 }
 
