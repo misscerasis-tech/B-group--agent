@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, ClipboardCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, ClipboardCheck, Sparkles } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -40,6 +40,42 @@ export default async function DashboardPage() {
             <Link className="button" href="/b-agent">
               打开 B组 Agent
             </Link>
+          </div>
+        </section>
+
+        <section className="panel" style={{ marginBottom: 16 }}>
+          <div style={{ alignItems: "flex-start", display: "flex", gap: 12 }}>
+            <Sparkles size={20} aria-hidden="true" />
+            <div>
+              <h3>{summary.dailyBrief.title}</h3>
+              <p className="muted">{summary.dailyBrief.summary}</p>
+            </div>
+          </div>
+          <div className="grid three" style={{ marginTop: 16 }}>
+            <div>
+              <strong>重点进展</strong>
+              <ul className="clean-list">
+                {summary.dailyBrief.highlights.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <strong>风险提醒</strong>
+              <ul className="clean-list">
+                {summary.dailyBrief.risks.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <strong>建议动作</strong>
+              <ul className="clean-list">
+                {summary.dailyBrief.nextActions.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
           </div>
         </section>
 
