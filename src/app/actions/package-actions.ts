@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  attachAssetToPackageFile,
   createContentPackage,
   submitContentPackageForReview,
   updateContentPackageFileStatus,
@@ -79,4 +80,21 @@ export async function submitContentPackageForReviewAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/recaps");
   redirect(returnTo.startsWith("/") ? returnTo : "/packages");
+}
+
+export async function attachAssetToPackageFileAction(formData: FormData) {
+  const context = await getWorkspaceContext();
+
+  await attachAssetToPackageFile({
+    workspaceId: context.currentWorkspace.id,
+    userId: context.user.id,
+    fileId: readRequiredText(formData, "fileId", "素材包文件项"),
+    assetId: readRequiredText(formData, "assetId", "素材"),
+  });
+
+  revalidatePath("/packages");
+  revalidatePath("/b-agent");
+  revalidatePath("/dashboard");
+  revalidatePath("/recaps");
+  redirect("/packages");
 }

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { createContentPackage, submitContentPackageForReview } from "./content-workspace";
+import {
+  attachAssetToPackageFile,
+  createContentPackage,
+  submitContentPackageForReview,
+} from "./content-workspace";
 
 const mocks = vi.hoisted(() => {
   const tx = {
@@ -16,6 +20,11 @@ const mocks = vi.hoisted(() => {
     },
     contentPackageFile: {
       createMany: vi.fn(),
+      findFirst: vi.fn(),
+      update: vi.fn(),
+    },
+    asset: {
+      findFirst: vi.fn(),
     },
     reviewTask: {
       findFirst: vi.fn(),
@@ -240,5 +249,126 @@ describe("submitContentPackageForReview", () => {
 
     expect(mocks.tx.contentPackage.update).not.toHaveBeenCalled();
     expect(mocks.tx.reviewTask.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("attachAssetToPackageFile", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
+  });
+
+  it("attaches an approved workspace asset to a package file and marks it generated", async () => {
+    mocks.tx.contentPackageFile.findFirst.mockResolvedValue({
+      id: "file-1",
+      assetId: null,
+      name: "模板化海报图片",
+      status: "PLANNED",
+      asset: null,
+      contentPackage: {
+        id: "package-1",
+        name: "首月第一份素材包",
+        projectId: "project-1",
+        project: {
+          id: "project-1",
+          name: "巴西新品上市",
+        },
+      },
+    });
+    mocks.tx.asset.findFirst.mockResolvedValue({
+      id: "asset-1",
+      name: "模板化海报 4:5",
+      status: "APPROVED",
+    });
+    mocks.tx.contentPackageFile.update.mockResolvedValue({
+      id: "file-1",
+      assetId: "asset-1",
+      status: "GENERATED",
+    });
+    mocks.tx.changeLog.create.mockResolvedValue({
+      id: "log-1",
+    });
+
+    await attachAssetToPackageFile({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      fileId: "file-1",
+      assetId: "asset-1",
+    });
+
+    expect(mocks.tx.contentPackageFile.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: "file-1",
+        contentPackage: {
+          workspaceId: "workspace-1",
+        },
+      },
+      include: {
+        asset: true,
+        contentPackage: {
+          include: {
+            project: true,
+          },
+        },
+      },
+    });
+    expect(mocks.tx.asset.findFirst).toHaveBeenCalledWith({
+      where: {
+        workspaceId: "workspace-1",
+        id: "asset-1",
+        status: "APPROVED",
+      },
+    });
+    expect(mocks.tx.contentPackageFile.update).toHaveBeenCalledWith({
+      where: {
+        id: "file-1",
+      },
+      data: {
+        assetId: "asset-1",
+        status: "GENERATED",
+        notes: "已关联素材：模板化海报 4:5",
+      },
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPackageFile",
+        entityId: "file-1",
+        action: "package_file_asset_attached",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("rejects unapproved or cross-workspace assets", async () => {
+    mocks.tx.contentPackageFile.findFirst.mockResolvedValue({
+      id: "file-1",
+      assetId: null,
+      name: "模板化海报图片",
+      status: "PLANNED",
+      asset: null,
+      contentPackage: {
+        id: "package-1",
+        name: "首月第一份素材包",
+        projectId: "project-1",
+        project: {
+          id: "project-1",
+          name: "巴西新品上市",
+        },
+      },
+    });
+    mocks.tx.asset.findFirst.mockResolvedValue(null);
+
+    await expect(
+      attachAssetToPackageFile({
+        workspaceId: "workspace-1",
+        userId: "user-1",
+        fileId: "file-1",
+        assetId: "unapproved-asset",
+      }),
+    ).rejects.toThrow("未找到当前 Workspace 下已审核的素材");
+
+    expect(mocks.tx.contentPackageFile.update).not.toHaveBeenCalled();
   });
 });

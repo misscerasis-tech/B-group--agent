@@ -184,6 +184,9 @@ export async function listWorkspaceContentPackages(workspaceId: string) {
     include: {
       project: true,
       files: {
+        include: {
+          asset: true,
+        },
         orderBy: {
           createdAt: "asc",
         },
@@ -420,6 +423,82 @@ export async function submitContentPackageForReview(input: {
     });
 
     return updatedContentPackage;
+  });
+}
+
+export async function attachAssetToPackageFile(input: {
+  workspaceId: string;
+  userId: string;
+  fileId: string;
+  assetId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const packageFile = await tx.contentPackageFile.findFirst({
+      where: {
+        id: input.fileId,
+        contentPackage: {
+          workspaceId: input.workspaceId,
+        },
+      },
+      include: {
+        asset: true,
+        contentPackage: {
+          include: {
+            project: true,
+          },
+        },
+      },
+    });
+
+    if (!packageFile) {
+      throw new Error("未找到当前 Workspace 下的素材包文件项。");
+    }
+
+    const asset = await tx.asset.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        id: input.assetId,
+        status: AssetStatus.APPROVED,
+      }) as Prisma.AssetWhereInput,
+    });
+
+    if (!asset) {
+      throw new Error("未找到当前 Workspace 下已审核的素材。");
+    }
+
+    const updatedFile = await tx.contentPackageFile.update({
+      where: {
+        id: packageFile.id,
+      },
+      data: {
+        assetId: asset.id,
+        status: PackageFileStatus.GENERATED,
+        notes: `已关联素材：${asset.name}`,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: packageFile.contentPackage.projectId,
+        entityType: "ContentPackageFile",
+        entityId: packageFile.id,
+        action: "package_file_asset_attached",
+        summary: `素材包文件关联素材：${packageFile.contentPackage.name} · ${packageFile.name}`,
+        before: {
+          assetId: packageFile.assetId,
+          assetName: packageFile.asset?.name ?? null,
+          status: packageFile.status,
+        },
+        after: {
+          assetId: asset.id,
+          assetName: asset.name,
+          status: updatedFile.status,
+        },
+        actorUserId: input.userId,
+      },
+    });
+
+    return updatedFile;
   });
 }
 

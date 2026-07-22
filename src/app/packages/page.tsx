@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CheckCircle2, Download, FileArchive, FileText, PlayCircle } from "lucide-react";
 import {
+  attachAssetToPackageFileAction,
   createContentPackageAction,
   submitContentPackageForReviewAction,
   updateContentPackageFileStatusAction,
@@ -9,6 +10,7 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { listWorkspaceAssets } from "@/lib/data/assets";
 import { listWorkspaceContentPackages } from "@/lib/data/content-workspace";
 import { listProjects } from "@/lib/data/projects";
 import { loadWorkspaceContextSafe } from "@/lib/page-context";
@@ -32,10 +34,14 @@ export default async function PackagesPage() {
   }
 
   try {
-    const [packages, projects] = await Promise.all([
+    const [packages, projects, assets] = await Promise.all([
       listWorkspaceContentPackages(context.currentWorkspace.id),
       listProjects(context.currentWorkspace.id),
+      listWorkspaceAssets(context.currentWorkspace.id),
     ]);
+    const attachableAssets = assets.filter(
+      (asset) => asset.status === "APPROVED" && asset.storagePath,
+    );
 
     return (
       <AppShell activePath="/packages" context={context} returnTo="/packages">
@@ -123,8 +129,32 @@ export default async function PackagesPage() {
                         {file.name}
                         <small>
                           {file.fileType} · {packageFileStatusLabels[file.status]}
+                          {file.asset ? ` · 已关联：${file.asset.name}` : ""}
                         </small>
                       </span>
+                      {!file.asset && attachableAssets.length > 0 ? (
+                        <form action={attachAssetToPackageFileAction} className="inline-form">
+                          <input name="fileId" type="hidden" value={file.id} />
+                          <select aria-label="选择关联素材" name="assetId" required>
+                            {attachableAssets.map((asset) => (
+                              <option key={asset.id} value={asset.id}>
+                                {asset.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button className="button secondary" type="submit">
+                            关联素材
+                          </button>
+                        </form>
+                      ) : null}
+                      {file.asset?.storagePath ? (
+                        <Link
+                          className="button secondary"
+                          href={`/assets/${file.asset.id}/download`}
+                        >
+                          下载关联素材
+                        </Link>
+                      ) : null}
                       <form action={updateContentPackageFileStatusAction} className="inline-form">
                         <input name="fileId" type="hidden" value={file.id} />
                         {file.status === "PLANNED" ? (
