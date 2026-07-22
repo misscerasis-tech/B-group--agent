@@ -3,6 +3,7 @@ import {
   createFeishuPlaceholderAction,
   createIntegrationMigrationRecordAction,
   disableIntegrationConnectionAction,
+  testFeishuConnectionPlaceholderAction,
 } from "@/app/actions/integration-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -134,6 +135,15 @@ export default async function IntegrationsPage() {
                       {connection.repositoryTargetName ?? "待选择"}
                     </p>
                     <p>{connection.notes ?? "暂无备注"}</p>
+                    <form
+                      action={testFeishuConnectionPlaceholderAction}
+                      className="inline-form"
+                    >
+                      <input name="connectionId" type="hidden" value={connection.id} />
+                      <button className="button secondary" type="submit">
+                        测试连接（占位）
+                      </button>
+                    </form>
                     {connection.status !== "DISABLED" ? (
                       <form action={disableIntegrationConnectionAction} className="inline-form">
                         <input name="connectionId" type="hidden" value={connection.id} />

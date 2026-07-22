@@ -6,6 +6,7 @@ import {
   createFeishuConnectionPlaceholder,
   createIntegrationMigrationRecord,
   disableIntegrationConnection,
+  testFeishuConnectionPlaceholder,
 } from "@/lib/data/integrations";
 import { getWorkspaceContext } from "@/lib/workspace-context";
 
@@ -27,15 +28,21 @@ function readOptionalText(formData: FormData, key: string) {
 export async function createFeishuPlaceholderAction(formData: FormData) {
   const context = await getWorkspaceContext();
 
-  await createFeishuConnectionPlaceholder(context.currentWorkspace.id, {
-    displayName: readRequiredText(formData, "displayName", "连接名称"),
-    tenantDisplayName: readOptionalText(formData, "tenantDisplayName"),
-    notificationTargetName: readOptionalText(formData, "notificationTargetName"),
-    repositoryTargetName: readOptionalText(formData, "repositoryTargetName"),
-    notes: readOptionalText(formData, "notes"),
-  });
+  await createFeishuConnectionPlaceholder(
+    context.currentWorkspace.id,
+    context.user.id,
+    {
+      displayName: readRequiredText(formData, "displayName", "连接名称"),
+      tenantDisplayName: readOptionalText(formData, "tenantDisplayName"),
+      notificationTargetName: readOptionalText(formData, "notificationTargetName"),
+      repositoryTargetName: readOptionalText(formData, "repositoryTargetName"),
+      notes: readOptionalText(formData, "notes"),
+    },
+  );
 
   revalidatePath("/integrations");
+  revalidatePath("/dashboard");
+  revalidatePath("/recaps");
   redirect("/integrations");
 }
 
@@ -43,22 +50,46 @@ export async function disableIntegrationConnectionAction(formData: FormData) {
   const context = await getWorkspaceContext();
   const connectionId = readRequiredText(formData, "connectionId", "集成连接");
 
-  await disableIntegrationConnection(context.currentWorkspace.id, connectionId);
+  await disableIntegrationConnection(context.currentWorkspace.id, context.user.id, connectionId);
 
   revalidatePath("/integrations");
+  revalidatePath("/dashboard");
+  revalidatePath("/recaps");
+  redirect("/integrations");
+}
+
+export async function testFeishuConnectionPlaceholderAction(formData: FormData) {
+  const context = await getWorkspaceContext();
+  const connectionId = readRequiredText(formData, "connectionId", "集成连接");
+
+  await testFeishuConnectionPlaceholder(
+    context.currentWorkspace.id,
+    context.user.id,
+    connectionId,
+  );
+
+  revalidatePath("/integrations");
+  revalidatePath("/dashboard");
+  revalidatePath("/recaps");
   redirect("/integrations");
 }
 
 export async function createIntegrationMigrationRecordAction(formData: FormData) {
   const context = await getWorkspaceContext();
 
-  await createIntegrationMigrationRecord(context.currentWorkspace.id, {
-    connectionId: readOptionalText(formData, "connectionId"),
-    fromTargetName: readOptionalText(formData, "fromTargetName"),
-    toTargetName: readOptionalText(formData, "toTargetName"),
-    summary: readRequiredText(formData, "summary", "迁移说明"),
-  });
+  await createIntegrationMigrationRecord(
+    context.currentWorkspace.id,
+    context.user.id,
+    {
+      connectionId: readOptionalText(formData, "connectionId"),
+      fromTargetName: readOptionalText(formData, "fromTargetName"),
+      toTargetName: readOptionalText(formData, "toTargetName"),
+      summary: readRequiredText(formData, "summary", "迁移说明"),
+    },
+  );
 
   revalidatePath("/integrations");
+  revalidatePath("/dashboard");
+  revalidatePath("/recaps");
   redirect("/integrations");
 }

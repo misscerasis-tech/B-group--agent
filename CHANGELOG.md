@@ -21,6 +21,7 @@
 - 增加图片生成候选供应商和模板化合成任务 seed。
 - 增加 IntegrationConnection、IntegrationMigrationRecord 数据模型和 migration。
 - 集成设置页面支持保存飞书占位连接、停用旧连接和记录迁移说明，不接真实飞书。
+- 集成设置支持飞书占位连接测试，并将创建、停用、测试和迁移记录写入变更日志。
 - 内容日历、素材包中心、审核中心、提醒中心改为读取当前 Workspace 真实数据。
 - 增加 ReviewTask 数据模型、审核任务生成和审核通过/要求修改的 Web-first 审核流。
 - 提醒中心支持根据当前 Workspace 数据生成主动提醒，并可标记完成或忽略。
