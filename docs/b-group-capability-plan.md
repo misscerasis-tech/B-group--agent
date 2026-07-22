@@ -141,13 +141,16 @@ V1 目标素材包：
 - `ProjectStrategy` 保存市场、客群、渠道、内容方向和素材包频率。
 - `AgentOperation` 保存中文指令转换后的结构化操作。
 - `ChangeLog` 保存策略确认、指令应用和计划生成记录。
+- `Asset` 保存真实产品图、官方 Logo、资料和参考图，并带审核状态。
+- `ImageGenerationProviderConfig` 和 `ImageGenerationJob` 预留图片供应商评测与模板化合成任务。
 - `/b-agent` 支持提交中文指令、确认正式策略、确认应用变更、生成首月计划。
+- `/assets` 支持上传素材、关联项目/产品、标记审核通过。
 - 内容日历、素材包中心、审核中心、提醒中心读取当前 Workspace 数据。
 
 ## 仍待补齐能力
 
 - 真实 GPT 顾问式追问、事实抽取和策略推荐。
-- Asset 上传、审核和来源检查。
+- Asset 来源检查和更完整的审核流程。
 - PDF、XLSX、DOCX、TXT、PNG、ZIP 真实文件生成。
 - 真实产品图 + 官方 Logo 的模板化海报合成。
 - 数据复盘指标录入、导入和总结。

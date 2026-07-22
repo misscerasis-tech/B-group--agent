@@ -1,8 +1,13 @@
 import {
   AgentMessageRole,
   AgentOperationStatus,
+  AssetKind,
+  AssetSource,
+  AssetStatus,
   ContentFrequency,
   ContentPackageStatus,
+  ImageGenerationMode,
+  ImageGenerationStatus,
   PackageFileStatus,
   PlanItemStatus,
   PrismaClient,
@@ -439,6 +444,158 @@ async function main() {
       action: "seed",
       summary: "初始化 B 组工作助手演示数据。",
       actorUserId: user.id,
+    },
+  });
+
+  const productImageAsset = await prisma.asset.upsert({
+    where: { id: "demo-asset-aurora-product-image" },
+    update: {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      productId: product.id,
+      name: "Aurora Cup 真实产品图",
+      kind: AssetKind.PRODUCT_IMAGE,
+      source: AssetSource.IMPORTED,
+      status: AssetStatus.APPROVED,
+      mimeType: "image/png",
+      originalFilename: "aurora-cup-product.png",
+      storagePath: null,
+      metadata: {
+        visualRole: "Product Layer",
+        productSubjectLocked: true,
+        note: "Seed 示例记录，不包含真实文件；正式使用时由用户上传。",
+      },
+    },
+    create: {
+      id: "demo-asset-aurora-product-image",
+      workspaceId: workspace.id,
+      projectId: project.id,
+      productId: product.id,
+      name: "Aurora Cup 真实产品图",
+      kind: AssetKind.PRODUCT_IMAGE,
+      source: AssetSource.IMPORTED,
+      status: AssetStatus.APPROVED,
+      mimeType: "image/png",
+      originalFilename: "aurora-cup-product.png",
+      metadata: {
+        visualRole: "Product Layer",
+        productSubjectLocked: true,
+        note: "Seed 示例记录，不包含真实文件；正式使用时由用户上传。",
+      },
+    },
+  });
+
+  const logoAsset = await prisma.asset.upsert({
+    where: { id: "demo-asset-aurora-logo" },
+    update: {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      productId: product.id,
+      name: "Aurora Cup 官方 Logo",
+      kind: AssetKind.LOGO,
+      source: AssetSource.IMPORTED,
+      status: AssetStatus.APPROVED,
+      mimeType: "image/svg+xml",
+      originalFilename: "aurora-logo.svg",
+      storagePath: null,
+      metadata: {
+        visualRole: "Logo Layer",
+        productSubjectLocked: true,
+        note: "Seed 示例记录，不包含真实文件；正式使用时由用户上传。",
+      },
+    },
+    create: {
+      id: "demo-asset-aurora-logo",
+      workspaceId: workspace.id,
+      projectId: project.id,
+      productId: product.id,
+      name: "Aurora Cup 官方 Logo",
+      kind: AssetKind.LOGO,
+      source: AssetSource.IMPORTED,
+      status: AssetStatus.APPROVED,
+      mimeType: "image/svg+xml",
+      originalFilename: "aurora-logo.svg",
+      metadata: {
+        visualRole: "Logo Layer",
+        productSubjectLocked: true,
+        note: "Seed 示例记录，不包含真实文件；正式使用时由用户上传。",
+      },
+    },
+  });
+
+  const openAiImageProvider = await prisma.imageGenerationProviderConfig.upsert({
+    where: { id: "demo-image-provider-openai" },
+    update: {
+      workspaceId: workspace.id,
+      provider: "openai",
+      displayName: "OpenAI Image API 候选",
+      defaultModel: "workspace-configured",
+      enabled: false,
+      capabilities: ["background_generation", "image_edit", "image_expand"],
+      notes: "候选供应商记录，不代表最终选型；密钥不得进入数据库 seed。",
+    },
+    create: {
+      id: "demo-image-provider-openai",
+      workspaceId: workspace.id,
+      provider: "openai",
+      displayName: "OpenAI Image API 候选",
+      defaultModel: "workspace-configured",
+      enabled: false,
+      capabilities: ["background_generation", "image_edit", "image_expand"],
+      notes: "候选供应商记录，不代表最终选型；密钥不得进入数据库 seed。",
+    },
+  });
+
+  await prisma.imageGenerationProviderConfig.upsert({
+    where: { id: "demo-image-provider-firefly" },
+    update: {
+      workspaceId: workspace.id,
+      provider: "adobe-firefly",
+      displayName: "Adobe Firefly 候选",
+      defaultModel: "workspace-configured",
+      enabled: false,
+      capabilities: ["background_generation", "image_edit"],
+      notes: "候选供应商记录，不代表最终选型；密钥不得进入数据库 seed。",
+    },
+    create: {
+      id: "demo-image-provider-firefly",
+      workspaceId: workspace.id,
+      provider: "adobe-firefly",
+      displayName: "Adobe Firefly 候选",
+      defaultModel: "workspace-configured",
+      enabled: false,
+      capabilities: ["background_generation", "image_edit"],
+      notes: "候选供应商记录，不代表最终选型；密钥不得进入数据库 seed。",
+    },
+  });
+
+  await prisma.imageGenerationJob.upsert({
+    where: { id: "demo-image-job-template-poster" },
+    update: {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      providerConfigId: openAiImageProvider.id,
+      provider: "template-composer",
+      model: "local-template-v1",
+      promptVersion: "poster-template-v1",
+      sourceAssetIds: [productImageAsset.id, logoAsset.id],
+      generationMode: ImageGenerationMode.TEMPLATE_COMPOSITION,
+      aspectRatio: "4:5",
+      status: ImageGenerationStatus.QUEUED,
+      error: null,
+    },
+    create: {
+      id: "demo-image-job-template-poster",
+      workspaceId: workspace.id,
+      projectId: project.id,
+      providerConfigId: openAiImageProvider.id,
+      provider: "template-composer",
+      model: "local-template-v1",
+      promptVersion: "poster-template-v1",
+      sourceAssetIds: [productImageAsset.id, logoAsset.id],
+      generationMode: ImageGenerationMode.TEMPLATE_COMPOSITION,
+      aspectRatio: "4:5",
+      status: ImageGenerationStatus.QUEUED,
     },
   });
 }

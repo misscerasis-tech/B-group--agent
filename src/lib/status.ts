@@ -1,7 +1,12 @@
 import type {
   AgentOperationStatus,
+  AssetKind,
+  AssetSource,
+  AssetStatus,
   ContentFrequency,
   ContentPackageStatus,
+  ImageGenerationMode,
+  ImageGenerationStatus,
   PackageFileStatus,
   PlanItemStatus,
   ProductFactStatus,
@@ -91,6 +96,43 @@ export const agentOperationStatusLabels: Record<AgentOperationStatus, string> = 
   FAILED: "未执行",
 };
 
+export const assetKindLabels: Record<AssetKind, string> = {
+  PRODUCT_IMAGE: "真实产品图",
+  LOGO: "官方 Logo",
+  DOCUMENT: "产品资料",
+  REFERENCE_IMAGE: "参考图",
+  GENERATED_IMAGE: "生成图片",
+  EXPORT_FILE: "导出文件",
+};
+
+export const assetSourceLabels: Record<AssetSource, string> = {
+  USER_UPLOAD: "用户上传",
+  GENERATED: "系统生成",
+  IMPORTED: "导入记录",
+};
+
+export const assetStatusLabels: Record<AssetStatus, string> = {
+  UPLOADED: "待审核",
+  APPROVED: "已审核",
+  REJECTED: "已拒绝",
+  ARCHIVED: "已归档",
+};
+
+export const imageGenerationModeLabels: Record<ImageGenerationMode, string> = {
+  TEMPLATE_COMPOSITION: "模板化合成",
+  BACKGROUND_GENERATION: "背景生成",
+  IMAGE_EDIT: "图片编辑",
+  IMAGE_EXPAND: "画布扩展",
+};
+
+export const imageGenerationStatusLabels: Record<ImageGenerationStatus, string> = {
+  QUEUED: "排队中",
+  RUNNING: "生成中",
+  SUCCEEDED: "已成功",
+  FAILED: "已失败",
+  CANCELED: "已取消",
+};
+
 export function parseProjectStatus(value: FormDataEntryValue | null): ProjectStatus {
   if (value === "ACTIVE" || value === "PAUSED" || value === "ARCHIVED") {
     return value;
@@ -113,4 +155,18 @@ export function parseProductFactStatus(value: FormDataEntryValue | null): Produc
   }
 
   return "DRAFT";
+}
+
+export function parseAssetKind(value: FormDataEntryValue | null): AssetKind {
+  if (
+    value === "LOGO" ||
+    value === "DOCUMENT" ||
+    value === "REFERENCE_IMAGE" ||
+    value === "GENERATED_IMAGE" ||
+    value === "EXPORT_FILE"
+  ) {
+    return value;
+  }
+
+  return "PRODUCT_IMAGE";
 }

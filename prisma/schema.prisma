@@ -91,6 +91,43 @@ enum AgentOperationStatus {
   FAILED
 }
 
+enum AssetKind {
+  PRODUCT_IMAGE
+  LOGO
+  DOCUMENT
+  REFERENCE_IMAGE
+  GENERATED_IMAGE
+  EXPORT_FILE
+}
+
+enum AssetSource {
+  USER_UPLOAD
+  GENERATED
+  IMPORTED
+}
+
+enum AssetStatus {
+  UPLOADED
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum ImageGenerationStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum ImageGenerationMode {
+  TEMPLATE_COMPOSITION
+  BACKGROUND_GENERATION
+  IMAGE_EDIT
+  IMAGE_EXPAND
+}
+
 model User {
   id          String            @id @default(cuid())
   name        String
@@ -102,24 +139,27 @@ model User {
 }
 
 model Workspace {
-  id                String              @id @default(cuid())
-  name              String
-  slug              String              @unique
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  deletedAt         DateTime?
-  members           WorkspaceMember[]
-  projects          Project[]
-  products          Product[]
-  productFacts      ProductFact[]
-  projectStrategies ProjectStrategy[]
-  contentPlanItems  ContentPlanItem[]
-  contentPackages   ContentPackage[]
-  reminders         Reminder[]
-  conversations     AgentConversation[]
-  messages          AgentMessage[]
-  operations        AgentOperation[]
-  changeLogs        ChangeLog[]
+  id                   String                          @id @default(cuid())
+  name                 String
+  slug                 String                          @unique
+  createdAt            DateTime                        @default(now())
+  updatedAt            DateTime                        @updatedAt
+  deletedAt            DateTime?
+  members              WorkspaceMember[]
+  projects             Project[]
+  products             Product[]
+  productFacts         ProductFact[]
+  projectStrategies    ProjectStrategy[]
+  contentPlanItems     ContentPlanItem[]
+  contentPackages      ContentPackage[]
+  reminders            Reminder[]
+  conversations        AgentConversation[]
+  messages             AgentMessage[]
+  operations           AgentOperation[]
+  changeLogs           ChangeLog[]
+  assets               Asset[]
+  imageProviderConfigs ImageGenerationProviderConfig[]
+  imageGenerationJobs  ImageGenerationJob[]
 }
 
 model WorkspaceMember {
@@ -137,23 +177,25 @@ model WorkspaceMember {
 }
 
 model Project {
-  id               String              @id @default(cuid())
-  workspaceId      String
-  name             String
-  description      String?
-  status           ProjectStatus       @default(DRAFT)
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  deletedAt        DateTime?
-  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  projectProducts  ProjectProduct[]
-  strategies       ProjectStrategy[]
-  contentPlanItems ContentPlanItem[]
-  contentPackages  ContentPackage[]
-  reminders        Reminder[]
-  conversations    AgentConversation[]
-  operations       AgentOperation[]
-  changeLogs       ChangeLog[]
+  id                  String               @id @default(cuid())
+  workspaceId         String
+  name                String
+  description         String?
+  status              ProjectStatus        @default(DRAFT)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  deletedAt           DateTime?
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projectProducts     ProjectProduct[]
+  strategies          ProjectStrategy[]
+  contentPlanItems    ContentPlanItem[]
+  contentPackages     ContentPackage[]
+  reminders           Reminder[]
+  conversations       AgentConversation[]
+  operations          AgentOperation[]
+  changeLogs          ChangeLog[]
+  assets              Asset[]
+  imageGenerationJobs ImageGenerationJob[]
 
   @@index([workspaceId, status])
   @@index([workspaceId, deletedAt])
@@ -171,6 +213,7 @@ model Product {
   workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   projectProducts ProjectProduct[]
   facts           ProductFact[]
+  assets          Asset[]
 
   @@index([workspaceId, status])
   @@index([workspaceId, deletedAt])
@@ -275,6 +318,7 @@ model ContentPackage {
 model ContentPackageFile {
   id               String            @id @default(cuid())
   contentPackageId String
+  assetId          String?
   name             String
   fileType         String
   status           PackageFileStatus @default(PLANNED)
@@ -282,8 +326,10 @@ model ContentPackageFile {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   contentPackage   ContentPackage    @relation(fields: [contentPackageId], references: [id], onDelete: Cascade)
+  asset            Asset?            @relation(fields: [assetId], references: [id], onDelete: SetNull)
 
   @@index([contentPackageId, status])
+  @@index([assetId])
 }
 
 model Reminder {
@@ -370,4 +416,76 @@ model ChangeLog {
 
   @@index([workspaceId, projectId, createdAt])
   @@index([workspaceId, entityType, entityId])
+}
+
+model Asset {
+  id                    String               @id @default(cuid())
+  workspaceId           String
+  projectId             String?
+  productId             String?
+  name                  String
+  kind                  AssetKind
+  source                AssetSource          @default(USER_UPLOAD)
+  status                AssetStatus          @default(UPLOADED)
+  mimeType              String?
+  sizeBytes             Int?
+  storagePath           String?
+  originalFilename      String?
+  checksum              String?
+  metadata              Json?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  workspace             Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project               Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  product               Product?             @relation(fields: [productId], references: [id], onDelete: SetNull)
+  packageFiles          ContentPackageFile[]
+  imageGenerationResult ImageGenerationJob[] @relation("GeneratedAsset")
+
+  @@index([workspaceId, kind, status])
+  @@index([workspaceId, productId])
+  @@index([workspaceId, projectId])
+}
+
+model ImageGenerationProviderConfig {
+  id           String               @id @default(cuid())
+  workspaceId  String
+  provider     String
+  displayName  String
+  defaultModel String?
+  enabled      Boolean              @default(false)
+  capabilities String[]             @default([])
+  notes        String?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  jobs         ImageGenerationJob[]
+
+  @@index([workspaceId, provider])
+}
+
+model ImageGenerationJob {
+  id               String                         @id @default(cuid())
+  workspaceId      String
+  projectId        String?
+  providerConfigId String?
+  resultAssetId    String?
+  provider         String
+  model            String?
+  promptVersion    String
+  sourceAssetIds   String[]                       @default([])
+  generationMode   ImageGenerationMode
+  aspectRatio      String
+  status           ImageGenerationStatus          @default(QUEUED)
+  error            String?
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+  workspace        Workspace                      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project          Project?                       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  providerConfig   ImageGenerationProviderConfig? @relation(fields: [providerConfigId], references: [id], onDelete: SetNull)
+  resultAsset      Asset?                         @relation("GeneratedAsset", fields: [resultAssetId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, projectId])
+  @@index([providerConfigId])
+  @@index([resultAssetId])
 }

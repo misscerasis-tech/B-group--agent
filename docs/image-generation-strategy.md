@@ -132,13 +132,18 @@ API 密钥只能保存在服务端环境变量，或未来的加密集成配置�
 - 模板合成始终作为稳定降级路径。
 - C 级输出禁止进入正式素材包。
 
-## 第一阶段实现状态
+## 当前实现状态
 
-第一阶段只提供接口与文档预留：
+当前仍不调用真实图片生成 API，但已经落地数据库与素材库底座：
 
 - `ImageGenerationProvider` 抽象。
 - `ImageGenerationMode`、`ImageGenerationMetadata`、`PosterLayerType` 类型。
 - 产品主体锁定类型。
+- `Asset` 素材库模型。
+- `ImageGenerationProviderConfig` Workspace 级候选供应商配置。
+- `ImageGenerationJob` 图片生成/模板合成任务模型。
+- `/assets` 素材库页面，可上传真实产品图、官方 Logo、资料和参考图。
 - 不调用真实图片生成 API。
 - 不保存供应商密钥。
 
+素材上传到本地 `storage/assets/<workspaceId>`，该目录已被 `.gitignore` 排除。生产环境后续应切换到 S3 兼容对象存储，并保持同样的 Asset 元数据结构。
