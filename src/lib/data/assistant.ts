@@ -266,11 +266,18 @@ export async function submitAgentCommand(input: {
       projectId: project.id,
       operations: parsed.operations,
     });
-    const operationStatus = noSafeOperation
-      ? AgentOperationStatus.FAILED
-      : requiresConfirmation
-        ? AgentOperationStatus.PENDING_CONFIRMATION
-        : AgentOperationStatus.APPLIED;
+    const completionTargetWarnings = await findCompletionTargetWarnings(tx, {
+      workspaceId: input.workspaceId,
+      projectId: project.id,
+      operations: parsed.operations,
+    });
+    const hasMissingCompletionTargets = completionTargetWarnings.length > 0;
+    const operationStatus =
+      noSafeOperation || hasMissingCompletionTargets
+        ? AgentOperationStatus.FAILED
+        : requiresConfirmation
+          ? AgentOperationStatus.PENDING_CONFIRMATION
+          : AgentOperationStatus.APPLIED;
     const conflictCheck = buildAgentConflictCheck({
       noSafeOperation,
       requiresConfirmation,
@@ -278,6 +285,7 @@ export async function submitAgentCommand(input: {
       strategy,
       operations: parsed.operations,
       activePlanChannelUsage,
+      completionTargetWarnings,
     });
 
     await tx.agentMessage.create({
@@ -311,6 +319,8 @@ export async function submitAgentCommand(input: {
       const starterPlanOperations = parsed.operations.filter(isStarterPlanOperation);
       const metricsOperations = parsed.operations.filter(isMetricsOperation);
       const planItemOperations = parsed.operations.filter(isPlanItemOperation);
+      const reminderCompletionOperations = parsed.operations.filter(isReminderCompletionOperation);
+      const planItemCompletionOperations = parsed.operations.filter(isPlanItemCompletionOperation);
 
       if (strategyOperations.length > 0) {
         const before = strategyToJson(strategy);
@@ -384,6 +394,20 @@ export async function submitAgentCommand(input: {
         operations: planItemOperations,
       });
 
+      await applyReminderCompletionOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: reminderCompletionOperations,
+      });
+
+      await applyPlanItemCompletionOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: planItemCompletionOperations,
+      });
+
       if (starterPlanOperations.length > 0) {
         await createStarterPlanIfMissing(tx, {
           workspaceId: input.workspaceId,
@@ -445,6 +469,8 @@ export async function applyPendingAgentOperation(input: {
     const starterPlanOperations = parsedOperations.filter(isStarterPlanOperation);
     const metricsOperations = parsedOperations.filter(isMetricsOperation);
     const planItemOperations = parsedOperations.filter(isPlanItemOperation);
+    const reminderCompletionOperations = parsedOperations.filter(isReminderCompletionOperation);
+    const planItemCompletionOperations = parsedOperations.filter(isPlanItemCompletionOperation);
     let updatedStrategy: ProjectStrategyRecord = strategy;
 
     if (strategyOperations.length > 0) {
@@ -554,6 +580,20 @@ export async function applyPendingAgentOperation(input: {
       operations: planItemOperations,
     });
 
+    await applyReminderCompletionOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: reminderCompletionOperations,
+    });
+
+    await applyPlanItemCompletionOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: planItemCompletionOperations,
+    });
+
     if (starterPlanOperations.length > 0) {
       await createStarterPlanIfMissing(tx, {
         workspaceId: input.workspaceId,
@@ -584,6 +624,8 @@ export async function applyPendingAgentOperation(input: {
         starterPlanChanged: starterPlanOperations.length > 0,
         metricsChanged: metricsOperations.length > 0,
         planItemChanged: planItemOperations.length > 0,
+        reminderCompleted: reminderCompletionOperations.length > 0,
+        planItemCompleted: planItemCompletionOperations.length > 0,
       });
 
       await tx.agentMessage.create({
@@ -701,6 +743,49 @@ async function findActivePlanChannelUsage(
   });
 }
 
+async function findCompletionTargetWarnings(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  const warnings: string[] = [];
+
+  for (const operation of input.operations) {
+    if (operation.type === "complete_reminder") {
+      const matchCount = await tx.reminder.count({
+        where: buildReminderCompletionWhere({
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          keyword: operation.value.keyword,
+        }),
+      });
+
+      if (matchCount === 0) {
+        warnings.push(`未找到标题或说明包含「${operation.value.keyword}」的开放提醒`);
+      }
+    }
+
+    if (operation.type === "complete_plan_item") {
+      const matchCount = await tx.contentPlanItem.count({
+        where: buildPlanItemCompletionWhere({
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          value: operation.value,
+        }),
+      });
+
+      if (matchCount === 0) {
+        warnings.push(`未找到匹配「${describePlanItemCompletionValue(operation.value)}」的未完成内容计划`);
+      }
+    }
+  }
+
+  return warnings;
+}
+
 function buildAgentConflictCheck(input: {
   noSafeOperation: boolean;
   requiresConfirmation: boolean;
@@ -708,9 +793,12 @@ function buildAgentConflictCheck(input: {
   strategy: ProjectStrategyRecord;
   operations: ParsedAgentOperation[];
   activePlanChannelUsage: ActivePlanChannelUsage[];
+  completionTargetWarnings: string[];
 }) {
   const base = input.noSafeOperation
     ? "未识别到足够明确的市场、渠道、频率、项目状态、提醒、内容计划或内容方向，未写入数据库。"
+    : input.completionTargetWarnings.length > 0
+      ? `已识别到完成类指令，但${input.completionTargetWarnings.join("；")}，未写入数据库。`
     : input.requiresConfirmation
       ? "当前策略已被人工确认为正式版本，需要二次确认后才能修改核心项目配置。"
       : input.hasConfirmationSensitiveOperation
@@ -1265,6 +1353,201 @@ async function applyPlanItemOperations(
   }
 }
 
+async function applyReminderCompletionOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "complete_reminder") {
+      continue;
+    }
+
+    const reminder = await tx.reminder.findFirst({
+      where: buildReminderCompletionWhere({
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        keyword: operation.value.keyword,
+      }),
+      orderBy: [
+        {
+          dueAt: "asc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+    });
+
+    if (!reminder) {
+      continue;
+    }
+
+    const updatedReminder = await tx.reminder.update({
+      where: {
+        id: reminder.id,
+      },
+      data: {
+        status: ReminderStatus.DONE,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "Reminder",
+        entityId: reminder.id,
+        action: "agent_reminder_completed",
+        summary: operation.label,
+        before: reminderToJson(reminder),
+        after: reminderToJson(updatedReminder),
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
+async function applyPlanItemCompletionOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "complete_plan_item") {
+      continue;
+    }
+
+    const planItem = await tx.contentPlanItem.findFirst({
+      where: buildPlanItemCompletionWhere({
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        value: operation.value,
+      }),
+      orderBy: [
+        {
+          dueDate: "asc",
+        },
+        {
+          week: "asc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+    });
+
+    if (!planItem) {
+      continue;
+    }
+
+    const updatedPlanItem = await tx.contentPlanItem.update({
+      where: {
+        id: planItem.id,
+      },
+      data: {
+        status: PlanItemStatus.DONE,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ContentPlanItem",
+        entityId: planItem.id,
+        action: "agent_plan_item_completed",
+        summary: operation.label,
+        before: planItemToJson(planItem),
+        after: planItemToJson(updatedPlanItem),
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
+function buildReminderCompletionWhere(input: {
+  workspaceId: string;
+  projectId: string;
+  keyword: string;
+}) {
+  return scopedWhere(input.workspaceId, {
+    projectId: input.projectId,
+    status: ReminderStatus.OPEN,
+    OR: [
+      {
+        title: {
+          contains: input.keyword,
+        },
+      },
+      {
+        description: {
+          contains: input.keyword,
+        },
+      },
+    ],
+  }) as Prisma.ReminderWhereInput;
+}
+
+function buildPlanItemCompletionWhere(input: {
+  workspaceId: string;
+  projectId: string;
+  value: Extract<ParsedAgentOperation, { type: "complete_plan_item" }>["value"];
+}) {
+  const where = scopedWhere(input.workspaceId, {
+    projectId: input.projectId,
+    status: {
+      not: PlanItemStatus.DONE,
+    },
+  }) as Prisma.ContentPlanItemWhereInput;
+
+  if (input.value.week) {
+    where.week = input.value.week;
+  }
+
+  if (input.value.channel) {
+    where.channel = input.value.channel;
+  }
+
+  if (input.value.keyword) {
+    where.OR = [
+      {
+        title: {
+          contains: input.value.keyword,
+        },
+      },
+      {
+        theme: {
+          contains: input.value.keyword,
+        },
+      },
+      {
+        deliverable: {
+          contains: input.value.keyword,
+        },
+      },
+    ];
+  }
+
+  return where;
+}
+
+function describePlanItemCompletionValue(
+  value: Extract<ParsedAgentOperation, { type: "complete_plan_item" }>["value"],
+) {
+  return [value.week ? `第${value.week}周` : null, value.channel, value.keyword]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function isStrategyOperation(operation: ParsedAgentOperation) {
   return (
     operation.type === "add_channel" ||
@@ -1296,6 +1579,14 @@ function isMetricsOperation(operation: ParsedAgentOperation) {
 
 function isPlanItemOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_plan_item";
+}
+
+function isReminderCompletionOperation(operation: ParsedAgentOperation) {
+  return operation.type === "complete_reminder";
+}
+
+function isPlanItemCompletionOperation(operation: ParsedAgentOperation) {
+  return operation.type === "complete_plan_item";
 }
 
 function isConfirmationSensitiveOperation(operation: ParsedAgentOperation) {
@@ -1361,6 +1652,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
       continue;
     }
 
+    if (type === "complete_reminder" && isReminderCompletionValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `完成提醒：${value.keyword}`,
+      });
+      continue;
+    }
+
     if (
       type === "set_package_frequency" &&
       (value === ContentFrequency.WEEKLY ||
@@ -1397,6 +1697,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         value,
         label: label || `新增内容计划：第${value.week}周 · ${value.channel} · ${value.title}`,
       });
+      continue;
+    }
+
+    if (type === "complete_plan_item" && isPlanItemCompletionValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `完成内容计划：${describePlanItemCompletionValue(value)}`,
+      });
     }
   }
 
@@ -1426,6 +1735,19 @@ function isMetricsSnapshotValue(value: unknown): value is Extract<
   );
 }
 
+function isReminderCompletionValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "complete_reminder" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return typeof record.keyword === "string" && record.keyword.trim().length >= 2;
+}
+
 function isPlanItemValue(value: unknown): value is Extract<
   ParsedAgentOperation,
   { type: "create_plan_item" }
@@ -1450,6 +1772,24 @@ function isPlanItemValue(value: unknown): value is Extract<
       record.status === PlanItemStatus.REVIEW_NEEDED ||
       record.status === PlanItemStatus.DONE)
   );
+}
+
+function isPlanItemCompletionValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "complete_plan_item" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  const hasWeek =
+    record.week === undefined ||
+    (Number.isInteger(record.week) && Number(record.week) >= 1 && Number(record.week) <= 12);
+  const hasChannel = record.channel === undefined || typeof record.channel === "string";
+  const hasKeyword = record.keyword === undefined || typeof record.keyword === "string";
+
+  return hasWeek && hasChannel && hasKeyword && Boolean(record.week || record.channel || record.keyword);
 }
 
 function isNonNegativeNumber(value: unknown): value is number {
@@ -1482,42 +1822,54 @@ function buildConfirmedAssistantReply(input: {
   starterPlanChanged: boolean;
   metricsChanged: boolean;
   planItemChanged: boolean;
+  reminderCompleted: boolean;
+  planItemCompleted: boolean;
 }) {
   const starterPlanText = input.starterPlanChanged ? "，并生成首月计划和第一份素材包结构" : "";
   const metricsText = input.metricsChanged ? "，并录入渠道表现指标" : "";
   const planItemText = input.planItemChanged ? "，并新增内容计划" : "";
+  const completedReminderText = input.reminderCompleted ? "，并完成项目提醒" : "";
+  const completedPlanItemText = input.planItemCompleted ? "，并完成内容计划" : "";
 
   if (input.strategyChanged && input.strategyWasConfirmed) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}：${input.operationSummary}`;
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认写入策略草案${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}：${input.operationSummary}`;
+    return `已按你的确认写入策略草案${projectText}${reminderText}${starterPlanText}${metricsText}${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认更新项目基础信息${reminderText}${starterPlanText}${metricsText}${planItemText}：${input.operationSummary}`;
+    return `已按你的确认更新项目基础信息${reminderText}${starterPlanText}${metricsText}${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderChanged) {
-    return `已按你的确认创建提醒${starterPlanText}${metricsText}${planItemText}：${input.operationSummary}`;
+    return `已按你的确认创建提醒${starterPlanText}${metricsText}${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.starterPlanChanged) {
-    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}${planItemText}：${input.operationSummary}`;
+    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.metricsChanged) {
-    return `已按你的确认录入渠道表现指标${planItemText}：${input.operationSummary}`;
+    return `已按你的确认录入渠道表现指标${planItemText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.planItemChanged) {
-    return `已按你的确认新增内容计划：${input.operationSummary}`;
+    return `已按你的确认新增内容计划${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.reminderCompleted) {
+    return `已按你的确认完成项目提醒${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.planItemCompleted) {
+    return `已按你的确认完成内容计划：${input.operationSummary}`;
   }
 
   return `已按你的确认处理：${input.operationSummary}`;
@@ -1585,6 +1937,28 @@ function reminderToJson(reminder: {
     description: reminder.description,
     severity: reminder.severity,
     status: reminder.status,
+  };
+}
+
+function planItemToJson(planItem: {
+  id: string;
+  week: number;
+  channel: string;
+  theme: string;
+  title: string;
+  deliverable: string;
+  dueDate: Date | null;
+  status: PlanItemStatus;
+}) {
+  return {
+    id: planItem.id,
+    week: planItem.week,
+    channel: planItem.channel,
+    theme: planItem.theme,
+    title: planItem.title,
+    deliverable: planItem.deliverable,
+    dueDate: planItem.dueDate,
+    status: planItem.status,
   };
 }
 

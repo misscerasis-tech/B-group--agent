@@ -30,6 +30,13 @@ export type ParsedAgentOperation =
       severity: ReminderSeverity;
     }
   | {
+      type: "complete_reminder";
+      value: {
+        keyword: string;
+      };
+      label: string;
+    }
+  | {
       type: "create_metrics_snapshot";
       value: {
         period: string;
@@ -52,6 +59,15 @@ export type ParsedAgentOperation =
         deliverable: string;
         dueDate?: string;
         status: PlanItemStatus;
+      };
+      label: string;
+    }
+  | {
+      type: "complete_plan_item";
+      value: {
+        keyword?: string;
+        week?: number;
+        channel?: string;
       };
       label: string;
     }
@@ -235,6 +251,26 @@ function parseReminderTitle(text: string) {
   return title.slice(0, 80);
 }
 
+function parseCompleteReminderOperation(text: string): ParsedAgentOperation | null {
+  if (!/(提醒|待办)/.test(text) || !hasCompletionIntent(text)) {
+    return null;
+  }
+
+  const keyword = extractCompletionKeyword(text, ["提醒", "待办"]);
+
+  if (!keyword) {
+    return null;
+  }
+
+  return {
+    type: "complete_reminder",
+    value: {
+      keyword,
+    },
+    label: `完成提醒：${keyword}`,
+  };
+}
+
 function shouldGenerateStarterPlan(text: string) {
   return /生成首月计划|创建首月计划|生成第一份素材包|创建第一份素材包|生成素材包结构|创建素材包结构/.test(text);
 }
@@ -353,6 +389,74 @@ function parsePlanItemOperation(text: string): ParsedAgentOperation | null {
   };
 }
 
+function parseCompletePlanItemOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(计划|内容|视频|图文|脚本|海报|帖子|贴文)/.test(text) ||
+    !hasCompletionIntent(text)
+  ) {
+    return null;
+  }
+
+  const channel = CHANNELS.find((channelName) =>
+    text.toLowerCase().includes(channelName.toLowerCase()),
+  );
+  const week = parsePlanWeek(text) ?? undefined;
+  const keyword = extractCompletionKeyword(text, [
+    "计划",
+    "内容计划",
+    "内容",
+    "视频",
+    "短视频",
+    "图文",
+    "脚本",
+    "海报",
+    "帖子",
+    "贴文",
+    ...(channel ? [channel] : []),
+  ]);
+  const value = {
+    ...(keyword ? { keyword } : {}),
+    ...(week ? { week } : {}),
+    ...(channel ? { channel } : {}),
+  };
+
+  if (!value.keyword && !value.week && !value.channel) {
+    return null;
+  }
+
+  const scope = [
+    value.week ? `第${value.week}周` : null,
+    value.channel,
+    value.keyword,
+  ].filter(Boolean);
+
+  return {
+    type: "complete_plan_item",
+    value,
+    label: `完成内容计划：${scope.join(" · ")}`,
+  };
+}
+
+function hasCompletionIntent(text: string) {
+  return /已完成|完成了|完成|已处理|处理完|处理掉|关闭|解决|搞定|标记完成|标为完成|设为完成|done/i.test(
+    text,
+  );
+}
+
+function extractCompletionKeyword(text: string, removableTerms: string[]) {
+  const keyword = text
+    .replace(/请|麻烦|帮我|把|将|当前|这个|这个项目|项目/g, "")
+    .replace(/标记为完成|标记完成|标为完成|设为完成/g, "")
+    .replace(/已处理|处理完|处理掉|已完成|完成了|完成|关闭|解决|搞定|done/gi, "")
+    .replace(new RegExp(removableTerms.map(escapeRegExp).join("|"), "gi"), "")
+    .replace(/第\s*\d{1,2}\s*周/g, "")
+    .replace(/，|。|！|!|：|:|；|;|、/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return keyword.length >= 2 ? keyword.slice(0, 80) : null;
+}
+
 function parsePlanWeek(text: string) {
   const weekMatch = text.match(/第\s*(\d{1,2})\s*周/);
 
@@ -449,6 +553,10 @@ function normalizeDateText(value: string) {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function extractTextAfterLabel(text: string, labels: string[]) {
   for (const label of labels) {
     const match = text.match(new RegExp(`${label}\\s*[:：]?\\s*([^，。,；;]+)`));
@@ -541,6 +649,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     });
   }
 
+  const reminderCompletionOperation = parseCompleteReminderOperation(text);
+  if (reminderCompletionOperation) {
+    operations.push(reminderCompletionOperation);
+  }
+
   const frequency = parseFrequency(text);
   if (frequency) {
     const frequencyLabel: Record<ContentFrequency, string> = {
@@ -572,6 +685,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const planItemOperation = parsePlanItemOperation(text);
   if (planItemOperation) {
     operations.push(planItemOperation);
+  }
+
+  const planItemCompletionOperation = parseCompletePlanItemOperation(text);
+  if (planItemCompletionOperation) {
+    operations.push(planItemCompletionOperation);
   }
 
   for (const audience of AUDIENCE_HINTS) {
@@ -619,7 +737,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     (operation) => operation.type === "create_metrics_snapshot",
   );
   const hasCompletePlanItemOperation = dedupedOperations.some(
-    (operation) => operation.type === "create_plan_item",
+    (operation) =>
+      operation.type === "create_plan_item" || operation.type === "complete_plan_item",
+  );
+  const hasCompleteWorkflowOperation = dedupedOperations.some(
+    (operation) => operation.type === "complete_reminder",
   );
 
   return {
@@ -627,7 +749,10 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations: dedupedOperations,
     summary: summarizeOperations(dedupedOperations),
     confidence:
-      dedupedOperations.length >= 2 || hasCompleteMetricsOperation || hasCompletePlanItemOperation
+      dedupedOperations.length >= 2 ||
+      hasCompleteMetricsOperation ||
+      hasCompletePlanItemOperation ||
+      hasCompleteWorkflowOperation
         ? "high"
         : dedupedOperations.length === 1
           ? "medium"

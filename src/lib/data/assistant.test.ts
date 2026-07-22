@@ -28,7 +28,9 @@ const mocks = vi.hoisted(() => {
     contentPlanItem: {
       count: vi.fn(),
       create: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
+      update: vi.fn(),
     },
     contentPackage: {
       create: vi.fn(),
@@ -37,7 +39,10 @@ const mocks = vi.hoisted(() => {
       createMany: vi.fn(),
     },
     reminder: {
+      count: vi.fn(),
       create: vi.fn(),
+      findFirst: vi.fn(),
+      update: vi.fn(),
     },
     changeLog: {
       create: vi.fn(),
@@ -275,6 +280,125 @@ describe("generateStarterPlan", () => {
         entityId: "plan-created-from-agent",
         action: "agent_plan_item_created",
         actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("completes an open reminder from a Chinese agent command", async () => {
+    const reminder = {
+      id: "reminder-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      title: "抽奖规则需要提前确认",
+      description: "发布前确认奖品、规则和免责声明。",
+      severity: "WARNING",
+      status: "OPEN",
+      dueAt: new Date("2026-07-24T00:00:00.000Z"),
+      createdAt: new Date("2026-07-20T00:00:00.000Z"),
+    };
+    mocks.tx.reminder.count.mockResolvedValue(1);
+    mocks.tx.reminder.findFirst.mockResolvedValue(reminder);
+    mocks.tx.reminder.update.mockResolvedValue({
+      ...reminder,
+      status: "DONE",
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "把抽奖规则提醒标记完成。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.reminder.update).toHaveBeenCalledWith({
+      where: {
+        id: "reminder-1",
+      },
+      data: {
+        status: "DONE",
+      },
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "Reminder",
+        entityId: "reminder-1",
+        action: "agent_reminder_completed",
+        summary: "完成提醒：抽奖规则",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("completes a matching content plan item from a Chinese agent command", async () => {
+    const planItem = {
+      id: "plan-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      strategyId: "strategy-1",
+      week: 2,
+      channel: "TikTok",
+      theme: "新品认知",
+      title: "开箱短视频",
+      deliverable: "短视频脚本",
+      dueDate: new Date("2026-08-07T00:00:00.000Z"),
+      status: "READY",
+      createdAt: new Date("2026-07-22T00:00:00.000Z"),
+    };
+    mocks.tx.contentPlanItem.count.mockResolvedValue(1);
+    mocks.tx.contentPlanItem.findFirst.mockResolvedValue(planItem);
+    mocks.tx.contentPlanItem.update.mockResolvedValue({
+      ...planItem,
+      status: "DONE",
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "第2周 TikTok 开箱短视频已完成。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.contentPlanItem.update).toHaveBeenCalledWith({
+      where: {
+        id: "plan-1",
+      },
+      data: {
+        status: "DONE",
+      },
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPlanItem",
+        entityId: "plan-1",
+        action: "agent_plan_item_completed",
+        summary: "完成内容计划：第2周 · TikTok · 开箱",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
+  it("fails safely when a completion command cannot match a target", async () => {
+    mocks.tx.reminder.count.mockResolvedValue(0);
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "把不存在的提醒标记完成。",
+    });
+
+    expect(result.status).toBe("FAILED");
+    expect(mocks.tx.reminder.update).not.toHaveBeenCalled();
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: "FAILED",
+        conflictCheck: expect.stringContaining("未找到标题或说明包含「不存在的」的开放提醒"),
       }),
     });
   });

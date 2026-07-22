@@ -149,6 +149,34 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts reminder completion requests", () => {
+    const parsed = parseAgentCommand("把抽奖规则提醒标记完成。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "complete_reminder",
+      value: {
+        keyword: "抽奖规则",
+      },
+      label: "完成提醒：抽奖规则",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("extracts content plan completion requests", () => {
+    const parsed = parseAgentCommand("第2周 TikTok 开箱短视频已完成。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "complete_plan_item",
+      value: {
+        week: 2,
+        channel: "TikTok",
+        keyword: "开箱",
+      },
+      label: "完成内容计划：第2周 · TikTok · 开箱",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("returns a low-confidence summary when no safe operation is detected", () => {
     const parsed = parseAgentCommand("帮我看看这个项目怎么样");
 

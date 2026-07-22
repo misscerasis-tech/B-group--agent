@@ -66,6 +66,7 @@
 - 今日工作台新增 Workspace 安全备份导出，`/workspace/export` 可下载当前 Workspace 结构化 JSON，递归屏蔽疑似密钥字段。
 - 今日工作台新增 Agent 工作简报，基于素材包、近期计划、开放提醒和渠道表现生成中文重点进展、风险和下一步动作。
 - B 组 Agent 支持通过中文指令新增内容日历计划项，并写入变更日志。
+- B 组 Agent 支持通过中文指令完成项目提醒和内容日历计划项，找不到匹配目标时会失败并避免误写入。
 - 增加 `AgentTextProvider` 抽象，当前通过 `local-rule` Provider 解析中文指令，未来真实 GPT 接入不需要改业务写入路径。
 - 审核中心支持取消误生成或暂不需要处理的待审核任务。
 - 顶部 Workspace 区域支持创建新的 Workspace，并自动切换到新 Workspace。
