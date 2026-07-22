@@ -46,6 +46,7 @@ export async function listWorkspaceImageProviderConfigs(workspaceId: string) {
 
 export async function createUploadedAsset(input: {
   workspaceId: string;
+  userId: string;
   projectId?: string;
   productId?: string;
   name: string;
@@ -55,6 +56,8 @@ export async function createUploadedAsset(input: {
   if (input.file.size <= 0) {
     throw new Error("请选择要上传的素材文件。");
   }
+
+  await validateAssetRelations(input.workspaceId, input.projectId, input.productId);
 
   const buffer = Buffer.from(await input.file.arrayBuffer());
   const checksum = createHash("sha256").update(buffer).digest("hex");
@@ -67,29 +70,111 @@ export async function createUploadedAsset(input: {
   await mkdir(absoluteDir, { recursive: true });
   await writeFile(path.join(absoluteDir, storedFilename), buffer);
 
-  return prisma.asset.create({
-    data: {
-      workspaceId: input.workspaceId,
-      projectId: input.projectId || null,
-      productId: input.productId || null,
-      name: input.name,
-      kind: input.kind,
-      status: AssetStatus.UPLOADED,
-      mimeType: input.file.type || null,
-      sizeBytes: input.file.size,
-      storagePath: relativePath,
-      originalFilename: input.file.name,
-      checksum,
-      metadata: {
-        storageProvider: "local",
-        productSubjectLocked:
-          input.kind === AssetKind.PRODUCT_IMAGE || input.kind === AssetKind.LOGO,
+  return prisma.$transaction(async (tx) => {
+    const asset = await tx.asset.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId || null,
+        productId: input.productId || null,
+        name: input.name,
+        kind: input.kind,
+        status: AssetStatus.UPLOADED,
+        mimeType: input.file.type || null,
+        sizeBytes: input.file.size,
+        storagePath: relativePath,
+        originalFilename: input.file.name,
+        checksum,
+        metadata: {
+          storageProvider: "local",
+          productSubjectLocked:
+            input.kind === AssetKind.PRODUCT_IMAGE || input.kind === AssetKind.LOGO,
+        },
       },
-    },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "Asset",
+        entityId: asset.id,
+        action: "asset_uploaded",
+        summary: `上传素材：${asset.name}`,
+        after: {
+          kind: asset.kind,
+          status: asset.status,
+          productId: asset.productId,
+          projectId: asset.projectId,
+        },
+        actorUserId: input.userId,
+      },
+    });
+
+    return asset;
   });
 }
 
-export async function approveAsset(workspaceId: string, assetId: string) {
+export async function approveAsset(workspaceId: string, userId: string, assetId: string) {
+  return updateAssetStatus(workspaceId, userId, assetId, AssetStatus.APPROVED);
+}
+
+export async function rejectAsset(workspaceId: string, userId: string, assetId: string) {
+  return updateAssetStatus(workspaceId, userId, assetId, AssetStatus.REJECTED);
+}
+
+async function validateAssetRelations(
+  workspaceId: string,
+  projectId?: string,
+  productId?: string,
+) {
+  if (projectId) {
+    const project = await prisma.project.findFirst({
+      where: scopedWhere(workspaceId, {
+        id: projectId,
+        deletedAt: null,
+      }),
+    });
+
+    if (!project) {
+      throw new Error("所选项目不属于当前 Workspace。");
+    }
+  }
+
+  if (productId) {
+    const product = await prisma.product.findFirst({
+      where: scopedWhere(workspaceId, {
+        id: productId,
+        deletedAt: null,
+      }),
+    });
+
+    if (!product) {
+      throw new Error("所选产品不属于当前 Workspace。");
+    }
+  }
+
+  if (projectId && productId) {
+    const projectProduct = await prisma.projectProduct.findUnique({
+      where: {
+        projectId_productId: {
+          projectId,
+          productId,
+        },
+      },
+    });
+
+    if (!projectProduct) {
+      throw new Error("所选产品尚未关联到所选项目，请先在项目详情中建立关联。");
+    }
+  }
+}
+
+async function updateAssetStatus(
+  workspaceId: string,
+  userId: string,
+  assetId: string,
+  status: AssetStatus,
+) {
   const asset = await prisma.asset.findFirst({
     where: scopedWhere(workspaceId, {
       id: assetId,
@@ -100,12 +185,37 @@ export async function approveAsset(workspaceId: string, assetId: string) {
     throw new Error("未找到当前 Workspace 下的素材。");
   }
 
-  return prisma.asset.update({
-    where: {
-      id: asset.id,
-    },
-    data: {
-      status: AssetStatus.APPROVED,
-    },
+  return prisma.$transaction(async (tx) => {
+    const updatedAsset = await tx.asset.update({
+      where: {
+        id: asset.id,
+      },
+      data: {
+        status,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId,
+        projectId: asset.projectId,
+        entityType: "Asset",
+        entityId: asset.id,
+        action: status === AssetStatus.APPROVED ? "asset_approved" : "asset_rejected",
+        summary:
+          status === AssetStatus.APPROVED
+            ? `审核通过素材：${asset.name}`
+            : `拒绝素材：${asset.name}`,
+        before: {
+          status: asset.status,
+        },
+        after: {
+          status: updatedAsset.status,
+        },
+        actorUserId: userId,
+      },
+    });
+
+    return updatedAsset;
   });
 }

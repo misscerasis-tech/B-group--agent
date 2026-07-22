@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { approveAsset, createUploadedAsset } from "@/lib/data/assets";
+import { approveAsset, createUploadedAsset, rejectAsset } from "@/lib/data/assets";
 import { parseAssetKind } from "@/lib/status";
 import { getWorkspaceContext } from "@/lib/workspace-context";
 
@@ -31,6 +31,7 @@ export async function uploadAssetAction(formData: FormData) {
 
   await createUploadedAsset({
     workspaceId: context.currentWorkspace.id,
+    userId: context.user.id,
     projectId: readOptionalId(formData, "projectId"),
     productId: readOptionalId(formData, "productId"),
     name: readRequiredText(formData, "name", "素材名称"),
@@ -46,8 +47,22 @@ export async function approveAssetAction(formData: FormData) {
   const context = await getWorkspaceContext();
   const assetId = readRequiredText(formData, "assetId", "素材");
 
-  await approveAsset(context.currentWorkspace.id, assetId);
+  await approveAsset(context.currentWorkspace.id, context.user.id, assetId);
 
   revalidatePath("/assets");
+  revalidatePath("/reviews");
+  revalidatePath("/dashboard");
+  redirect("/assets");
+}
+
+export async function rejectAssetAction(formData: FormData) {
+  const context = await getWorkspaceContext();
+  const assetId = readRequiredText(formData, "assetId", "素材");
+
+  await rejectAsset(context.currentWorkspace.id, context.user.id, assetId);
+
+  revalidatePath("/assets");
+  revalidatePath("/reviews");
+  revalidatePath("/dashboard");
   redirect("/assets");
 }

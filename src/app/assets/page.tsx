@@ -1,5 +1,9 @@
 import { Image as ImageIcon, Layers, Sparkles } from "lucide-react";
-import { approveAssetAction, uploadAssetAction } from "@/app/actions/asset-actions";
+import {
+  approveAssetAction,
+  rejectAssetAction,
+  uploadAssetAction,
+} from "@/app/actions/asset-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -155,6 +159,14 @@ export default async function AssetsPage() {
                         <input name="assetId" type="hidden" value={asset.id} />
                         <button className="button secondary" type="submit">
                           标记为已审核
+                        </button>
+                      </form>
+                    ) : null}
+                    {asset.status === "UPLOADED" ? (
+                      <form action={rejectAssetAction} className="inline-form">
+                        <input name="assetId" type="hidden" value={asset.id} />
+                        <button className="button secondary" type="submit">
+                          拒绝素材
                         </button>
                       </form>
                     ) : null}
