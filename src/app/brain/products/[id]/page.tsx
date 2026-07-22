@@ -3,6 +3,7 @@ import {
   confirmAllProductFactsAction,
   createProductFactAction,
   generateInitialProductFactsAction,
+  generateProductFactsFromTextAction,
   updateProductAction,
 } from "@/app/actions/product-actions";
 import { AppShell } from "@/components/app-shell";
@@ -152,6 +153,23 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
 
           <div className="panel">
             <h3>新增事实</h3>
+            <form
+              action={generateProductFactsFromTextAction.bind(null, product.id)}
+              className="form"
+            >
+              <label className="form-row">
+                <span className="field-label">从补充资料提取事实</span>
+                <textarea
+                  name="sourceText"
+                  placeholder="粘贴官网介绍、产品包装参数、官方 Brief 或客服 FAQ。已确认事实不会被静默覆盖。"
+                  required
+                />
+              </label>
+              <button className="button secondary" type="submit">
+                提取为待确认事实
+              </button>
+            </form>
+
             <form action={createProductFactAction.bind(null, product.id)} className="form">
               <label className="form-row">
                 <span className="field-label">事实名称</span>

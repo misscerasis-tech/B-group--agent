@@ -7,6 +7,7 @@ import {
   createProduct,
   createProductFact,
   generateInitialProductFacts,
+  generateProductFactsFromText,
   updateProduct,
 } from "@/lib/data/products";
 import { parseProductFactStatus, parseProductStatus } from "@/lib/status";
@@ -71,6 +72,20 @@ export async function generateInitialProductFactsAction(productId: string) {
   const context = await getWorkspaceContext();
 
   await generateInitialProductFacts(context.currentWorkspace.id, productId);
+
+  revalidatePath("/brain");
+  revalidatePath(`/brain/products/${productId}`);
+  redirect(`/brain/products/${productId}`);
+}
+
+export async function generateProductFactsFromTextAction(productId: string, formData: FormData) {
+  const context = await getWorkspaceContext();
+
+  await generateProductFactsFromText(
+    context.currentWorkspace.id,
+    productId,
+    readRequiredText(formData, "sourceText", "产品资料"),
+  );
 
   revalidatePath("/brain");
   revalidatePath(`/brain/products/${productId}`);
