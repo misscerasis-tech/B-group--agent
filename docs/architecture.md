@@ -94,6 +94,8 @@ B 组工作助手已新增：
 - `IntegrationConnection`：Workspace 级可插拔集成连接，当前支持飞书占位连接。
 - `IntegrationMigrationRecord`：飞书组织、通知群或沉淀位置换绑时的迁移记录。
 
+当前素材包导出先使用服务端本地 ZIP 清单生成器，输出说明、排期 CSV、文案、Hashtags、TikTok 脚本、设计 Brief、合规检查和 manifest。导出查询必须按当前 Workspace 限制；后续 PDF、DOCX、XLSX、PNG 生成器可以逐个替换同一导出入口。
+
 仍预留：
 
 - `MetricsSnapshot`

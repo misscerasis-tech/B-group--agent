@@ -34,7 +34,7 @@ export default async function PackagesPage() {
           <div>
             <h2>素材包中心</h2>
             <p className="muted">
-              当前阶段先保存素材包结构和文件状态；后续接入真实 PDF、XLSX、DOCX、TXT、PNG、ZIP 导出。
+              当前阶段先提供本地 ZIP 清单导出；后续接入真实 PDF、XLSX、DOCX、TXT、PNG 文件生成。
             </p>
           </div>
           <Link className="button" href="/b-agent">
@@ -78,7 +78,10 @@ export default async function PackagesPage() {
                 </div>
                 <div className="download-preview">
                   <Download size={18} aria-hidden="true" />
-                  <span>真实下载会在文件生成阶段开放，当前保留完整清单和审核状态。</span>
+                  <span>可下载包含说明、排期、文案、Brief、合规检查和 manifest 的 ZIP。</span>
+                  <Link className="button secondary" href={`/packages/${contentPackage.id}/export`}>
+                    下载 ZIP 清单
+                  </Link>
                 </div>
               </article>
             ))}
