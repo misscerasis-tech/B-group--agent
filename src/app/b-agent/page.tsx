@@ -33,6 +33,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { agentCommandCapabilities } from "@/lib/agent/capabilities";
 import { buildContentPackageReadiness } from "@/lib/content-package-readiness";
 import { getAssistantState } from "@/lib/data/assistant";
+import { getProjectHealthSummary } from "@/lib/data/project-health";
 import { loadWorkspaceContextSafe } from "@/lib/page-context";
 import {
   agentOperationStatusLabels,
@@ -85,6 +86,18 @@ const contentPackageReadinessLabels = {
   BLOCKED: "存在阻塞",
 };
 
+const projectHealthRatingLabels = {
+  READY: "可进入执行",
+  NEEDS_ATTENTION: "需要补齐",
+  BLOCKED: "存在阻塞",
+};
+
+const projectHealthSignalLabels = {
+  complete: "已完成",
+  warning: "需处理",
+  missing: "缺失",
+};
+
 type BAgentPageProps = {
   searchParams: Promise<{
     projectId?: string;
@@ -114,6 +127,9 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
   try {
     const state = await getAssistantState(context.currentWorkspace.id, projectId);
     const selectedProject = state.selectedProject;
+    const projectHealth = selectedProject
+      ? await getProjectHealthSummary(context.currentWorkspace.id, selectedProject.id)
+      : null;
     const latestContentPackage = state.contentPackages[0] ?? null;
     const latestPackageReadiness = latestContentPackage
       ? buildContentPackageReadiness({
@@ -339,6 +355,57 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
               </div>
 
               <section className="workbench-grid">
+                {projectHealth ? (
+                  <div className="workbench-section risks">
+                    <div className="section-title-row">
+                      <h3>0. 项目体检</h3>
+                      <StatusBadge
+                        label={projectHealthRatingLabels[projectHealth.rating]}
+                        tone={projectHealth.rating === "READY" ? "success" : "warning"}
+                      />
+                    </div>
+                    <div
+                      aria-label={`${projectHealth.projectName} 就绪度 ${projectHealth.score} 分`}
+                      style={{
+                        background: "#eef2f7",
+                        borderRadius: 999,
+                        height: 8,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: projectHealth.rating === "READY" ? "#1f9d72" : "#f2a900",
+                          height: "100%",
+                          width: `${projectHealth.score}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="muted">{projectHealth.summary}</p>
+                    {projectHealth.nextActions.length > 0 ? (
+                      <div className="operation-list">
+                        {projectHealth.nextActions.map((action) => (
+                          <article className="operation-item" key={action.key}>
+                            <header>
+                              <strong>{action.label}</strong>
+                              <StatusBadge
+                                label={projectHealthSignalLabels[action.status]}
+                                tone={action.status === "complete" ? "success" : "warning"}
+                              />
+                            </header>
+                            <p>{action.summary}</p>
+                            <Link className="button secondary" href={action.href}>
+                              {action.action}
+                            </Link>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="muted">项目基础已具备，建议进入素材审核和复盘节奏。</p>
+                    )}
+                  </div>
+                ) : null}
+
                 <div className="workbench-section facts">
                   <div className="section-title-row">
                     <h3>1. 产品事实</h3>
