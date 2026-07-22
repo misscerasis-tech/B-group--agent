@@ -44,6 +44,7 @@ export type ParsedAgentOperation =
       value: string;
       label: string;
       severity: ReminderSeverity;
+      dueAt?: string;
     }
   | {
       type: "create_project_health_reminders";
@@ -417,6 +418,50 @@ function parseReminderTitle(text: string) {
   }
 
   return title.slice(0, 80);
+}
+
+function hasLeadingReminderIntent(text: string) {
+  return /^(请|麻烦|帮我)?\s*(提醒我|帮我提醒|记得|待办|需要提醒)/.test(text);
+}
+
+function parseReminderOperation(text: string): ParsedAgentOperation | null {
+  const reminderTitle = parseReminderTitle(text);
+
+  if (!reminderTitle) {
+    return null;
+  }
+
+  const severity = parseReminderSeverity(text);
+  const dueAt = parseReminderDueDate(text);
+  const severityLabel: Record<ReminderSeverity, string> = {
+    INFO: "提示",
+    WARNING: "风险",
+    CRITICAL: "紧急",
+  };
+
+  return {
+    type: "create_reminder",
+    value: reminderTitle,
+    severity,
+    ...(dueAt ? { dueAt } : {}),
+    label: `创建${severityLabel[severity]}提醒：${reminderTitle}`,
+  };
+}
+
+function parseReminderDueDate(text: string) {
+  const isoDate = text.match(/20\d{2}[-/]\d{1,2}[-/]\d{1,2}/);
+
+  if (isoDate?.[0]) {
+    return normalizeDateText(isoDate[0]);
+  }
+
+  const zhDate = text.match(/(20\d{2})年(\d{1,2})月(\d{1,2})日?/);
+
+  if (zhDate?.[1] && zhDate[2] && zhDate[3]) {
+    return `${zhDate[1]}-${zhDate[2].padStart(2, "0")}-${zhDate[3].padStart(2, "0")}`;
+  }
+
+  return undefined;
 }
 
 function parseProjectHealthReminderOperation(text: string): ParsedAgentOperation | null {
@@ -1297,6 +1342,19 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     };
   }
 
+  const reminderOperation = parseReminderOperation(text);
+
+  if (reminderOperation && hasLeadingReminderIntent(text)) {
+    operations.push(reminderOperation);
+
+    return {
+      rawText: text,
+      operations,
+      summary: summarizeOperations(operations),
+      confidence: "high",
+    };
+  }
+
   for (const [market, aliases] of MARKET_ALIASES) {
     if (includesAny(text, aliases)) {
       operations.push({
@@ -1342,21 +1400,8 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     });
   }
 
-  const reminderTitle = parseReminderTitle(text);
-  if (reminderTitle) {
-    const severity = parseReminderSeverity(text);
-    const severityLabel: Record<ReminderSeverity, string> = {
-      INFO: "提示",
-      WARNING: "风险",
-      CRITICAL: "紧急",
-    };
-
-    operations.push({
-      type: "create_reminder",
-      value: reminderTitle,
-      severity,
-      label: `创建${severityLabel[severity]}提醒：${reminderTitle}`,
-    });
+  if (reminderOperation) {
+    operations.push(reminderOperation);
   }
 
   const projectHealthReminderOperation = parseProjectHealthReminderOperation(text);

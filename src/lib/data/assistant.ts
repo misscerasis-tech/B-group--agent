@@ -1758,6 +1758,7 @@ async function applyReminderOperations(
         description: "由 B 组 Agent 中文指令创建。",
         severity: operation.severity,
         status: ReminderStatus.OPEN,
+        dueAt: operation.dueAt ? new Date(`${operation.dueAt}T00:00:00`) : null,
       },
     });
 
@@ -4201,9 +4202,11 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
     }
 
     const severity = record.severity;
+    const dueAt = record.dueAt;
     if (
       type === "create_reminder" &&
       typeof value === "string" &&
+      (dueAt === undefined || typeof dueAt === "string") &&
       (severity === ReminderSeverity.INFO ||
         severity === ReminderSeverity.WARNING ||
         severity === ReminderSeverity.CRITICAL)
@@ -4212,6 +4215,7 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         type,
         value,
         severity,
+        ...(dueAt ? { dueAt } : {}),
         label: label || `创建提醒：${value}`,
       });
       continue;
@@ -5020,6 +5024,7 @@ function reminderToJson(reminder: {
   description: string | null;
   severity: ReminderSeverity;
   status: ReminderStatus;
+  dueAt?: Date | null;
 }) {
   return {
     id: reminder.id,
@@ -5028,6 +5033,7 @@ function reminderToJson(reminder: {
     description: reminder.description,
     severity: reminder.severity,
     status: reminder.status,
+    dueAt: reminder.dueAt ?? null,
   };
 }
 

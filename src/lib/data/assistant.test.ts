@@ -279,6 +279,44 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("creates a project reminder with an explicit due date from a Chinese agent command", async () => {
+    mocks.tx.reminder.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: "reminder-with-due-date",
+        ...data,
+      }),
+    );
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "提醒我 2026-08-07 前确认巴西抽奖奖品和活动规则。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.reminder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        title: "2026-08-07 前确认巴西抽奖奖品和活动规则",
+        severity: "INFO",
+        status: "OPEN",
+        dueAt: new Date("2026-08-07T00:00:00"),
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "Reminder",
+        entityId: "reminder-with-due-date",
+        action: "agent_reminder_created",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("creates reminders from current project metrics risks", async () => {
     mocks.tx.metricsSnapshot.count.mockResolvedValue(1);
     mocks.tx.metricsSnapshot.findMany.mockResolvedValue([

@@ -119,6 +119,18 @@ describe("parseAgentCommand", () => {
     });
   });
 
+  it("extracts explicit due dates from reminder creation requests", () => {
+    const parsed = parseAgentCommand("提醒我 2026-08-07 前确认巴西抽奖奖品和活动规则。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_reminder",
+      value: "2026-08-07 前确认巴西抽奖奖品和活动规则",
+      severity: ReminderSeverity.INFO,
+      dueAt: "2026-08-07",
+      label: "创建提示提醒：2026-08-07 前确认巴西抽奖奖品和活动规则",
+    });
+  });
+
   it("extracts project health reminder generation requests", () => {
     const parsed = parseAgentCommand("把项目体检缺口生成提醒。");
 

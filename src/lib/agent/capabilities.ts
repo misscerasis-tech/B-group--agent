@@ -78,7 +78,7 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     key: "reminder_create",
     category: "reminder",
     title: "创建项目提醒",
-    example: "提醒我提前确认巴西抽奖奖品和活动规则。",
+    example: "提醒我 2026-08-07 前确认巴西抽奖奖品和活动规则。",
     writesTo: ["Reminder", "AgentOperation", "ChangeLog"],
     requiresExplicitHumanReview: false,
   },
