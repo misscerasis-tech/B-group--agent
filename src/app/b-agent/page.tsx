@@ -25,6 +25,7 @@ import {
   submitAgentCommandAction,
 } from "@/app/actions/agent-actions";
 import { submitContentPackageForReviewAction } from "@/app/actions/package-actions";
+import { kickoffProjectFromBriefAction } from "@/app/actions/project-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -150,18 +151,45 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
         </section>
 
         {!selectedProject ? (
-          <section className="panel">
-            <EmptyState
-              title="还没有可工作的项目"
-              description="先到项目中心创建项目并关联产品，B 组 Agent 才能开始保存事实、策略和计划。"
-            />
-            <div className="hero-actions">
-              <Link className="button" href="/projects">
-                创建项目
-              </Link>
-              <Link className="button secondary" href="/brain">
-                创建产品
-              </Link>
+          <section className="grid two">
+            <div className="panel">
+              <EmptyState
+                title="还没有可工作的项目"
+                description="可以直接用中文 Brief 启动第一个项目，系统会同步创建项目、产品、待确认事实和策略草案。"
+              />
+              <div className="hero-actions">
+                <Link className="button secondary" href="/projects">
+                  项目中心
+                </Link>
+                <Link className="button secondary" href="/brain">
+                  产品大脑
+                </Link>
+              </div>
+            </div>
+
+            <div className="panel">
+              <h3>从中文 Brief 启动 B 组项目</h3>
+              <form action={kickoffProjectFromBriefAction} className="form">
+                <label className="form-row">
+                  <span className="field-label">项目名称</span>
+                  <input name="projectName" placeholder="例如：巴西新品首月内容增长" required />
+                </label>
+                <label className="form-row">
+                  <span className="field-label">产品名称</span>
+                  <input name="productName" placeholder="例如：Aurora Cup 智能保温杯" required />
+                </label>
+                <label className="form-row">
+                  <span className="field-label">中文启动 Brief</span>
+                  <textarea
+                    name="brief"
+                    placeholder="例如：这是一款 600ml 不锈钢保温杯，24 小时保温，主推巴西市场，新增 TikTok 和 Instagram，每周生成一次素材包。"
+                    required
+                  />
+                </label>
+                <button className="button" type="submit">
+                  创建并进入工作台
+                </button>
+              </form>
             </div>
           </section>
         ) : (

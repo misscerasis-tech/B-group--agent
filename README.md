@@ -81,6 +81,7 @@ AI 内容增长 Agent 是一个独立 Web 系统，面向新品品牌和多产�
 ## 当前 B 组已具备能力
 
 - `/b-agent` 为 B 组正式工作入口。
+- `/b-agent` 在当前 Workspace 还没有项目时，可直接用中文 Brief 启动第一个 B 组项目。
 - 顶部 Workspace 区域支持切换和创建 Workspace。
 - 左侧中文 Agent 对话通过 `AgentTextProvider` 处理指令；当前启用本地规则型 `local-rule` Provider，后续可替换为真实 GPT 适配器。
 - Agent 可执行能力由统一的 `agentCommandCapabilities` 清单维护，页面示例、测试和未来 GPT prompt 可复用同一能力目录。
