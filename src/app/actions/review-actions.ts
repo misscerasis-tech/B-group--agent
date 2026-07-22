@@ -3,7 +3,11 @@
 import { ReviewTaskStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createMissingReviewTasks, decideReviewTask } from "@/lib/data/content-workspace";
+import {
+  cancelReviewTask,
+  createMissingReviewTasks,
+  decideReviewTask,
+} from "@/lib/data/content-workspace";
 import { getWorkspaceContext } from "@/lib/workspace-context";
 
 function readRequiredText(formData: FormData, key: string, label: string) {
@@ -54,5 +58,23 @@ export async function decideReviewTaskAction(formData: FormData) {
   revalidatePath("/assets");
   revalidatePath("/packages");
   revalidatePath("/brain");
+  redirect("/reviews");
+}
+
+export async function cancelReviewTaskAction(formData: FormData) {
+  const context = await getWorkspaceContext();
+  const taskId = readRequiredText(formData, "taskId", "审核任务");
+  const decisionNote = String(formData.get("decisionNote") ?? "").trim();
+
+  await cancelReviewTask({
+    workspaceId: context.currentWorkspace.id,
+    userId: context.user.id,
+    taskId,
+    decisionNote: decisionNote.length > 0 ? decisionNote : undefined,
+  });
+
+  revalidatePath("/reviews");
+  revalidatePath("/dashboard");
+  revalidatePath("/recaps");
   redirect("/reviews");
 }

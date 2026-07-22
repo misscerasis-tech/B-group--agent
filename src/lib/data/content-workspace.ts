@@ -449,7 +449,11 @@ export async function getWorkspaceReviewQueue(workspaceId: string) {
     prisma.reviewTask.findMany({
       where: scopedWhere(workspaceId, {
         status: {
-          in: [ReviewTaskStatus.APPROVED, ReviewTaskStatus.CHANGES_REQUESTED],
+          in: [
+            ReviewTaskStatus.APPROVED,
+            ReviewTaskStatus.CHANGES_REQUESTED,
+            ReviewTaskStatus.CANCELED,
+          ],
         },
       }) as Prisma.ReviewTaskWhereInput,
       include: {
@@ -684,6 +688,54 @@ export async function decideReviewTask(input: {
           input.decision === ReviewTaskStatus.APPROVED
             ? `审核通过：${reviewTask.title}`
             : `要求修改：${reviewTask.title}`,
+        before: reviewTaskToJson(reviewTask),
+        after: reviewTaskToJson(updatedTask),
+        actorUserId: input.userId,
+      },
+    });
+
+    return updatedTask;
+  });
+}
+
+export async function cancelReviewTask(input: {
+  workspaceId: string;
+  userId: string;
+  taskId: string;
+  decisionNote?: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const reviewTask = await tx.reviewTask.findFirst({
+      where: scopedWhere(input.workspaceId, {
+        id: input.taskId,
+        status: ReviewTaskStatus.PENDING,
+      }) as Prisma.ReviewTaskWhereInput,
+    });
+
+    if (!reviewTask) {
+      throw new Error("未找到待取消的审核任务。");
+    }
+
+    const updatedTask = await tx.reviewTask.update({
+      where: {
+        id: reviewTask.id,
+      },
+      data: {
+        status: ReviewTaskStatus.CANCELED,
+        reviewerUserId: input.userId,
+        decisionNote: input.decisionNote,
+        decidedAt: new Date(),
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: reviewTask.projectId,
+        entityType: "ReviewTask",
+        entityId: reviewTask.id,
+        action: "review_canceled",
+        summary: `取消审核任务：${reviewTask.title}`,
         before: reviewTaskToJson(reviewTask),
         after: reviewTaskToJson(updatedTask),
         actorUserId: input.userId,

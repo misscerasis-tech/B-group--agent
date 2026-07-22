@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CheckCircle2, ClipboardCheck, FileArchive, RefreshCw, Target, XCircle } from "lucide-react";
 import {
+  cancelReviewTaskAction,
   createMissingReviewTasksAction,
   decideReviewTaskAction,
 } from "@/app/actions/review-actions";
@@ -104,6 +105,17 @@ export default async function ReviewsPage() {
                           要求修改
                         </button>
                       </div>
+                    </form>
+                    <form action={cancelReviewTaskAction} className="inline-form">
+                      <input name="taskId" type="hidden" value={task.id} />
+                      <input
+                        name="decisionNote"
+                        type="hidden"
+                        value="人工取消：该任务暂不需要审核。"
+                      />
+                      <button className="button secondary" type="submit">
+                        取消任务
+                      </button>
                     </form>
                   </div>
                   <StatusBadge label={reviewTaskStatusLabels[task.status]} tone="warning" />
