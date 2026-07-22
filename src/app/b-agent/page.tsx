@@ -7,6 +7,7 @@ import {
   Download,
   FileArchive,
   FileText,
+  ImageIcon,
   Layers,
   MessageSquareText,
   PencilLine,
@@ -31,6 +32,8 @@ import { getAssistantState } from "@/lib/data/assistant";
 import { loadWorkspaceContextSafe } from "@/lib/page-context";
 import {
   agentOperationStatusLabels,
+  assetKindLabels,
+  assetStatusLabels,
   contentFrequencyLabels,
   contentPackageStatusLabels,
   packageFileStatusLabels,
@@ -38,6 +41,8 @@ import {
   productFactStatusLabels,
   projectStatusLabels,
   reminderSeverityLabels,
+  reviewSubjectTypeLabels,
+  reviewTaskStatusLabels,
   strategyStatusLabels,
 } from "@/lib/status";
 
@@ -558,7 +563,99 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
 
                 <div className="workbench-section risks">
                   <div className="section-title-row">
-                    <h3>6. 主动提醒</h3>
+                    <h3>6. 素材与审核状态</h3>
+                    <StatusBadge
+                      label={`${state.assets.filter((asset) => asset.status === "APPROVED").length}/${state.assets.length} 已审核`}
+                      tone={
+                        state.assets.length > 0 &&
+                        state.assets.every((asset) => asset.status === "APPROVED")
+                          ? "success"
+                          : "warning"
+                      }
+                    />
+                  </div>
+                  {state.assets.length > 0 || state.reviewTasks.length > 0 ? (
+                    <>
+                      {state.assets.length > 0 ? (
+                        <div className="pack-grid">
+                          {state.assets.map((asset) => {
+                            const product = state.linkedProducts.find(
+                              (item) => item.id === asset.productId,
+                            );
+
+                            return (
+                              <article className="pack-file" key={asset.id}>
+                                <ImageIcon size={18} aria-hidden="true" />
+                                <span>
+                                  {asset.name}
+                                  <small>
+                                    {assetKindLabels[asset.kind]} · {assetStatusLabels[asset.status]}
+                                    {product ? ` · ${product.name}` : " · 项目素材"}
+                                  </small>
+                                </span>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <EmptyState
+                          title="暂无项目素材"
+                          description="真实产品图和官方 Logo 上传审核后会显示在这里。"
+                        />
+                      )}
+
+                      <div className="operation-list">
+                        {state.reviewTasks.length > 0 ? (
+                          state.reviewTasks.map((task) => (
+                            <article className="operation-item" key={task.id}>
+                              <header>
+                                <strong>{task.title}</strong>
+                                <StatusBadge
+                                  label={reviewTaskStatusLabels[task.status]}
+                                  tone={
+                                    task.status === "APPROVED"
+                                      ? "success"
+                                      : task.status === "PENDING"
+                                        ? "warning"
+                                        : "neutral"
+                                  }
+                                />
+                              </header>
+                              <p>
+                                {reviewSubjectTypeLabels[task.subjectType]} ·{" "}
+                                {task.description ?? "等待审核人处理。"}
+                              </p>
+                              {task.dueAt ? <small>截止：{formatShortDate(task.dueAt)}</small> : null}
+                            </article>
+                          ))
+                        ) : (
+                          <EmptyState
+                            title="暂无审核任务"
+                            description="素材、策略或素材包进入审核后会显示在这里。"
+                          />
+                        )}
+                      </div>
+
+                      <div className="hero-actions">
+                        <Link className="button secondary" href="/assets">
+                          素材库
+                        </Link>
+                        <Link className="button secondary" href="/reviews">
+                          审核中心
+                        </Link>
+                      </div>
+                    </>
+                  ) : (
+                    <EmptyState
+                      title="暂无素材和审核任务"
+                      description="上传真实产品图、官方 Logo 或提交素材包审核后会显示在这里。"
+                    />
+                  )}
+                </div>
+
+                <div className="workbench-section risks">
+                  <div className="section-title-row">
+                    <h3>7. 主动提醒</h3>
                     <StatusBadge
                       label={`${state.reminders.length} 条`}
                       tone={state.reminders.length > 0 ? "warning" : "neutral"}
@@ -610,7 +707,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
 
                 <div className="workbench-section change-log">
                   <div className="section-title-row">
-                    <h3>7. 变更日志</h3>
+                    <h3>8. 变更日志</h3>
                     <ClipboardCheck size={18} aria-hidden="true" />
                   </div>
                   {state.changeLogs.length > 0 ? (
@@ -634,7 +731,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
 
                 <div className="workbench-section visual-policy">
                   <div className="section-title-row">
-                    <h3>8. 图片与海报原则</h3>
+                    <h3>9. 图片与海报原则</h3>
                     <Layers size={18} aria-hidden="true" />
                   </div>
                   <ul className="clean-list">

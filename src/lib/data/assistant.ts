@@ -92,6 +92,8 @@ export async function getAssistantState(workspaceId: string, projectId?: string)
       strategyHistory: [],
       planItems: [],
       contentPackages: [],
+      assets: [],
+      reviewTasks: [],
       reminders: [],
       conversation: null,
       recentOperations: [],
@@ -101,6 +103,15 @@ export async function getAssistantState(workspaceId: string, projectId?: string)
 
   const linkedProducts = selectedProject.projectProducts.map(({ product }) => product);
   const linkedProductIds = linkedProducts.map((product) => product.id);
+  const assetScopeFilters: Prisma.AssetWhereInput[] = [{ projectId: selectedProject.id }];
+
+  if (linkedProductIds.length > 0) {
+    assetScopeFilters.push({
+      productId: {
+        in: linkedProductIds,
+      },
+    });
+  }
 
   const [
     productFacts,
@@ -108,6 +119,8 @@ export async function getAssistantState(workspaceId: string, projectId?: string)
     strategyHistory,
     planItems,
     contentPackages,
+    assets,
+    reviewTasks,
     reminders,
     conversation,
     recentOperations,
@@ -184,6 +197,34 @@ export async function getAssistantState(workspaceId: string, projectId?: string)
         updatedAt: "desc",
       },
     }),
+    prisma.asset.findMany({
+      where: scopedWhere(workspaceId, {
+        OR: assetScopeFilters,
+      }) as Prisma.AssetWhereInput,
+      orderBy: [
+        {
+          status: "asc",
+        },
+        {
+          updatedAt: "desc",
+        },
+      ],
+      take: 12,
+    }),
+    prisma.reviewTask.findMany({
+      where: scopedWhere(workspaceId, {
+        projectId: selectedProject.id,
+      }) as Prisma.ReviewTaskWhereInput,
+      orderBy: [
+        {
+          status: "asc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+      take: 12,
+    }),
     prisma.reminder.findMany({
       where: scopedWhere(workspaceId, {
         projectId: selectedProject.id,
@@ -243,6 +284,8 @@ export async function getAssistantState(workspaceId: string, projectId?: string)
     strategyHistory,
     planItems,
     contentPackages,
+    assets,
+    reviewTasks,
     reminders,
     conversation,
     recentOperations,
