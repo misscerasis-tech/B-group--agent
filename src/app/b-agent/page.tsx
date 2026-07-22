@@ -417,7 +417,10 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                             <p>
                               {item.channel} · {item.title} · {item.deliverable}
                             </p>
-                            <small>{planItemStatusLabels[item.status]}</small>
+                            <small>
+                              {planItemStatusLabels[item.status]}
+                              {item.dueDate ? ` · 截止：${formatShortDate(item.dueDate)}` : ""}
+                            </small>
                           </div>
                         </article>
                       ))}
@@ -571,5 +574,12 @@ function formatDate(date: Date) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+  }).format(date);
+}
+
+function formatShortDate(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
   }).format(date);
 }

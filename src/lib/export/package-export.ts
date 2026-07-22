@@ -114,9 +114,10 @@ export function buildContentPackageExportFiles(data: ContentPackageExportData): 
     {
       filename: "content-calendar.csv",
       content: toCsv([
-        ["week", "channel", "theme", "title", "deliverable", "status"],
+        ["week", "dueDate", "channel", "theme", "title", "deliverable", "status"],
         ...planItems.map((item) => [
           `第${item.week}周`,
+          item.dueDate ? item.dueDate.toISOString().slice(0, 10) : "",
           item.channel,
           item.theme,
           item.title,

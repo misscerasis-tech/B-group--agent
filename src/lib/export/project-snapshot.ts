@@ -193,6 +193,7 @@ export function buildProjectSnapshotJson(
         theme: item.theme,
         title: item.title,
         deliverable: item.deliverable,
+        dueDate: item.dueDate,
         status: item.status,
       })),
       contentPackages: data.contentPackages.map((contentPackage) => ({

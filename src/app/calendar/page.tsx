@@ -55,7 +55,10 @@ export default async function CalendarPage() {
                   <p>
                     {item.project.name} · {item.channel} · {item.title}
                   </p>
-                  <small>{item.deliverable}</small>
+                  <small>
+                    {item.deliverable}
+                    {item.dueDate ? ` · 截止：${formatDate(item.dueDate)}` : ""}
+                  </small>
                   <form action={updateContentPlanItemStatusAction} className="inline-form">
                     <input name="planItemId" type="hidden" value={item.id} />
                     {item.status !== "READY" ? (
@@ -105,6 +108,13 @@ export default async function CalendarPage() {
       </AppShell>
     );
   }
+}
+
+function formatDate(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 function planStatusTone(

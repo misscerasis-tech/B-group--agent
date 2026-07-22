@@ -660,6 +660,7 @@ export async function generateStarterPlan(input: {
 
     const channels = strategy.channels.length > 0 ? strategy.channels : ["TikTok", "Instagram"];
     const themes = ["新品认知", "场景种草", "礼品转化", "复盘加码"];
+    const today = new Date();
 
     await Promise.all(
       themes.map((theme, index) =>
@@ -673,6 +674,7 @@ export async function generateStarterPlan(input: {
             theme,
             title: `${theme}内容任务`,
             deliverable: "平台文案、发布配文、模板化海报和审核清单",
+            dueDate: addDays(today, (index + 1) * 7),
             status: PlanItemStatus.READY,
           },
         }),
@@ -1141,4 +1143,10 @@ function reminderToJson(reminder: {
 
 function unique(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function addDays(date: Date, days: number) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
 }
