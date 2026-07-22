@@ -49,6 +49,26 @@ async function isPortOpen(port) {
   });
 }
 
+async function findAvailablePort(startPort, attempts = 10) {
+  for (let port = startPort; port < startPort + attempts; port += 1) {
+    if (!(await isPortOpen(port))) {
+      return port;
+    }
+  }
+
+  return null;
+}
+
+function describePortOwner(port) {
+  const result = run("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"]);
+
+  if (!result.ok || !result.output) {
+    return "未能读取占用进程";
+  }
+
+  return result.output.split("\n").slice(0, 3).join(" | ");
+}
+
 console.log("B 组 AI 内容增长 Agent 本地诊断");
 console.log(`目录：${cwd}`);
 
@@ -106,7 +126,14 @@ if (!existsSync(envPath)) {
 }
 
 const port3002Open = await isPortOpen(3002);
-statusLine(!port3002Open, "端口 3002", port3002Open ? "已被占用，可改用 3003" : "当前空闲");
+const suggestedPort = port3002Open ? await findAvailablePort(3003) : 3002;
+statusLine(
+  !port3002Open,
+  "端口 3002",
+  port3002Open
+    ? `已被占用；${describePortOwner(3002)}；建议改用 ${suggestedPort ?? "3003 之后的空闲端口"}`
+    : "当前空闲",
+);
 
 console.log("");
 console.log("常用启动命令：");
@@ -117,4 +144,6 @@ console.log("4. npx pnpm@10.13.1 run db:migrate");
 console.log("5. npx pnpm@10.13.1 run db:seed");
 console.log("6. npx pnpm@10.13.1 run dev:b");
 console.log("");
-console.log("如果 3002 被占用：npx pnpm@10.13.1 exec next dev -p 3003");
+console.log(
+  `如果 3002 被占用：npx pnpm@10.13.1 exec next dev -p ${suggestedPort ?? 3003}`,
+);

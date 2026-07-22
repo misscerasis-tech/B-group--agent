@@ -147,6 +147,8 @@ npx pnpm@10.13.1 install
 npx pnpm@10.13.1 run doctor
 ```
 
+诊断会检查当前目录、Git 分支、`.env`、Docker、Docker Compose、Node.js、pnpm 和 `3002` 端口。如果 `3002` 已被 A 组或其他服务占用，它会显示占用进程，并建议下一个可用端口。
+
 启动 PostgreSQL：
 
 ```bash
@@ -174,7 +176,7 @@ npx pnpm@10.13.1 run dev:b
 npx pnpm@10.13.1 exec next dev -p 3003
 ```
 
-然后打开 `http://127.0.0.1:3003/b-agent`。
+如果 `doctor` 建议的是其他端口，把命令里的 `3003` 换成诊断结果里的端口。然后打开对应的 `/b-agent`，例如 `http://127.0.0.1:3003/b-agent`。
 
 健康检查：
 
