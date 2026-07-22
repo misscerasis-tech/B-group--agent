@@ -22,6 +22,7 @@
 - `AgentTextProvider` 文本 Agent 抽象；当前 `local-rule` 支持市场、渠道、客群、内容方向、素材包频率、项目状态和提醒创建。
 - 正式策略二次确认、拒绝变更和策略版本历史。
 - 项目/产品手工操作、Agent 操作、素材、提醒、集成和指标录入的变更日志。
+- 产品大脑支持从已关联的文本型产品资料 Asset 提取待确认事实。
 - 素材库上传校验、自动审核任务、素材状态同步和模板化合成任务记录。
 - 素材包 ZIP 可交付文件包导出、项目工作台 JSON 快照导出和 Workspace 复盘 JSON 快照导出。
 - 内容日历状态推进、首月计划截止日期。
@@ -47,8 +48,8 @@ DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?sc
 
 最近一次测试结果：
 
-- Test Files：`16 passed`
-- Tests：`47 passed`
+- Test Files：`17 passed`
+- Tests：`49 passed`
 - Build：通过，包含 `/api/health`、`/b-agent`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
 
 ## 仍需人工完成

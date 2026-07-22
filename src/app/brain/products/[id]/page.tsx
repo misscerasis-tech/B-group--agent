@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   confirmAllProductFactsAction,
   createProductFactAction,
+  generateProductFactsFromAssetAction,
   generateInitialProductFactsAction,
   generateProductFactsFromTextAction,
   updateProductAction,
@@ -10,9 +11,14 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { getProduct } from "@/lib/data/products";
+import { canExtractFactsFromAsset, getProduct } from "@/lib/data/products";
 import { loadWorkspaceContextSafe } from "@/lib/page-context";
-import { productFactStatusLabels, projectStatusLabels } from "@/lib/status";
+import {
+  assetKindLabels,
+  assetStatusLabels,
+  productFactStatusLabels,
+  projectStatusLabels,
+} from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +50,8 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
         </AppShell>
       );
     }
+
+    const readableDocumentAssets = product.assets.filter(canExtractFactsFromAsset);
 
     return (
       <AppShell activePath="/brain" context={context} returnTo={`/brain/products/${product.id}`}>
@@ -152,7 +160,39 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
           </div>
 
           <div className="panel">
-            <h3>新增事实</h3>
+            <h3>从资料提取事实</h3>
+            <form
+              action={generateProductFactsFromAssetAction.bind(null, product.id)}
+              className="form"
+            >
+              <label className="form-row">
+                <span className="field-label">选择已上传资料</span>
+                <select
+                  disabled={readableDocumentAssets.length === 0}
+                  name="assetId"
+                  required
+                >
+                  {readableDocumentAssets.length > 0 ? (
+                    readableDocumentAssets.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">暂无可读取文本资料</option>
+                  )}
+                </select>
+              </label>
+              <button
+                className="button secondary"
+                disabled={readableDocumentAssets.length === 0}
+                type="submit"
+              >
+                从资料文件提取事实
+              </button>
+              <p className="muted">当前支持 TXT、MD、CSV、JSON；PDF/DOCX 解析留到后续阶段。</p>
+            </form>
+
             <form
               action={generateProductFactsFromTextAction.bind(null, product.id)}
               className="form"
@@ -170,6 +210,7 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
               </button>
             </form>
 
+            <h3 style={{ marginTop: 18 }}>手动新增事实</h3>
             <form action={createProductFactAction.bind(null, product.id)} className="form">
               <label className="form-row">
                 <span className="field-label">事实名称</span>
@@ -196,6 +237,40 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
               </button>
             </form>
           </div>
+        </section>
+
+        <section className="panel" style={{ marginTop: 16 }}>
+          <div className="section-title-row">
+            <h3>关联素材</h3>
+            <StatusBadge
+              label={product.assets.length > 0 ? `${product.assets.length} 个素材` : "暂无素材"}
+              tone={product.assets.length > 0 ? "success" : "neutral"}
+            />
+          </div>
+          {product.assets.length > 0 ? (
+            <div className="card-list">
+              {product.assets.map((asset) => (
+                <article className="item-card" key={asset.id}>
+                  <header>
+                    <h4>{asset.name}</h4>
+                    <StatusBadge
+                      label={assetStatusLabels[asset.status]}
+                      tone={asset.status === "APPROVED" ? "success" : "warning"}
+                    />
+                  </header>
+                  <p>
+                    {assetKindLabels[asset.kind]} · {asset.mimeType ?? "未知类型"} ·{" "}
+                    {asset.originalFilename ?? "无原始文件名"}
+                  </p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="还没有关联素材"
+              description="在素材库上传产品资料、真实产品图或官方 Logo 后，会在这里显示。"
+            />
+          )}
         </section>
       </AppShell>
     );

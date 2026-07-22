@@ -6,6 +6,7 @@ import {
   confirmAllProductFacts,
   createProduct,
   createProductFact,
+  generateProductFactsFromAsset,
   generateInitialProductFacts,
   generateProductFactsFromText,
   updateProduct,
@@ -99,6 +100,21 @@ export async function generateProductFactsFromTextAction(productId: string, form
     context.currentWorkspace.id,
     productId,
     readRequiredText(formData, "sourceText", "产品资料"),
+    context.user.id,
+  );
+
+  revalidatePath("/brain");
+  revalidatePath(`/brain/products/${productId}`);
+  redirect(`/brain/products/${productId}`);
+}
+
+export async function generateProductFactsFromAssetAction(productId: string, formData: FormData) {
+  const context = await getWorkspaceContext();
+
+  await generateProductFactsFromAsset(
+    context.currentWorkspace.id,
+    productId,
+    readRequiredText(formData, "assetId", "产品资料"),
     context.user.id,
   );
 

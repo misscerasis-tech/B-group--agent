@@ -1,8 +1,24 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type { ProductFactStatus, ProductStatus } from "@prisma/client";
-import { ProductFactStatus as ProductFactStatusValue } from "@prisma/client";
+import {
+  AssetKind,
+  AssetStatus,
+  ProductFactStatus as ProductFactStatusValue,
+} from "@prisma/client";
+import { resolveLocalAssetPath } from "@/lib/data/assets";
 import { inferProductFactsFromText, type InferredProductFact } from "@/lib/product-facts/extractor";
 import { prisma } from "@/lib/prisma";
 import { scopedWhere } from "@/lib/workspace-scope";
+
+const MAX_TEXT_ASSET_FACT_BYTES = 200 * 1024;
+const TEXT_ASSET_EXTENSIONS = new Set([".txt", ".md", ".csv", ".json"]);
+const TEXT_ASSET_MIME_TYPES = new Set([
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/json",
+]);
 
 export type ProductFormInput = {
   name: string;
@@ -55,6 +71,11 @@ export async function getProduct(workspaceId: string, productId: string) {
       facts: {
         orderBy: {
           createdAt: "asc",
+        },
+      },
+      assets: {
+        orderBy: {
+          updatedAt: "desc",
         },
       },
     },
@@ -223,6 +244,82 @@ export async function generateProductFactsFromText(
     "local-rule:supplement",
     actorUserId,
   );
+}
+
+export async function generateProductFactsFromAsset(
+  workspaceId: string,
+  productId: string,
+  assetId: string,
+  actorUserId?: string,
+) {
+  const [product, asset] = await Promise.all([
+    getProduct(workspaceId, productId),
+    prisma.asset.findFirst({
+      where: scopedWhere(workspaceId, {
+        id: assetId,
+        productId,
+        kind: AssetKind.DOCUMENT,
+        storagePath: {
+          not: null,
+        },
+        status: {
+          in: [AssetStatus.UPLOADED, AssetStatus.APPROVED],
+        },
+      }),
+    }),
+  ]);
+
+  if (!product) {
+    throw new Error("未找到当前 Workspace 下的产品。");
+  }
+
+  if (!asset || !asset.storagePath) {
+    throw new Error("未找到当前产品下可读取的产品资料。");
+  }
+
+  if (!canExtractFactsFromAsset(asset)) {
+    throw new Error("当前只支持从 TXT、MD、CSV 或 JSON 产品资料中提取事实。");
+  }
+
+  if (asset.sizeBytes && asset.sizeBytes > MAX_TEXT_ASSET_FACT_BYTES) {
+    throw new Error("产品资料超过 200KB，请先整理成较短的产品 Brief 后再提取。");
+  }
+
+  const sourceText = (await readFile(resolveLocalAssetPath(asset.storagePath), "utf8")).trim();
+
+  if (!sourceText) {
+    throw new Error("产品资料为空，无法提取事实。");
+  }
+
+  return persistInferredProductFacts(
+    workspaceId,
+    product,
+    inferProductFactsFromText({
+      productName: product.name,
+      description: product.description,
+      sourceText,
+    }),
+    `asset:${asset.id}`,
+    actorUserId,
+  );
+}
+
+export function canExtractFactsFromAsset(asset: {
+  kind: AssetKind;
+  mimeType: string | null;
+  originalFilename: string | null;
+  storagePath: string | null;
+}) {
+  if (asset.kind !== AssetKind.DOCUMENT || !asset.storagePath) {
+    return false;
+  }
+
+  if (asset.mimeType && TEXT_ASSET_MIME_TYPES.has(asset.mimeType)) {
+    return true;
+  }
+
+  const filename = asset.originalFilename ?? asset.storagePath;
+  return TEXT_ASSET_EXTENSIONS.has(path.extname(filename).toLowerCase());
 }
 
 async function persistInferredProductFacts(
