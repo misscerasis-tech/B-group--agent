@@ -1,5 +1,6 @@
 import {
   ContentFrequency,
+  ContentPackageStatus,
   PackageFileStatus,
   PlanItemStatus,
   ProjectStatus,
@@ -306,6 +307,19 @@ describe("parseAgentCommand", () => {
         status: PackageFileStatus.GENERATED,
       },
       label: "全部文件标记为已生成：最新素材包",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("extracts content package archive requests", () => {
+    const parsed = parseAgentCommand("归档最新素材包。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "update_content_package_status",
+      value: {
+        status: ContentPackageStatus.ARCHIVED,
+      },
+      label: "归档素材包：最新素材包",
     });
     expect(parsed.confidence).toBe("high");
   });

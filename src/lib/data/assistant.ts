@@ -365,6 +365,9 @@ export async function submitAgentCommand(input: {
         isCalendarGapReminderOperation,
       );
       const contentPackageOperations = parsed.operations.filter(isContentPackageOperation);
+      const contentPackageStatusOperations = parsed.operations.filter(
+        isContentPackageStatusOperation,
+      );
       const packageReadinessReminderOperations = parsed.operations.filter(
         isPackageReadinessReminderOperation,
       );
@@ -532,6 +535,13 @@ export async function submitAgentCommand(input: {
         operations: contentPackageOperations,
       });
 
+      await applyContentPackageStatusOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: contentPackageStatusOperations,
+      });
+
       await applyPackageReadinessReminderOperations(tx, {
         workspaceId: input.workspaceId,
         userId: input.userId,
@@ -692,6 +702,9 @@ export async function applyPendingAgentOperation(input: {
     const planItemStatusOperations = parsedOperations.filter(isPlanItemStatusOperation);
     const calendarGapReminderOperations = parsedOperations.filter(isCalendarGapReminderOperation);
     const contentPackageOperations = parsedOperations.filter(isContentPackageOperation);
+    const contentPackageStatusOperations = parsedOperations.filter(
+      isContentPackageStatusOperation,
+    );
     const packageReadinessReminderOperations = parsedOperations.filter(
       isPackageReadinessReminderOperation,
     );
@@ -916,6 +929,13 @@ export async function applyPendingAgentOperation(input: {
       operations: contentPackageOperations,
     });
 
+    await applyContentPackageStatusOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: contentPackageStatusOperations,
+    });
+
     await applyPackageReadinessReminderOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -1039,6 +1059,7 @@ export async function applyPendingAgentOperation(input: {
         planItemStatusChanged: planItemStatusOperations.length > 0,
         calendarGapReminderChanged: calendarGapReminderOperations.length > 0,
         contentPackageChanged: contentPackageOperations.length > 0,
+        contentPackageStatusChanged: contentPackageStatusOperations.length > 0,
         packageReadinessReminderChanged: packageReadinessReminderOperations.length > 0,
         packageFilesStatusChanged: packageFilesStatusOperations.length > 0,
         posterPackageAttachmentChanged: posterPackageAttachmentOperations.length > 0,
@@ -1260,6 +1281,20 @@ async function findCompletionTargetWarnings(
 
       if (matchCount === 0) {
         warnings.push(`未找到匹配「${describePlanItemDueDateValue(operation.value)}」的内容计划`);
+      }
+    }
+
+    if (operation.type === "update_content_package_status") {
+      const matchCount = await tx.contentPackage.count({
+        where: buildContentPackageStatusWhere({
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          value: operation.value,
+        }),
+      });
+
+      if (matchCount === 0) {
+        warnings.push(`未找到匹配「${operation.value.keyword ?? "最新素材包"}」的素材包`);
       }
     }
 
@@ -3053,6 +3088,66 @@ async function applyPackageReadinessReminderOperations(
   }
 }
 
+async function applyContentPackageStatusOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "update_content_package_status") {
+      continue;
+    }
+
+    const contentPackage = await tx.contentPackage.findFirst({
+      where: buildContentPackageStatusWhere({
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        value: operation.value,
+      }),
+      include: {
+        files: true,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+
+    if (!contentPackage) {
+      continue;
+    }
+
+    const updatedContentPackage = await tx.contentPackage.update({
+      where: {
+        id: contentPackage.id,
+      },
+      data: {
+        status: operation.value.status,
+      },
+      include: {
+        files: true,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ContentPackage",
+        entityId: contentPackage.id,
+        action: "agent_content_package_status_updated",
+        summary: operation.label,
+        before: contentPackageToJson(contentPackage),
+        after: contentPackageToJson(updatedContentPackage),
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
 async function applyPackageFilesStatusOperations(
   tx: Prisma.TransactionClient,
   input: {
@@ -4112,6 +4207,38 @@ function buildContentPackageReviewWhere(input: {
   return where;
 }
 
+function buildContentPackageStatusWhere(input: {
+  workspaceId: string;
+  projectId: string;
+  value: Extract<ParsedAgentOperation, { type: "update_content_package_status" }>["value"];
+}) {
+  const where = scopedWhere(input.workspaceId, {
+    projectId: input.projectId,
+  }) as Prisma.ContentPackageWhereInput;
+
+  if (input.value.keyword) {
+    where.OR = [
+      {
+        name: {
+          contains: input.value.keyword,
+        },
+      },
+      {
+        period: {
+          contains: input.value.keyword,
+        },
+      },
+      {
+        summary: {
+          contains: input.value.keyword,
+        },
+      },
+    ];
+  }
+
+  return where;
+}
+
 function buildContentPackageReviewDecisionWhere(input: {
   workspaceId: string;
   projectId: string;
@@ -4697,6 +4824,10 @@ function isContentPackageOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_content_package";
 }
 
+function isContentPackageStatusOperation(operation: ParsedAgentOperation) {
+  return operation.type === "update_content_package_status";
+}
+
 function isPackageReadinessReminderOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_content_package_readiness_reminders";
 }
@@ -4931,6 +5062,18 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
       continue;
     }
 
+    if (type === "update_content_package_status" && isContentPackageStatusValue(value)) {
+      const statusText =
+        value.status === ContentPackageStatus.ARCHIVED ? "归档" : "恢复为草稿";
+
+      operations.push({
+        type,
+        value,
+        label: label || `${statusText}素材包：${value.keyword ?? "最新素材包"}`,
+      });
+      continue;
+    }
+
     if (type === "create_calendar_gap_reminders" && isCalendarGapReminderValue(value)) {
       operations.push({
         type,
@@ -5124,6 +5267,23 @@ function isContentPackageValue(value: unknown): value is Extract<
       record.frequency === ContentFrequency.BIWEEKLY ||
       record.frequency === ContentFrequency.MONTHLY) &&
     (record.summary === undefined || typeof record.summary === "string")
+  );
+}
+
+function isContentPackageStatusValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "update_content_package_status" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    (record.status === ContentPackageStatus.ARCHIVED ||
+      record.status === ContentPackageStatus.DRAFT) &&
+    (record.keyword === undefined || typeof record.keyword === "string")
   );
 }
 
@@ -5525,6 +5685,7 @@ function buildConfirmedAssistantReply(input: {
   planItemStatusChanged: boolean;
   calendarGapReminderChanged: boolean;
   contentPackageChanged: boolean;
+  contentPackageStatusChanged: boolean;
   packageReadinessReminderChanged: boolean;
   packageFilesStatusChanged: boolean;
   posterPackageAttachmentChanged: boolean;
@@ -5554,6 +5715,9 @@ function buildConfirmedAssistantReply(input: {
     ? "，并生成内容日历缺口提醒"
     : "";
   const contentPackageText = input.contentPackageChanged ? "，并创建素材包结构" : "";
+  const contentPackageStatusText = input.contentPackageStatusChanged
+    ? "，并更新素材包状态"
+    : "";
   const packageReadinessReminderText = input.packageReadinessReminderChanged
     ? "，并生成素材包可交付性缺口提醒"
     : "";
@@ -5574,62 +5738,62 @@ function buildConfirmedAssistantReply(input: {
   if (input.strategyChanged && input.strategyWasConfirmed) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认创建正式策略 v${input.strategyVersion}${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建正式策略 v${input.strategyVersion}${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyChanged) {
     const projectText = input.projectChanged ? "，同步更新项目基础信息" : "";
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认写入策略草案${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认写入策略草案${strategyRecommendationText}${projectText}${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.strategyRecommended) {
-    return `已按你的确认生成策略推荐草案${projectTextForRecommendation(input.projectChanged)}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成策略推荐草案${projectTextForRecommendation(input.projectChanged)}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.projectChanged) {
     const reminderText = input.reminderChanged ? "，并创建提醒" : "";
-    return `已按你的确认更新项目基础信息${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认更新项目基础信息${reminderText}${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.reminderChanged) {
-    return `已按你的确认创建提醒${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建提醒${healthReminderText}${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.healthReminderChanged) {
-    return `已按你的确认生成项目体检缺口提醒${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成项目体检缺口提醒${productFactText}${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.productFactChanged) {
-    return `已按你的确认新增待复核产品事实${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认新增待复核产品事实${productFactsConfirmedText}${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.productFactsConfirmed) {
-    return `已按你的确认完成产品事实确认${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认完成产品事实确认${starterPlanText}${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.starterPlanChanged) {
-    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成首月计划和第一份素材包结构${metricsText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.metricsChanged) {
-    return `已按你的确认录入渠道表现指标${metricsRiskReminderText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认录入渠道表现指标${metricsRiskReminderText}${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.metricsRiskReminderChanged) {
-    return `已按你的确认生成数据复盘风险提醒${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成数据复盘风险提醒${planItemText}${planItemDueDateText}${planItemStatusText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.planItemChanged) {
-    return `已按你的确认新增内容计划${planItemDueDateText}${planItemStatusText}${calendarGapReminderText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认新增内容计划${planItemDueDateText}${planItemStatusText}${calendarGapReminderText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.planItemDueDateChanged) {
-    return `已按你的确认更新内容计划截止日期${planItemStatusText}${calendarGapReminderText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认更新内容计划截止日期${planItemStatusText}${calendarGapReminderText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.planItemStatusChanged) {
-    return `已按你的确认更新内容计划状态${calendarGapReminderText}${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认更新内容计划状态${calendarGapReminderText}${contentPackageText}${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.calendarGapReminderChanged) {
@@ -5637,11 +5801,15 @@ function buildConfirmedAssistantReply(input: {
   }
 
   if (input.contentPackageChanged) {
-    return `已按你的确认创建素材包结构${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认创建素材包结构${contentPackageStatusText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.contentPackageStatusChanged) {
+    return `已按你的确认更新素材包状态${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.packageReadinessReminderChanged) {
-    return `已按你的确认生成素材包可交付性缺口提醒${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认生成素材包可交付性缺口提醒${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${reminderDueDateText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.packageFilesStatusChanged) {
@@ -5823,6 +5991,37 @@ function planItemToJson(planItem: {
     deliverable: planItem.deliverable,
     dueDate: planItem.dueDate,
     status: planItem.status,
+  };
+}
+
+function contentPackageToJson(contentPackage: {
+  id: string;
+  projectId: string;
+  strategyId: string | null;
+  name: string;
+  period: string;
+  frequency: ContentFrequency;
+  status: ContentPackageStatus;
+  summary: string | null;
+  files?: Array<{
+    id: string;
+    status: PackageFileStatus;
+  }>;
+}) {
+  return {
+    id: contentPackage.id,
+    projectId: contentPackage.projectId,
+    strategyId: contentPackage.strategyId,
+    name: contentPackage.name,
+    period: contentPackage.period,
+    frequency: contentPackage.frequency,
+    status: contentPackage.status,
+    summary: contentPackage.summary,
+    fileStatuses:
+      contentPackage.files?.map((file) => ({
+        id: file.id,
+        status: file.status,
+      })) ?? [],
   };
 }
 

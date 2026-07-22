@@ -1,5 +1,6 @@
 import {
   ContentFrequency,
+  ContentPackageStatus,
   PackageFileStatus,
   PlanItemStatus,
   ProjectStatus,
@@ -166,6 +167,14 @@ export type ParsedAgentOperation =
         period: string;
         frequency: ContentFrequency;
         summary?: string;
+      };
+      label: string;
+    }
+  | {
+      type: "update_content_package_status";
+      value: {
+        status: typeof ContentPackageStatus.ARCHIVED | typeof ContentPackageStatus.DRAFT;
+        keyword?: string;
       };
       label: string;
     }
@@ -859,6 +868,58 @@ function parseContentPackageFilesStatusOperation(text: string): ParsedAgentOpera
     },
     label: `${statusLabel}：${keyword ?? "最新素材包"}`,
   };
+}
+
+function parseContentPackageStatusOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(素材包|内容包)/.test(text) ||
+    /(审核任务|审核中心|待审核事项|待确认事项|复核事项)/.test(text)
+  ) {
+    return null;
+  }
+
+  const status = parseContentPackageStatus(text);
+
+  if (!status) {
+    return null;
+  }
+
+  const keyword = extractContentPackageStatusKeyword(text);
+  const statusText = status === ContentPackageStatus.ARCHIVED ? "归档" : "恢复为草稿";
+
+  return {
+    type: "update_content_package_status",
+    value: {
+      status,
+      ...(keyword ? { keyword } : {}),
+    },
+    label: `${statusText}素材包：${keyword ?? "最新素材包"}`,
+  };
+}
+
+function parseContentPackageStatus(text: string) {
+  if (/恢复为草稿|恢复草稿|改回草稿|重新打开|重新启用/.test(text)) {
+    return ContentPackageStatus.DRAFT;
+  }
+
+  if (/归档|关闭素材包|关闭内容包|停用素材包|停用内容包|取消素材包|取消内容包/.test(text)) {
+    return ContentPackageStatus.ARCHIVED;
+  }
+
+  return null;
+}
+
+function extractContentPackageStatusKeyword(text: string) {
+  if (/(最新|最近|当前|这个|该).*(素材包|内容包)/.test(text)) {
+    return undefined;
+  }
+
+  const keyword = extractPackageKeyword(text)
+    ?.replace(/恢复为草稿|恢复草稿|改回草稿|重新打开|重新启用/g, "")
+    .replace(/归档|关闭素材包|关闭内容包|停用素材包|停用内容包|取消素材包|取消内容包|取消/g, "")
+    .trim();
+
+  return keyword && keyword.length >= 2 ? keyword : undefined;
 }
 
 function parsePosterPackageAttachmentOperation(text: string): ParsedAgentOperation | null {
@@ -1801,6 +1862,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(contentPackageOperation);
   }
 
+  const contentPackageStatusOperation = parseContentPackageStatusOperation(text);
+  if (contentPackageStatusOperation) {
+    operations.push(contentPackageStatusOperation);
+  }
+
   const contentPackageReadinessReminderOperation =
     parseContentPackageReadinessReminderOperation(text);
   if (contentPackageReadinessReminderOperation) {
@@ -1939,6 +2005,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "confirm_product_facts" ||
       operation.type === "recommend_strategy" ||
       operation.type === "create_content_package" ||
+      operation.type === "update_content_package_status" ||
       operation.type === "create_content_package_readiness_reminders" ||
       operation.type === "update_content_package_files_status" ||
       operation.type === "attach_latest_poster_to_content_package" ||

@@ -999,6 +999,64 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("archives the latest content package from a Chinese agent command", async () => {
+    const contentPackage = {
+      id: "package-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      strategyId: "strategy-1",
+      name: "2026-08 第1周 TikTok 素材包",
+      period: "2026-08 第1周",
+      frequency: "WEEKLY",
+      status: "DRAFT",
+      summary: "待生成素材。",
+      updatedAt: new Date("2026-07-22T00:00:00.000Z"),
+      files: [
+        {
+          id: "file-1",
+          status: "PLANNED",
+        },
+      ],
+    };
+    mocks.tx.contentPackage.count.mockResolvedValue(1);
+    mocks.tx.contentPackage.findFirst.mockResolvedValue(contentPackage);
+    mocks.tx.contentPackage.update.mockResolvedValue({
+      ...contentPackage,
+      status: "ARCHIVED",
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "归档最新素材包。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.contentPackage.update).toHaveBeenCalledWith({
+      where: {
+        id: "package-1",
+      },
+      data: {
+        status: "ARCHIVED",
+      },
+      include: {
+        files: true,
+      },
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPackage",
+        entityId: "package-1",
+        action: "agent_content_package_status_updated",
+        summary: "归档素材包：最新素材包",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("attaches the latest approved poster asset to the latest content package", async () => {
     const contentPackage = {
       id: "package-1",
