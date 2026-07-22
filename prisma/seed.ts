@@ -280,7 +280,7 @@ async function main() {
       frequency: ContentFrequency.WEEKLY,
       status: ContentPackageStatus.DRAFT,
       summary:
-        "围绕新品认知生成说明、排期、平台文案、Hashtags、TikTok 脚本、发布配文、模板化海报和 ZIP 清单。",
+        "围绕新品认知生成说明、排期、平台文案、Hashtags、TikTok 脚本、发布配文、模板化海报、海报文案和素材包。",
     },
     create: {
       id: "demo-package-week-1",
@@ -292,7 +292,7 @@ async function main() {
       frequency: ContentFrequency.WEEKLY,
       status: ContentPackageStatus.DRAFT,
       summary:
-        "围绕新品认知生成说明、排期、平台文案、Hashtags、TikTok 脚本、发布配文、模板化海报和 ZIP 清单。",
+        "围绕新品认知生成说明、排期、平台文案、Hashtags、TikTok 脚本、发布配文、模板化海报、海报文案和素材包。",
     },
   });
 

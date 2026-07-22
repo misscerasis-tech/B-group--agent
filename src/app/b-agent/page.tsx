@@ -497,7 +497,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
                           className="button secondary"
                           href={`/packages/${state.contentPackages[0].id}/export`}
                         >
-                          下载 ZIP 清单
+                          下载素材包
                         </Link>
                       </div>
                     </>
