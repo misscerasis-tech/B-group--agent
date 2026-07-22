@@ -228,6 +228,27 @@ async function updateAssetStatus(
       },
     });
 
+    await tx.reviewTask.updateMany({
+      where: {
+        workspaceId,
+        subjectType: ReviewSubjectType.ASSET,
+        subjectId: asset.id,
+        status: ReviewTaskStatus.PENDING,
+      },
+      data: {
+        status:
+          status === AssetStatus.APPROVED
+            ? ReviewTaskStatus.APPROVED
+            : ReviewTaskStatus.CHANGES_REQUESTED,
+        reviewerUserId: userId,
+        decisionNote:
+          status === AssetStatus.APPROVED
+            ? "已在素材库直接标记为已审核。"
+            : "已在素材库直接拒绝素材。",
+        decidedAt: new Date(),
+      },
+    });
+
     return updatedAsset;
   });
 }
