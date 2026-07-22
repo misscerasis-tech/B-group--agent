@@ -1446,6 +1446,54 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("dismisses an open reminder from a Chinese agent command", async () => {
+    const reminder = {
+      id: "reminder-1",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      title: "抽奖规则需要提前确认",
+      description: "发布前确认奖品、规则和免责声明。",
+      severity: "WARNING",
+      status: "OPEN",
+      dueAt: new Date("2026-07-24T00:00:00.000Z"),
+      createdAt: new Date("2026-07-20T00:00:00.000Z"),
+    };
+    mocks.tx.reminder.count.mockResolvedValue(1);
+    mocks.tx.reminder.findFirst.mockResolvedValue(reminder);
+    mocks.tx.reminder.update.mockResolvedValue({
+      ...reminder,
+      status: "DISMISSED",
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "忽略抽奖规则提醒。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.reminder.update).toHaveBeenCalledWith({
+      where: {
+        id: "reminder-1",
+      },
+      data: {
+        status: "DISMISSED",
+      },
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "Reminder",
+        entityId: "reminder-1",
+        action: "agent_reminder_dismissed",
+        summary: "忽略提醒：抽奖规则",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("completes a matching content plan item from a Chinese agent command", async () => {
     const planItem = {
       id: "plan-1",

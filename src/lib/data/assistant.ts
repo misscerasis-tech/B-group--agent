@@ -383,6 +383,7 @@ export async function submitAgentCommand(input: {
         isMissingReviewTaskOperation,
       );
       const reminderCompletionOperations = parsed.operations.filter(isReminderCompletionOperation);
+      const reminderDismissalOperations = parsed.operations.filter(isReminderDismissalOperation);
       const planItemCompletionOperations = parsed.operations.filter(isPlanItemCompletionOperation);
 
       if (strategyOperations.length > 0) {
@@ -567,6 +568,13 @@ export async function submitAgentCommand(input: {
         operations: reminderCompletionOperations,
       });
 
+      await applyReminderDismissalOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: reminderDismissalOperations,
+      });
+
       await applyPlanItemCompletionOperations(tx, {
         workspaceId: input.workspaceId,
         userId: input.userId,
@@ -662,6 +670,7 @@ export async function applyPendingAgentOperation(input: {
     const reviewTaskDecisionOperations = parsedOperations.filter(isReviewTaskDecisionOperation);
     const missingReviewTaskOperations = parsedOperations.filter(isMissingReviewTaskOperation);
     const reminderCompletionOperations = parsedOperations.filter(isReminderCompletionOperation);
+    const reminderDismissalOperations = parsedOperations.filter(isReminderDismissalOperation);
     const planItemCompletionOperations = parsedOperations.filter(isPlanItemCompletionOperation);
     let updatedStrategy: ProjectStrategyRecord = strategy;
 
@@ -909,6 +918,13 @@ export async function applyPendingAgentOperation(input: {
       operations: reminderCompletionOperations,
     });
 
+    await applyReminderDismissalOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: reminderDismissalOperations,
+    });
+
     await applyPlanItemCompletionOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -961,6 +977,7 @@ export async function applyPendingAgentOperation(input: {
         reviewTaskDecided: reviewTaskDecisionOperations.length > 0,
         missingReviewTasksCreated: missingReviewTaskOperations.length > 0,
         reminderCompleted: reminderCompletionOperations.length > 0,
+        reminderDismissed: reminderDismissalOperations.length > 0,
         planItemCompleted: planItemCompletionOperations.length > 0,
       });
 
@@ -1091,6 +1108,20 @@ async function findCompletionTargetWarnings(
 
   for (const operation of input.operations) {
     if (operation.type === "complete_reminder") {
+      const matchCount = await tx.reminder.count({
+        where: buildReminderCompletionWhere({
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          keyword: operation.value.keyword,
+        }),
+      });
+
+      if (matchCount === 0) {
+        warnings.push(`未找到标题或说明包含「${operation.value.keyword}」的开放提醒`);
+      }
+    }
+
+    if (operation.type === "dismiss_reminder") {
       const matchCount = await tx.reminder.count({
         where: buildReminderCompletionWhere({
           workspaceId: input.workspaceId,
@@ -3410,6 +3441,65 @@ async function applyReminderCompletionOperations(
   }
 }
 
+async function applyReminderDismissalOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "dismiss_reminder") {
+      continue;
+    }
+
+    const reminder = await tx.reminder.findFirst({
+      where: buildReminderCompletionWhere({
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        keyword: operation.value.keyword,
+      }),
+      orderBy: [
+        {
+          dueAt: "asc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+    });
+
+    if (!reminder) {
+      continue;
+    }
+
+    const updatedReminder = await tx.reminder.update({
+      where: {
+        id: reminder.id,
+      },
+      data: {
+        status: ReminderStatus.DISMISSED,
+      },
+    });
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "Reminder",
+        entityId: reminder.id,
+        action: "agent_reminder_dismissed",
+        summary: operation.label,
+        before: reminderToJson(reminder),
+        after: reminderToJson(updatedReminder),
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
 async function applyPlanItemCompletionOperations(
   tx: Prisma.TransactionClient,
   input: {
@@ -4142,6 +4232,10 @@ function isReminderCompletionOperation(operation: ParsedAgentOperation) {
   return operation.type === "complete_reminder";
 }
 
+function isReminderDismissalOperation(operation: ParsedAgentOperation) {
+  return operation.type === "dismiss_reminder";
+}
+
 function isPlanItemCompletionOperation(operation: ParsedAgentOperation) {
   return operation.type === "complete_plan_item";
 }
@@ -4262,6 +4356,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         type,
         value,
         label: label || `完成提醒：${value.keyword}`,
+      });
+      continue;
+    }
+
+    if (type === "dismiss_reminder" && isReminderCompletionValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `忽略提醒：${value.keyword}`,
       });
       continue;
     }
@@ -4794,6 +4897,7 @@ function buildConfirmedAssistantReply(input: {
   reviewTaskDecided: boolean;
   missingReviewTasksCreated: boolean;
   reminderCompleted: boolean;
+  reminderDismissed: boolean;
   planItemCompleted: boolean;
 }) {
   const starterPlanText = input.starterPlanChanged ? "，并生成首月计划和第一份素材包结构" : "";
@@ -4822,6 +4926,7 @@ function buildConfirmedAssistantReply(input: {
   const reviewTaskDecisionText = input.reviewTaskDecided ? "，并处理审核任务" : "";
   const missingReviewTaskText = input.missingReviewTasksCreated ? "，并补齐审核任务" : "";
   const completedReminderText = input.reminderCompleted ? "，并完成项目提醒" : "";
+  const dismissedReminderText = input.reminderDismissed ? "，并忽略项目提醒" : "";
   const completedPlanItemText = input.planItemCompleted ? "，并完成内容计划" : "";
 
   if (input.strategyChanged && input.strategyWasConfirmed) {
@@ -4914,7 +5019,11 @@ function buildConfirmedAssistantReply(input: {
   }
 
   if (input.reminderCompleted) {
-    return `已按你的确认完成项目提醒${completedPlanItemText}：${input.operationSummary}`;
+    return `已按你的确认完成项目提醒${dismissedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.reminderDismissed) {
+    return `已按你的确认忽略项目提醒${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.planItemCompleted) {

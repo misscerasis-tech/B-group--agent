@@ -85,6 +85,13 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "dismiss_reminder";
+      value: {
+        keyword: string;
+      };
+      label: string;
+    }
+  | {
       type: "create_metrics_snapshot";
       value: {
         period: string;
@@ -616,6 +623,47 @@ function parseCompleteReminderOperation(text: string): ParsedAgentOperation | nu
     },
     label: `完成提醒：${keyword}`,
   };
+}
+
+function parseDismissReminderOperation(text: string): ParsedAgentOperation | null {
+  if (!/(提醒|待办)/.test(text) || !hasDismissIntent(text)) {
+    return null;
+  }
+
+  const keyword = extractDismissKeyword(text);
+
+  if (!keyword) {
+    return null;
+  }
+
+  return {
+    type: "dismiss_reminder",
+    value: {
+      keyword,
+    },
+    label: `忽略提醒：${keyword}`,
+  };
+}
+
+function hasDismissIntent(text: string) {
+  return /忽略|取消提醒|取消待办|不需要提醒|无需提醒|dismiss/i.test(text);
+}
+
+function hasLeadingDismissReminderIntent(text: string) {
+  return /^(请|麻烦|帮我)?\s*(忽略|取消|不需要|无需).*(提醒|待办)/.test(text);
+}
+
+function extractDismissKeyword(text: string) {
+  const keyword = text
+    .replace(/请|麻烦|帮我|把|将|当前|这个|这个项目|项目/g, "")
+    .replace(/取消提醒|取消待办|不需要提醒|无需提醒/g, "")
+    .replace(/忽略|取消|不需要|无需|dismiss/gi, "")
+    .replace(/提醒|待办/g, "")
+    .replace(/，|。|！|!|：|:|；|;|、/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return keyword.length >= 2 ? keyword.slice(0, 80) : null;
 }
 
 function shouldGenerateStarterPlan(text: string) {
@@ -1355,6 +1403,19 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     };
   }
 
+  const dismissReminderOperation = parseDismissReminderOperation(text);
+
+  if (dismissReminderOperation && hasLeadingDismissReminderIntent(text)) {
+    operations.push(dismissReminderOperation);
+
+    return {
+      rawText: text,
+      operations,
+      summary: summarizeOperations(operations),
+      confidence: "high",
+    };
+  }
+
   for (const [market, aliases] of MARKET_ALIASES) {
     if (includesAny(text, aliases)) {
       operations.push({
@@ -1422,6 +1483,10 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const reminderCompletionOperation = parseCompleteReminderOperation(text);
   if (reminderCompletionOperation) {
     operations.push(reminderCompletionOperation);
+  }
+
+  if (dismissReminderOperation) {
+    operations.push(dismissReminderOperation);
   }
 
   const frequency = parseFrequency(text);
@@ -1564,6 +1629,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const hasCompleteWorkflowOperation = dedupedOperations.some(
     (operation) =>
       operation.type === "complete_reminder" ||
+      operation.type === "dismiss_reminder" ||
       operation.type === "create_project_health_reminders" ||
       operation.type === "create_product_fact" ||
       operation.type === "infer_product_facts_from_text" ||

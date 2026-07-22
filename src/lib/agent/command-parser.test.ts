@@ -405,6 +405,21 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts reminder dismissal requests", () => {
+    const parsed = parseAgentCommand("忽略抽奖规则提醒。");
+
+    expect(parsed.operations).toEqual([
+      {
+        type: "dismiss_reminder",
+        value: {
+          keyword: "抽奖规则",
+        },
+        label: "忽略提醒：抽奖规则",
+      },
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts content plan completion requests", () => {
     const parsed = parseAgentCommand("第2周 TikTok 开箱短视频已完成。");
 

@@ -99,6 +99,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "reminder_dismiss",
+    category: "reminder",
+    title: "忽略项目提醒",
+    example: "忽略抽奖规则提醒。",
+    writesTo: ["Reminder", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "metrics_create",
     category: "recap",
     title: "录入渠道表现",
