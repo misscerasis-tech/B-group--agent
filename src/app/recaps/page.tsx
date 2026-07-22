@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { ChartNoAxesCombined, ClipboardCheck, Lightbulb, PlusCircle } from "lucide-react";
+import {
+  ChartNoAxesCombined,
+  ClipboardCheck,
+  Download,
+  Lightbulb,
+  PlusCircle,
+} from "lucide-react";
 import { createMetricsSnapshotAction } from "@/app/actions/recap-actions";
 import { AppShell } from "@/components/app-shell";
 import { ErrorState } from "@/components/ui/error-state";
@@ -31,9 +37,15 @@ export default async function RecapsPage() {
               当前先基于系统内数据做运营复盘；外部平台效果数据后续再导入或接 API。
             </p>
           </div>
-          <Link className="button" href="/b-agent">
-            回到 B组 Agent
-          </Link>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+            <Link className="button secondary" href="/recaps/export">
+              <Download size={16} aria-hidden="true" />
+              导出复盘快照
+            </Link>
+            <Link className="button" href="/b-agent">
+              回到 B组 Agent
+            </Link>
+          </div>
         </section>
 
         <section className="grid four">

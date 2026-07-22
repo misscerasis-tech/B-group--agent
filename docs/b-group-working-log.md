@@ -23,10 +23,10 @@
 - 正式策略二次确认、拒绝变更和策略版本历史。
 - 项目/产品手工操作、Agent 操作、素材、提醒、集成和指标录入的变更日志。
 - 素材库上传校验、自动审核任务、素材状态同步和模板化合成任务记录。
-- 素材包 ZIP 清单导出和项目工作台 JSON 快照导出。
+- 素材包 ZIP 清单导出、项目工作台 JSON 快照导出和 Workspace 复盘 JSON 快照导出。
 - 内容日历状态推进、首月计划截止日期。
 - 提醒中心主动提醒、手动提醒、完成/忽略。
-- 数据复盘指标录入、CTR、点击转化率和单次转化成本。
+- 数据复盘指标录入、CTR、点击转化率、单次转化成本和可下载复盘快照。
 - 飞书占位连接、占位测试、停用旧连接和迁移记录。
 - 图片生成产品主体锁定护栏测试。
 - 素材包中心支持手动创建素材包结构、提交 Web 审核、审核任务联动和 ZIP 清单导出。
@@ -45,9 +45,9 @@ DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?sc
 
 最近一次测试结果：
 
-- Test Files：`11 passed`
-- Tests：`30 passed`
-- Build：通过，包含 `/api/health`、`/b-agent`、`/projects/[id]/export`、`/packages/[id]/export`
+- Test Files：`13 passed`
+- Tests：`40 passed`
+- Build：通过，包含 `/api/health`、`/b-agent`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
 
 ## 仍需人工完成
 
