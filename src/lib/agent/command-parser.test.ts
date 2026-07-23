@@ -347,6 +347,46 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts pasted metrics batch import requests", () => {
+    const parsed = parseAgentCommand(
+      [
+        "批量导入指标：",
+        "周期,渠道,曝光,点击,转化,花费,备注",
+        "2026-07 第3周,TikTok,10000,600,24,1234.56,首轮数据",
+        "2026-07 第4周,Instagram,8000,240,8,560,素材包 A",
+      ].join("\n"),
+    );
+
+    expect(parsed.operations).toContainEqual({
+      type: "import_metrics_snapshots",
+      value: {
+        rows: [
+          {
+            period: "2026-07 第3周",
+            channel: "TikTok",
+            impressions: 10000,
+            clicks: 600,
+            conversions: 24,
+            spendCents: 123456,
+            notes: "首轮数据",
+          },
+          {
+            period: "2026-07 第4周",
+            channel: "Instagram",
+            impressions: 8000,
+            clicks: 240,
+            conversions: 8,
+            spendCents: 56000,
+            notes: "素材包 A",
+          },
+        ],
+        source: "agent_paste",
+      },
+      label: "批量导入指标：2 条，渠道 TikTok、Instagram",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts metrics risk reminder generation requests", () => {
     const parsed = parseAgentCommand("把数据复盘风险生成提醒。");
 

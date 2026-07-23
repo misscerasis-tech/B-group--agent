@@ -8,6 +8,7 @@ import {
   ReviewSubjectType,
   ReviewTaskStatus,
 } from "@prisma/client";
+import { parseMetricsImportRows } from "@/lib/metrics/importer";
 
 export type ParsedAgentOperation =
   | {
@@ -162,6 +163,22 @@ export type ParsedAgentOperation =
         conversions: number;
         spendCents: number;
         notes?: string;
+      };
+      label: string;
+    }
+  | {
+      type: "import_metrics_snapshots";
+      value: {
+        rows: Array<{
+          period: string;
+          channel: string;
+          impressions: number;
+          clicks: number;
+          conversions: number;
+          spendCents: number;
+          notes?: string;
+        }>;
+        source: "agent_paste";
       };
       label: string;
     }
@@ -1630,6 +1647,43 @@ function parseMetricsSnapshotOperation(text: string): ParsedAgentOperation | nul
   };
 }
 
+function parseMetricsBatchImportOperation(text: string): ParsedAgentOperation | null {
+  const hasBatchIntent =
+    /(批量|多行|表格|CSV|csv|粘贴|导入)/.test(text) &&
+    /(指标|数据|表现|曝光|点击|转化|花费|消耗)/.test(text);
+  const candidateLines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^(?:请|麻烦|帮我)?(?:批量)?(?:录入|导入|保存).{0,24}?[：:]\s*/, ""))
+    .filter((line) => line.includes("\t") || line.includes(",") || line.includes("，"));
+
+  if (candidateLines.length === 0 || (!hasBatchIntent && candidateLines.length < 2)) {
+    return null;
+  }
+
+  try {
+    const rows = parseMetricsImportRows(candidateLines.join("\n"));
+
+    if (rows.length === 0 || (!hasBatchIntent && rows.length < 2)) {
+      return null;
+    }
+
+    const channels = Array.from(new Set(rows.map((row) => row.channel))).slice(0, 4);
+
+    return {
+      type: "import_metrics_snapshots",
+      value: {
+        rows,
+        source: "agent_paste",
+      },
+      label: `批量导入指标：${rows.length} 条，渠道 ${channels.join("、")}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function parseMetricsRiskReminderOperation(text: string): ParsedAgentOperation | null {
   if (
     !/(数据复盘|复盘风险|指标风险|渠道表现|表现数据|投放数据)/.test(text) ||
@@ -2348,9 +2402,14 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(missingReviewTasksOperation);
   }
 
-  const metricsOperation = parseMetricsSnapshotOperation(text);
-  if (metricsOperation) {
-    operations.push(metricsOperation);
+  const metricsBatchImportOperation = parseMetricsBatchImportOperation(text);
+  if (metricsBatchImportOperation) {
+    operations.push(metricsBatchImportOperation);
+  } else {
+    const metricsOperation = parseMetricsSnapshotOperation(text);
+    if (metricsOperation) {
+      operations.push(metricsOperation);
+    }
   }
 
   const metricsRiskReminderOperation = parseMetricsRiskReminderOperation(text);
@@ -2433,7 +2492,9 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     new Map(operations.map((operation) => [operationKey(operation), operation])).values(),
   );
   const hasCompleteMetricsOperation = dedupedOperations.some(
-    (operation) => operation.type === "create_metrics_snapshot",
+    (operation) =>
+      operation.type === "create_metrics_snapshot" ||
+      operation.type === "import_metrics_snapshots",
   );
   const hasCompletePlanItemOperation = dedupedOperations.some(
     (operation) =>

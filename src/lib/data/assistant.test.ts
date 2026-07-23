@@ -314,6 +314,66 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("imports pasted metrics rows from a Chinese agent command", async () => {
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: [
+        "批量导入指标：",
+        "周期,渠道,曝光,点击,转化,花费,备注",
+        "2026-07 第3周,TikTok,10000,600,24,1234.56,首轮数据",
+        "2026-07 第4周,Instagram,8000,240,8,560,素材包 A",
+      ].join("\n"),
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        status: "APPLIED",
+        summary: "批量导入指标：2 条，渠道 TikTok、Instagram",
+      }),
+    });
+    expect(mocks.tx.metricsSnapshot.create).toHaveBeenCalledTimes(2);
+    expect(mocks.tx.metricsSnapshot.create).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        period: "2026-07 第3周",
+        channel: "TikTok",
+        impressions: 10000,
+        clicks: 600,
+        conversions: 24,
+        spendCents: 123456,
+        notes: "首轮数据",
+      }),
+    });
+    expect(mocks.tx.metricsSnapshot.create).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        period: "2026-07 第4周",
+        channel: "Instagram",
+        impressions: 8000,
+        clicks: 240,
+        conversions: 8,
+        spendCents: 56000,
+        notes: "素材包 A",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "MetricsSnapshot",
+        action: "agent_metrics_snapshot_imported",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("creates a project reminder with an explicit due date from a Chinese agent command", async () => {
     mocks.tx.reminder.create.mockImplementation(({ data }) =>
       Promise.resolve({

@@ -182,6 +182,15 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "metrics_batch_import",
+    category: "recap",
+    title: "批量导入渠道表现",
+    example:
+      "批量导入指标：\n周期,渠道,曝光,点击,转化,花费,备注\n2026-07 第3周,TikTok,10000,600,24,1234.56,首轮数据",
+    writesTo: ["MetricsSnapshot", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "metrics_risk_reminders",
     category: "recap",
     title: "将复盘风险生成提醒",

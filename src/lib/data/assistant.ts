@@ -500,6 +500,7 @@ export async function submitAgentCommand(input: {
       );
       const starterPlanOperations = parsed.operations.filter(isStarterPlanOperation);
       const metricsOperations = parsed.operations.filter(isMetricsOperation);
+      const metricsBatchImportOperations = parsed.operations.filter(isMetricsBatchImportOperation);
       const metricsRiskReminderOperations = parsed.operations.filter(
         isMetricsRiskReminderOperation,
       );
@@ -668,6 +669,13 @@ export async function submitAgentCommand(input: {
         userId: input.userId,
         projectId: project.id,
         operations: metricsOperations,
+      });
+
+      await applyMetricsBatchImportOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: metricsBatchImportOperations,
       });
 
       await applyMetricsRiskReminderOperations(tx, {
@@ -1175,6 +1183,7 @@ export async function applyPendingAgentOperation(input: {
     );
     const starterPlanOperations = parsedOperations.filter(isStarterPlanOperation);
     const metricsOperations = parsedOperations.filter(isMetricsOperation);
+    const metricsBatchImportOperations = parsedOperations.filter(isMetricsBatchImportOperation);
     const metricsRiskReminderOperations = parsedOperations.filter(isMetricsRiskReminderOperation);
     const planItemOperations = parsedOperations.filter(isPlanItemOperation);
     const planItemDueDateOperations = parsedOperations.filter(isPlanItemDueDateOperation);
@@ -1380,6 +1389,13 @@ export async function applyPendingAgentOperation(input: {
       operations: metricsOperations,
     });
 
+    await applyMetricsBatchImportOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: metricsBatchImportOperations,
+    });
+
     await applyMetricsRiskReminderOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -1549,7 +1565,7 @@ export async function applyPendingAgentOperation(input: {
         productFactChanged: productFactOperations.length > 0,
         productFactsConfirmed: productFactConfirmationOperations.length > 0,
         starterPlanChanged: starterPlanOperations.length > 0,
-        metricsChanged: metricsOperations.length > 0,
+        metricsChanged: metricsOperations.length > 0 || metricsBatchImportOperations.length > 0,
         metricsRiskReminderChanged: metricsRiskReminderOperations.length > 0,
         planItemChanged: planItemOperations.length > 0,
         planItemDueDateChanged: planItemDueDateOperations.length > 0,
@@ -3210,6 +3226,60 @@ async function applyMetricsOperations(
         actorUserId: input.userId,
       },
     });
+  }
+}
+
+async function applyMetricsBatchImportOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "import_metrics_snapshots") {
+      continue;
+    }
+
+    for (const row of operation.value.rows) {
+      const metricsSnapshot = await tx.metricsSnapshot.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          period: row.period,
+          channel: row.channel,
+          impressions: row.impressions,
+          clicks: row.clicks,
+          conversions: row.conversions,
+          spendCents: row.spendCents,
+          notes: row.notes ?? "由 B 组 Agent 批量导入。",
+        },
+      });
+
+      await tx.changeLog.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          entityType: "MetricsSnapshot",
+          entityId: metricsSnapshot.id,
+          action: "agent_metrics_snapshot_imported",
+          summary: `B 组 Agent 批量导入 ${row.period} ${row.channel} 指标。`,
+          after: {
+            id: metricsSnapshot.id,
+            period: metricsSnapshot.period,
+            channel: metricsSnapshot.channel,
+            impressions: metricsSnapshot.impressions,
+            clicks: metricsSnapshot.clicks,
+            conversions: metricsSnapshot.conversions,
+            spendCents: metricsSnapshot.spendCents,
+            notes: metricsSnapshot.notes,
+          },
+          actorUserId: input.userId,
+        },
+      });
+    }
   }
 }
 
@@ -5572,6 +5642,10 @@ function isMetricsOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_metrics_snapshot";
 }
 
+function isMetricsBatchImportOperation(operation: ParsedAgentOperation) {
+  return operation.type === "import_metrics_snapshots";
+}
+
 function isMetricsRiskReminderOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_metrics_risk_reminders";
 }
@@ -5852,6 +5926,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
       continue;
     }
 
+    if (type === "import_metrics_snapshots" && isMetricsBatchImportValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `批量导入指标：${value.rows.length} 条`,
+      });
+      continue;
+    }
+
     if (type === "create_metrics_risk_reminders" && isMetricsRiskReminderValue(value)) {
       operations.push({
         type,
@@ -6040,6 +6123,24 @@ function isMetricsSnapshotValue(value: unknown): value is Extract<
     (record.notes === undefined || typeof record.notes === "string") &&
     record.clicks <= record.impressions &&
     record.conversions <= record.clicks
+  );
+}
+
+function isMetricsBatchImportValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "import_metrics_snapshots" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    record.source === "agent_paste" &&
+    Array.isArray(record.rows) &&
+    record.rows.length > 0 &&
+    record.rows.every(isMetricsSnapshotValue)
   );
 }
 
