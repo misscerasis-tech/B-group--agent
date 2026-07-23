@@ -505,6 +505,7 @@ export async function submitAgentCommand(input: {
         isMetricsRiskReminderOperation,
       );
       const planItemOperations = parsed.operations.filter(isPlanItemOperation);
+      const planItemBatchImportOperations = parsed.operations.filter(isPlanItemBatchImportOperation);
       const planItemDueDateOperations = parsed.operations.filter(isPlanItemDueDateOperation);
       const planItemStatusOperations = parsed.operations.filter(isPlanItemStatusOperation);
       const calendarGapReminderOperations = parsed.operations.filter(
@@ -691,6 +692,14 @@ export async function submitAgentCommand(input: {
         projectId: project.id,
         strategyId: updatedStrategy.id,
         operations: planItemOperations,
+      });
+
+      await applyPlanItemBatchImportOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        strategyId: updatedStrategy.id,
+        operations: planItemBatchImportOperations,
       });
 
       await applyPlanItemDueDateOperations(tx, {
@@ -1186,6 +1195,7 @@ export async function applyPendingAgentOperation(input: {
     const metricsBatchImportOperations = parsedOperations.filter(isMetricsBatchImportOperation);
     const metricsRiskReminderOperations = parsedOperations.filter(isMetricsRiskReminderOperation);
     const planItemOperations = parsedOperations.filter(isPlanItemOperation);
+    const planItemBatchImportOperations = parsedOperations.filter(isPlanItemBatchImportOperation);
     const planItemDueDateOperations = parsedOperations.filter(isPlanItemDueDateOperation);
     const planItemStatusOperations = parsedOperations.filter(isPlanItemStatusOperation);
     const calendarGapReminderOperations = parsedOperations.filter(isCalendarGapReminderOperation);
@@ -1411,6 +1421,14 @@ export async function applyPendingAgentOperation(input: {
       operations: planItemOperations,
     });
 
+    await applyPlanItemBatchImportOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      strategyId: updatedStrategy.id,
+      operations: planItemBatchImportOperations,
+    });
+
     await applyPlanItemDueDateOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -1567,7 +1585,7 @@ export async function applyPendingAgentOperation(input: {
         starterPlanChanged: starterPlanOperations.length > 0,
         metricsChanged: metricsOperations.length > 0 || metricsBatchImportOperations.length > 0,
         metricsRiskReminderChanged: metricsRiskReminderOperations.length > 0,
-        planItemChanged: planItemOperations.length > 0,
+        planItemChanged: planItemOperations.length > 0 || planItemBatchImportOperations.length > 0,
         planItemDueDateChanged: planItemDueDateOperations.length > 0,
         planItemStatusChanged: planItemStatusOperations.length > 0,
         calendarGapReminderChanged: calendarGapReminderOperations.length > 0,
@@ -3432,6 +3450,53 @@ async function applyPlanItemOperations(
         actorUserId: input.userId,
       },
     });
+  }
+}
+
+async function applyPlanItemBatchImportOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    strategyId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "import_plan_items") {
+      continue;
+    }
+
+    for (const row of operation.value.rows) {
+      const planItem = await tx.contentPlanItem.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          strategyId: input.strategyId,
+          week: row.week,
+          channel: row.channel,
+          theme: row.theme,
+          title: row.title,
+          deliverable: row.deliverable,
+          dueDate: row.dueDate ? new Date(`${row.dueDate}T00:00:00`) : null,
+          status: row.status,
+        },
+      });
+
+      await tx.changeLog.create({
+        data: {
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          entityType: "ContentPlanItem",
+          entityId: planItem.id,
+          action: "agent_plan_item_imported",
+          summary: `B 组 Agent 批量导入内容计划：第${row.week}周 ${row.channel} ${row.title}`,
+          after: planItemToJson(planItem),
+          actorUserId: input.userId,
+        },
+      });
+    }
   }
 }
 
@@ -5654,6 +5719,10 @@ function isPlanItemOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_plan_item";
 }
 
+function isPlanItemBatchImportOperation(operation: ParsedAgentOperation) {
+  return operation.type === "import_plan_items";
+}
+
 function isPlanItemDueDateOperation(operation: ParsedAgentOperation) {
   return operation.type === "update_plan_item_due_date";
 }
@@ -6069,6 +6138,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         type,
         value,
         label: label || `新增内容计划：第${value.week}周 · ${value.channel} · ${value.title}`,
+      });
+      continue;
+    }
+
+    if (type === "import_plan_items" && isPlanItemBatchImportValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || `批量导入内容计划：${value.rows.length} 条`,
       });
       continue;
     }
@@ -6529,6 +6607,24 @@ function isPlanItemValue(value: unknown): value is Extract<
       record.status === PlanItemStatus.READY ||
       record.status === PlanItemStatus.REVIEW_NEEDED ||
       record.status === PlanItemStatus.DONE)
+  );
+}
+
+function isPlanItemBatchImportValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "import_plan_items" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    record.source === "agent_paste" &&
+    Array.isArray(record.rows) &&
+    record.rows.length > 0 &&
+    record.rows.every(isPlanItemValue)
   );
 }
 

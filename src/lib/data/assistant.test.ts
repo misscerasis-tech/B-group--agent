@@ -965,6 +965,75 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("imports pasted content plan rows from a Chinese agent command", async () => {
+    mocks.tx.contentPlanItem.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: `plan-${data.week}-${data.channel}`,
+        ...data,
+      }),
+    );
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: [
+        "批量导入内容计划：",
+        "周次,渠道,主题,标题,交付物,截止日期,状态",
+        "第1周,TikTok,新品认知,15秒开箱短视频,脚本+配文,2026-08-07,可执行",
+        "2,Instagram,礼赠场景,轮播图文,海报+发布文案,2026/08/14,需审核",
+      ].join("\n"),
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        status: "APPLIED",
+        summary: "批量导入内容计划：2 条，渠道 TikTok、Instagram",
+      }),
+    });
+    expect(mocks.tx.contentPlanItem.create).toHaveBeenCalledTimes(2);
+    expect(mocks.tx.contentPlanItem.create).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        strategyId: "strategy-1",
+        week: 1,
+        channel: "TikTok",
+        theme: "新品认知",
+        title: "15秒开箱短视频",
+        deliverable: "脚本+配文",
+        dueDate: new Date("2026-08-07T00:00:00"),
+        status: "READY",
+      }),
+    });
+    expect(mocks.tx.contentPlanItem.create).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        strategyId: "strategy-1",
+        week: 2,
+        channel: "Instagram",
+        theme: "礼赠场景",
+        title: "轮播图文",
+        deliverable: "海报+发布文案",
+        dueDate: new Date("2026-08-14T00:00:00"),
+        status: "REVIEW_NEEDED",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPlanItem",
+        action: "agent_plan_item_imported",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("creates reminders from content calendar gaps", async () => {
     mocks.tx.contentPlanItem.findMany.mockResolvedValue([
       {

@@ -8,6 +8,7 @@ import {
   ReviewSubjectType,
   ReviewTaskStatus,
 } from "@prisma/client";
+import { parseContentPlanImportRows } from "@/lib/content-plan/importer";
 import { parseMetricsImportRows } from "@/lib/metrics/importer";
 
 export type ParsedAgentOperation =
@@ -199,6 +200,22 @@ export type ParsedAgentOperation =
         deliverable: string;
         dueDate?: string;
         status: PlanItemStatus;
+      };
+      label: string;
+    }
+  | {
+      type: "import_plan_items";
+      value: {
+        rows: Array<{
+          week: number;
+          channel: string;
+          theme: string;
+          title: string;
+          deliverable: string;
+          dueDate?: string;
+          status: PlanItemStatus;
+        }>;
+        source: "agent_paste";
       };
       label: string;
     }
@@ -1769,6 +1786,43 @@ function parsePlanItemOperation(text: string): ParsedAgentOperation | null {
   };
 }
 
+function parsePlanItemBatchImportOperation(text: string): ParsedAgentOperation | null {
+  const hasBatchIntent =
+    /(批量|多行|表格|CSV|csv|粘贴|导入)/.test(text) &&
+    /(内容日历|内容计划|排期|计划|周次|交付物)/.test(text);
+  const candidateLines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^(?:请|麻烦|帮我)?(?:批量)?(?:录入|导入|保存|新增).{0,24}?[：:]\s*/, ""))
+    .filter((line) => line.includes("\t") || line.includes(",") || line.includes("，"));
+
+  if (candidateLines.length === 0 || (!hasBatchIntent && candidateLines.length < 2)) {
+    return null;
+  }
+
+  try {
+    const rows = parseContentPlanImportRows(candidateLines.join("\n"));
+
+    if (rows.length === 0 || (!hasBatchIntent && rows.length < 2)) {
+      return null;
+    }
+
+    const channels = Array.from(new Set(rows.map((row) => row.channel))).slice(0, 4);
+
+    return {
+      type: "import_plan_items",
+      value: {
+        rows,
+        source: "agent_paste",
+      },
+      label: `批量导入内容计划：${rows.length} 条，渠道 ${channels.join("、")}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function parseCalendarGapReminderOperation(text: string): ParsedAgentOperation | null {
   if (
     !/(内容日历|内容计划|排期|计划缺口|渠道缺口)/.test(text) ||
@@ -2405,6 +2459,13 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const metricsBatchImportOperation = parseMetricsBatchImportOperation(text);
   if (metricsBatchImportOperation) {
     operations.push(metricsBatchImportOperation);
+
+    return {
+      rawText: text,
+      operations,
+      summary: summarizeOperations(operations),
+      confidence: "high",
+    };
   } else {
     const metricsOperation = parseMetricsSnapshotOperation(text);
     if (metricsOperation) {
@@ -2417,9 +2478,21 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(metricsRiskReminderOperation);
   }
 
-  const planItemOperation = parsePlanItemOperation(text);
-  if (planItemOperation) {
-    operations.push(planItemOperation);
+  const planItemBatchImportOperation = parsePlanItemBatchImportOperation(text);
+  if (planItemBatchImportOperation) {
+    operations.push(planItemBatchImportOperation);
+
+    return {
+      rawText: text,
+      operations,
+      summary: summarizeOperations(operations),
+      confidence: "high",
+    };
+  } else {
+    const planItemOperation = parsePlanItemOperation(text);
+    if (planItemOperation) {
+      operations.push(planItemOperation);
+    }
   }
 
   const calendarGapReminderOperation = parseCalendarGapReminderOperation(text);
@@ -2499,6 +2572,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
   const hasCompletePlanItemOperation = dedupedOperations.some(
     (operation) =>
       operation.type === "create_plan_item" ||
+      operation.type === "import_plan_items" ||
       operation.type === "update_plan_item_status" ||
       operation.type === "update_plan_item_due_date" ||
       operation.type === "complete_plan_item",
@@ -2530,6 +2604,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "cancel_review_task" ||
       operation.type === "create_metrics_risk_reminders" ||
       operation.type === "create_calendar_gap_reminders" ||
+      operation.type === "import_plan_items" ||
       operation.type === "create_missing_review_tasks",
   );
 

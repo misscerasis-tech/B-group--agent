@@ -207,6 +207,15 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "plan_item_batch_import",
+    category: "planning",
+    title: "批量导入内容计划",
+    example:
+      "批量导入内容计划：\n周次,渠道,主题,标题,交付物,截止日期,状态\n第1周,TikTok,新品认知,15秒开箱短视频,脚本+配文,2026-08-07,可执行",
+    writesTo: ["ContentPlanItem", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "plan_item_complete",
     category: "planning",
     title: "完成内容计划",

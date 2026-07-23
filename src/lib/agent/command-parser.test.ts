@@ -421,6 +421,46 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts pasted content plan batch import requests", () => {
+    const parsed = parseAgentCommand(
+      [
+        "批量导入内容计划：",
+        "周次,渠道,主题,标题,交付物,截止日期,状态",
+        "第1周,TikTok,新品认知,15秒开箱短视频,脚本+配文,2026-08-07,可执行",
+        "2,Instagram,礼赠场景,轮播图文,海报+发布文案,2026/08/14,需审核",
+      ].join("\n"),
+    );
+
+    expect(parsed.operations).toContainEqual({
+      type: "import_plan_items",
+      value: {
+        rows: [
+          {
+            week: 1,
+            channel: "TikTok",
+            theme: "新品认知",
+            title: "15秒开箱短视频",
+            deliverable: "脚本+配文",
+            dueDate: "2026-08-07",
+            status: PlanItemStatus.READY,
+          },
+          {
+            week: 2,
+            channel: "Instagram",
+            theme: "礼赠场景",
+            title: "轮播图文",
+            deliverable: "海报+发布文案",
+            dueDate: "2026-08-14",
+            status: PlanItemStatus.REVIEW_NEEDED,
+          },
+        ],
+        source: "agent_paste",
+      },
+      label: "批量导入内容计划：2 条，渠道 TikTok、Instagram",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts content calendar gap reminder requests", () => {
     const parsed = parseAgentCommand("把内容日历缺口生成提醒。");
 
