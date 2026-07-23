@@ -69,6 +69,13 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "confirm_project_strategy";
+      value: {
+        scope: "current_project";
+      };
+      label: string;
+    }
+  | {
       type: "create_reminder";
       value: string;
       label: string;
@@ -754,6 +761,24 @@ function parseStrategyRecommendationOperation(text: string): ParsedAgentOperatio
       contextText: text.slice(0, 500),
     },
     label: "根据产品事实生成策略推荐草案",
+  };
+}
+
+function parseProjectStrategyConfirmationOperation(text: string): ParsedAgentOperation | null {
+  if (/产品事实|素材包|审核任务/.test(text)) {
+    return null;
+  }
+
+  if (!/(确认|通过|批准|设为|转为).*(正式策略|当前策略|策略草案|项目策略|市场策略)/.test(text)) {
+    return null;
+  }
+
+  return {
+    type: "confirm_project_strategy",
+    value: {
+      scope: "current_project",
+    },
+    label: "确认当前策略为正式策略",
   };
 }
 
@@ -2215,6 +2240,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(projectHealthReminderOperation);
   }
 
+  const projectStrategyConfirmationOperation = parseProjectStrategyConfirmationOperation(text);
+  if (projectStrategyConfirmationOperation) {
+    operations.push(projectStrategyConfirmationOperation);
+  }
+
   const productFactUpdateOperation = parseUpdateProductFactOperation(text);
   if (productFactUpdateOperation) {
     operations.push(productFactUpdateOperation);
@@ -2427,6 +2457,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "switch_project" ||
       operation.type === "summarize_project" ||
       operation.type === "recommend_strategy" ||
+      operation.type === "confirm_project_strategy" ||
       operation.type === "create_content_package" ||
       operation.type === "update_content_package_status" ||
       operation.type === "create_content_package_readiness_reminders" ||

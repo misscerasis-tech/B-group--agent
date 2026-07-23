@@ -69,6 +69,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: true,
   },
   {
+    key: "strategy_confirm",
+    category: "strategy",
+    title: "确认正式策略",
+    example: "确认当前策略为正式策略，并生成首月计划。",
+    writesTo: ["ProjectStrategy", "ReviewTask", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: true,
+  },
+  {
     key: "strategy_audiences",
     category: "strategy",
     title: "新增或删除客群",

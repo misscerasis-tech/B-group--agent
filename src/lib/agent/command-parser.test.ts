@@ -186,6 +186,37 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts project strategy confirmation requests", () => {
+    const parsed = parseAgentCommand("确认当前策略为正式策略。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "confirm_project_strategy",
+      value: {
+        scope: "current_project",
+      },
+      label: "确认当前策略为正式策略",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("extracts strategy confirmation and starter plan as a combined workflow", () => {
+    const parsed = parseAgentCommand("确认当前策略为正式策略，并生成首月计划。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "confirm_project_strategy",
+      value: {
+        scope: "current_project",
+      },
+      label: "确认当前策略为正式策略",
+    });
+    expect(parsed.operations).toContainEqual({
+      type: "generate_starter_plan",
+      value: "first_month",
+      label: "生成首月计划和第一份素材包结构",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts reminder creation requests", () => {
     const parsed = parseAgentCommand("提醒我提前确认巴西抽奖奖品和活动规则，这是重要风险。");
 

@@ -363,8 +363,14 @@ export async function submitAgentCommand(input: {
       projectSwitchOperation && !projectSwitchTarget
         ? `未找到当前 Workspace 下匹配「${projectSwitchOperation.value.keyword}」的项目`
         : null;
+    const strategyConfirmationWarning = parsed.operations.some(isStrategyConfirmationOperation)
+      ? buildStrategyConfirmationWarning(strategy)
+      : null;
     const operationStatus =
-      noSafeOperation || hasMissingCompletionTargets || projectSwitchTargetWarning
+      noSafeOperation ||
+      hasMissingCompletionTargets ||
+      projectSwitchTargetWarning ||
+      strategyConfirmationWarning
         ? AgentOperationStatus.FAILED
         : requiresConfirmation
           ? AgentOperationStatus.PENDING_CONFIRMATION
@@ -378,6 +384,7 @@ export async function submitAgentCommand(input: {
       activePlanChannelUsage,
       completionTargetWarnings,
       projectSwitchTargetWarning,
+      strategyConfirmationWarning,
     });
     const projectKickoffOperation = parsed.operations.find(isProjectKickoffOperation);
 
@@ -478,6 +485,9 @@ export async function submitAgentCommand(input: {
       const strategyOperations = parsed.operations.filter(isStrategyOperation);
       const strategyRecommendationOperations =
         parsed.operations.filter(isStrategyRecommendationOperation);
+      const strategyConfirmationOperations = parsed.operations.filter(
+        isStrategyConfirmationOperation,
+      );
       const projectOperations = parsed.operations.filter(isProjectOperation);
       const reminderOperations = parsed.operations.filter(isReminderOperation);
       const projectHealthReminderOperations = parsed.operations.filter(
@@ -581,6 +591,16 @@ export async function submitAgentCommand(input: {
           project,
           strategy: updatedStrategy,
           operations: strategyRecommendationOperations,
+        });
+      }
+
+      if (strategyConfirmationOperations.length > 0) {
+        updatedStrategy = await applyStrategyConfirmationOperation(tx, {
+          workspaceId: input.workspaceId,
+          userId: input.userId,
+          projectId: project.id,
+          strategy: updatedStrategy,
+          summary: parsed.summary,
         });
       }
 
@@ -803,6 +823,9 @@ export async function submitAgentCommand(input: {
             workspaceId: input.workspaceId,
             projectId: project.id,
           })
+        : operationStatus === AgentOperationStatus.APPLIED &&
+            parsed.operations.some(isStrategyConfirmationOperation)
+          ? `已确认正式策略 v${updatedStrategy.version}。后续如果再调整市场、客群、渠道、内容方向或素材包频率，我会先做冲突检查并进入待确认。`
         : operationStatus === AgentOperationStatus.APPLIED && projectSwitchTarget
           ? `已切换到「${projectSwitchTarget.name}」。接下来你可以继续用中文调整这个项目的产品事实、策略、计划、素材包、审核或提醒。`
           : buildAssistantReply(parsed.summary, operationStatus, conflictCheck);
@@ -1139,6 +1162,7 @@ export async function applyPendingAgentOperation(input: {
     const strategyRecommendationOperations = parsedOperations.filter(
       isStrategyRecommendationOperation,
     );
+    const strategyConfirmationOperations = parsedOperations.filter(isStrategyConfirmationOperation);
     const projectOperations = parsedOperations.filter(isProjectOperation);
     const reminderOperations = parsedOperations.filter(isReminderOperation);
     const projectHealthReminderOperations = parsedOperations.filter(
@@ -1251,6 +1275,16 @@ export async function applyPendingAgentOperation(input: {
         project,
         strategy: updatedStrategy,
         operations: strategyRecommendationOperations,
+      });
+    }
+
+    if (strategyConfirmationOperations.length > 0) {
+      updatedStrategy = await applyStrategyConfirmationOperation(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: operation.projectId,
+        strategy: updatedStrategy,
+        summary: operation.summary,
       });
     }
 
@@ -2020,6 +2054,7 @@ function buildAgentConflictCheck(input: {
   activePlanChannelUsage: ActivePlanChannelUsage[];
   completionTargetWarnings: string[];
   projectSwitchTargetWarning?: string | null;
+  strategyConfirmationWarning?: string | null;
 }) {
   const base = input.noSafeOperation
     ? "未识别到足够明确的市场、渠道、频率、项目状态、产品事实、提醒、内容计划、素材包、审核或复盘动作，未写入数据库。"
@@ -2027,6 +2062,8 @@ function buildAgentConflictCheck(input: {
       ? `已识别到任务类指令，但${input.completionTargetWarnings.join("；")}，未写入数据库。`
       : input.projectSwitchTargetWarning
         ? `${input.projectSwitchTargetWarning}，未切换项目。`
+        : input.strategyConfirmationWarning
+          ? `${input.strategyConfirmationWarning}，未确认正式策略。`
         : input.requiresConfirmation
           ? "当前策略已被人工确认为正式版本，需要二次确认后才能修改核心项目配置。"
           : input.hasConfirmationSensitiveOperation
@@ -2092,6 +2129,24 @@ function buildAgentRiskMessages(input: {
   }
 
   return risks;
+}
+
+function buildStrategyConfirmationWarning(strategy: ProjectStrategyRecord) {
+  if (strategy.status === StrategyStatus.CONFIRMED) {
+    return "当前项目最新策略已经是正式策略";
+  }
+
+  const missingFields = [
+    strategy.targetMarkets.length === 0 ? "目标市场" : null,
+    strategy.channels.length === 0 ? "平台渠道" : null,
+    strategy.contentDirections.length === 0 ? "内容方向" : null,
+  ].filter(Boolean);
+
+  if (missingFields.length > 0) {
+    return `当前策略草案缺少${missingFields.join("、")}`;
+  }
+
+  return null;
 }
 
 export async function confirmProjectStrategy(input: {
@@ -3066,6 +3121,44 @@ async function applyStrategyRecommendationOperations(
   }
 
   return latestStrategy;
+}
+
+async function applyStrategyConfirmationOperation(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    strategy: ProjectStrategyRecord;
+    summary: string;
+  },
+) {
+  const before = strategyToJson(input.strategy);
+  const updatedStrategy = await tx.projectStrategy.update({
+    where: {
+      id: input.strategy.id,
+    },
+    data: {
+      status: StrategyStatus.CONFIRMED,
+      confirmedAt: new Date(),
+    },
+  });
+
+  await tx.changeLog.create({
+    data: {
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      entityType: "ProjectStrategy",
+      entityId: input.strategy.id,
+      action: "agent_strategy_confirmed",
+      summary: input.summary,
+      before,
+      after: strategyToJson(updatedStrategy),
+      actorUserId: input.userId,
+    },
+  });
+
+  return updatedStrategy;
 }
 
 async function applyMetricsOperations(
@@ -5439,6 +5532,12 @@ function isStrategyRecommendationOperation(operation: ParsedAgentOperation) {
   return operation.type === "recommend_strategy";
 }
 
+function isStrategyConfirmationOperation(
+  operation: ParsedAgentOperation,
+): operation is Extract<ParsedAgentOperation, { type: "confirm_project_strategy" }> {
+  return operation.type === "confirm_project_strategy";
+}
+
 function isReminderOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_reminder";
 }
@@ -5609,6 +5708,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
         type,
         value,
         label: label || "根据产品事实生成策略推荐草案",
+      });
+      continue;
+    }
+
+    if (type === "confirm_project_strategy" && isProjectScopedOperationValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || "确认当前策略为正式策略",
       });
       continue;
     }
@@ -6237,6 +6345,10 @@ function isProductFactConfirmationValue(value: unknown): value is Extract<
   ParsedAgentOperation,
   { type: "confirm_product_facts" }
 >["value"] {
+  return isProjectScopedOperationValue(value);
+}
+
+function isProjectScopedOperationValue(value: unknown): value is { scope: "current_project" } {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }

@@ -637,6 +637,109 @@ describe("generateStarterPlan", () => {
     expect(mocks.tx.changeLog.create).not.toHaveBeenCalled();
   });
 
+  it("confirms a complete draft strategy from a Chinese agent command", async () => {
+    mocks.tx.projectStrategy.findFirst.mockResolvedValue({
+      id: "strategy-draft",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      version: 1,
+      status: "DRAFT",
+      targetMarkets: ["巴西"],
+      audiences: ["礼品购买者"],
+      channels: ["TikTok", "Instagram"],
+      contentDirections: ["世界杯", "通勤"],
+      packageFrequency: "WEEKLY",
+      positioning: "面向礼品购买者",
+      rationale: "策略依据",
+      confirmedAt: null,
+    });
+    mocks.tx.projectStrategy.update.mockResolvedValue({
+      id: "strategy-draft",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      version: 1,
+      status: "CONFIRMED",
+      targetMarkets: ["巴西"],
+      audiences: ["礼品购买者"],
+      channels: ["TikTok", "Instagram"],
+      contentDirections: ["世界杯", "通勤"],
+      packageFrequency: "WEEKLY",
+      positioning: "面向礼品购买者",
+      rationale: "策略依据",
+      confirmedAt: new Date("2026-07-22T00:00:00.000Z"),
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "确认当前策略为正式策略。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.projectStrategy.update).toHaveBeenCalledWith({
+      where: {
+        id: "strategy-draft",
+      },
+      data: expect.objectContaining({
+        status: "CONFIRMED",
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ProjectStrategy",
+        entityId: "strategy-draft",
+        action: "agent_strategy_confirmed",
+        summary: "确认当前策略为正式策略",
+        actorUserId: "user-1",
+      }),
+    });
+    expect(mocks.tx.agentMessage.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        role: "ASSISTANT",
+        content: expect.stringContaining("已确认正式策略 v1"),
+      }),
+    });
+  });
+
+  it("rejects strategy confirmation commands when required strategy fields are missing", async () => {
+    mocks.tx.projectStrategy.findFirst.mockResolvedValue({
+      id: "strategy-empty",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      version: 1,
+      status: "DRAFT",
+      targetMarkets: [],
+      audiences: ["待 AI 顾问根据产品事实细化"],
+      channels: [],
+      contentDirections: [],
+      packageFrequency: "MONTHLY",
+      positioning: "等待用户输入产品、市场和渠道信息。",
+      rationale: "占位策略。",
+      confirmedAt: null,
+    });
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "确认当前策略为正式策略。",
+    });
+
+    expect(result.status).toBe("FAILED");
+    expect(mocks.tx.projectStrategy.update).not.toHaveBeenCalled();
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        status: "FAILED",
+        conflictCheck: "当前策略草案缺少目标市场、平台渠道、内容方向，未确认正式策略。",
+      }),
+    });
+  });
+
   it("creates and links a new product to the current project from a Chinese agent command", async () => {
     mocks.tx.product.findFirst.mockResolvedValue(null);
     mocks.tx.projectProduct.findFirst.mockResolvedValue(null);
