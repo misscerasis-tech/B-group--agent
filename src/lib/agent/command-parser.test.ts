@@ -773,6 +773,22 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts read-only recent change summary requests", () => {
+    const parsed = parseAgentCommand("最近这个项目改了什么？");
+
+    expect(parsed.operations).toEqual([
+      {
+        type: "summarize_recent_changes",
+        value: {
+          scope: "current_project",
+          limit: 6,
+        },
+        label: "总结当前项目最近变更",
+      },
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("keeps explicit project summary requests scoped to the current project", () => {
     const parsed = parseAgentCommand("这个项目今天该做什么？");
 

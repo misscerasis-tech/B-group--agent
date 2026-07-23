@@ -861,6 +861,14 @@ export async function submitAgentCommand(input: {
             parsed.operations.some(isAgentCapabilitiesSummaryOperation)
           ? buildAgentCapabilitiesReply()
         : operationStatus === AgentOperationStatus.APPLIED &&
+            parsed.operations.some(isRecentChangesSummaryOperation)
+          ? await buildRecentChangesReply(tx, {
+              workspaceId: input.workspaceId,
+              projectId: project.id,
+              limit:
+                parsed.operations.find(isRecentChangesSummaryOperation)?.value.limit ?? 6,
+            })
+        : operationStatus === AgentOperationStatus.APPLIED &&
             parsed.operations.some(isStrategyConfirmationOperation)
           ? `已确认正式策略 v${updatedStrategy.version}。后续如果再调整市场、客群、渠道、内容方向或素材包频率，我会先做冲突检查并进入待确认。`
         : operationStatus === AgentOperationStatus.APPLIED && projectSwitchTarget
@@ -1309,6 +1317,43 @@ function buildAgentCapabilitiesReply() {
     `常用指令示例：${examples.join("；")}`,
     "当前版本使用本地规则型 Provider，不调用真实 GPT，也不会连接飞书；会写库的操作都会记录 AgentOperation 和 ChangeLog。",
   ].join("\n");
+}
+
+async function buildRecentChangesReply(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    projectId: string;
+    limit: number;
+  },
+) {
+  const changeLogs = await tx.changeLog.findMany({
+    where: scopedWhere(input.workspaceId, {
+      projectId: input.projectId,
+    }) as Prisma.ChangeLogWhereInput,
+    include: {
+      actor: {
+        select: {
+          name: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: input.limit,
+  });
+
+  if (changeLogs.length === 0) {
+    return "当前项目还没有变更日志。你可以先创建项目、确认事实、调整策略、生成计划或素材包，我会把后续关键动作记录下来。";
+  }
+
+  const lines = changeLogs.map((changeLog, index) => {
+    const actor = changeLog.actor?.name ? ` · ${changeLog.actor.name}` : "";
+    return `${index + 1}. ${formatDateTime(changeLog.createdAt)} · ${changeLog.action}${actor}：${changeLog.summary}`;
+  });
+
+  return [`当前项目最近 ${changeLogs.length} 条变更：`, ...lines].join("\n");
 }
 
 export async function applyPendingAgentOperation(input: {
@@ -5910,6 +5955,12 @@ function isAgentCapabilitiesSummaryOperation(
   return operation.type === "summarize_agent_capabilities";
 }
 
+function isRecentChangesSummaryOperation(
+  operation: ParsedAgentOperation,
+): operation is Extract<ParsedAgentOperation, { type: "summarize_recent_changes" }> {
+  return operation.type === "summarize_recent_changes";
+}
+
 function isStrategyRecommendationOperation(operation: ParsedAgentOperation) {
   return operation.type === "recommend_strategy";
 }
@@ -7314,6 +7365,15 @@ function listInline(values: string[]) {
 
 function formatDateOnly(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function formatDateTime(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function operationToJson(operation: {

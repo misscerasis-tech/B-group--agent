@@ -96,6 +96,7 @@ const mocks = vi.hoisted(() => {
     },
     changeLog: {
       create: vi.fn(),
+      findMany: vi.fn(),
     },
   };
 
@@ -813,6 +814,57 @@ describe("generateStarterPlan", () => {
     expect(mocks.tx.agentMessage.create).toHaveBeenLastCalledWith({
       data: expect.objectContaining({
         content: expect.stringContaining("常用指令示例"),
+      }),
+    });
+    expect(mocks.tx.changeLog.create).not.toHaveBeenCalled();
+  });
+
+  it("replies with read-only recent project changes from a Chinese agent command", async () => {
+    mocks.tx.changeLog.findMany.mockResolvedValue([
+      {
+        id: "change-1",
+        action: "agent_plan_item_created",
+        summary: "新增内容计划：第2周 · TikTok · 开箱短视频",
+        createdAt: new Date("2026-07-22T08:30:00.000Z"),
+        actor: {
+          name: "演示用户",
+        },
+      },
+      {
+        id: "change-2",
+        action: "agent_metrics_snapshot_created",
+        summary: "录入指标：2026-07 第3周 · TikTok",
+        createdAt: new Date("2026-07-22T08:00:00.000Z"),
+        actor: null,
+      },
+    ]);
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "最近这个项目改了什么？",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        status: "APPLIED",
+        summary: "总结当前项目最近变更",
+      }),
+    });
+    expect(mocks.tx.agentMessage.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        role: "ASSISTANT",
+        content: expect.stringContaining("当前项目最近 2 条变更"),
+      }),
+    });
+    expect(mocks.tx.agentMessage.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        content: expect.stringContaining("新增内容计划"),
       }),
     });
     expect(mocks.tx.changeLog.create).not.toHaveBeenCalled();
