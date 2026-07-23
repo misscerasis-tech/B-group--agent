@@ -63,6 +63,13 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "summarize_workspace";
+      value: {
+        scope: "current_workspace";
+      };
+      label: string;
+    }
+  | {
       type: "recommend_strategy";
       value: {
         basis: "product_facts";
@@ -634,7 +641,11 @@ function extractProjectSwitchKeyword(text: string) {
 }
 
 function parseProjectSummaryOperation(text: string): ParsedAgentOperation | null {
-  if (!/(项目|进展|状态|风险|下一步|今天|工作台)/.test(text)) {
+  if (/(今日工作台|工作简报|全局简报|Workspace|workspace|所有项目|全部项目|整个团队)/.test(text)) {
+    return null;
+  }
+
+  if (!/(项目|进展|状态|风险|下一步|当前|这个|工作台)/.test(text)) {
     return null;
   }
 
@@ -648,6 +659,29 @@ function parseProjectSummaryOperation(text: string): ParsedAgentOperation | null
       scope: "current_project",
     },
     label: "总结当前项目状态和下一步",
+  };
+}
+
+function parseWorkspaceSummaryOperation(text: string): ParsedAgentOperation | null {
+  const hasWorkspaceScope =
+    /(今日工作台|工作简报|全局简报|Workspace|workspace|所有项目|全部项目|整个团队)/.test(text);
+  const hasTodayActionQuestion =
+    /(今天|今日|本周).*(做什么|待办|重点|优先|安排|推进|处理)/.test(text);
+
+  if (!hasWorkspaceScope && !hasTodayActionQuestion) {
+    return null;
+  }
+
+  if (!hasWorkspaceScope && /(这个项目|当前项目|项目现在|项目怎么样)/.test(text)) {
+    return null;
+  }
+
+  return {
+    type: "summarize_workspace",
+    value: {
+      scope: "current_workspace",
+    },
+    label: "生成 Workspace 今日工作简报",
   };
 }
 
@@ -2558,6 +2592,12 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
 
     if (projectSummaryOperation) {
       operations.push(projectSummaryOperation);
+    } else {
+      const workspaceSummaryOperation = parseWorkspaceSummaryOperation(text);
+
+      if (workspaceSummaryOperation) {
+        operations.push(workspaceSummaryOperation);
+      }
     }
   }
 
@@ -2591,6 +2631,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "kickoff_project" ||
       operation.type === "switch_project" ||
       operation.type === "summarize_project" ||
+      operation.type === "summarize_workspace" ||
       operation.type === "recommend_strategy" ||
       operation.type === "confirm_project_strategy" ||
       operation.type === "create_content_package" ||

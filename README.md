@@ -94,6 +94,7 @@ AI 内容增长 Agent 是一个独立 Web 系统，面向新品品牌和多产�
 - `/b-agent` 在已有项目时也能用中文 Brief 继续启动新项目，创建后自动切换到新项目工作台。
 - `/b-agent` 左侧中文指令可识别“切换到某项目工作台”，只在当前 Workspace 内匹配项目并跳转，未命中时不会误改业务数据。
 - `/b-agent` 左侧中文指令可识别“看看当前项目怎么样/下一步做什么”，生成只读项目简报，汇总就绪度、策略、近期计划、素材包和开放提醒。
+- `/b-agent` 左侧中文指令可识别“今天我该优先做什么”，生成只读 Workspace 今日工作简报，汇总近期计划、素材包、提醒、渠道表现和下一步动作。
 - `/b-agent` 左侧中文指令可识别“确认当前策略为正式策略”，完整草案会被确认，缺少市场、渠道或内容方向时会失败并提示补齐。
 - `/b-agent` 左侧中文指令可识别“创建/启动新项目”，并在当前 Workspace 下创建 Project、Product、ProjectProduct、ProductFact、ProjectStrategy、AgentConversation、AgentOperation 和 ChangeLog。
 - `/b-agent` 左侧中文指令可给当前项目新增产品；系统会优先复用当前 Workspace 下同名产品，避免重复创建，并补充待确认产品事实。

@@ -26,6 +26,7 @@ import {
 } from "@/lib/data/project-health";
 import { buildContentPackageReadiness } from "@/lib/content-package-readiness";
 import { buildMetricsReminderCandidates } from "@/lib/data/content-workspace";
+import { buildDailyBrief } from "@/lib/data/daily-brief";
 import { inferProductFactsFromText } from "@/lib/product-facts/extractor";
 import { prisma } from "@/lib/prisma";
 import { buildStrategyRecommendation } from "@/lib/strategy/recommender";
@@ -841,6 +842,11 @@ export async function submitAgentCommand(input: {
             projectId: project.id,
           })
         : operationStatus === AgentOperationStatus.APPLIED &&
+            parsed.operations.some(isWorkspaceSummaryOperation)
+          ? await buildWorkspaceSummaryReply(tx, {
+              workspaceId: input.workspaceId,
+            })
+        : operationStatus === AgentOperationStatus.APPLIED &&
             parsed.operations.some(isStrategyConfirmationOperation)
           ? `已确认正式策略 v${updatedStrategy.version}。后续如果再调整市场、客群、渠道、内容方向或素材包频率，我会先做冲突检查并进入待确认。`
         : operationStatus === AgentOperationStatus.APPLIED && projectSwitchTarget
@@ -1153,6 +1159,105 @@ async function buildProjectSummaryReply(
     packageLine,
     reminderLine,
     nextActionLine,
+  ].join("\n");
+}
+
+async function buildWorkspaceSummaryReply(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+  },
+) {
+  const now = new Date();
+  const upcomingDueDate = new Date(now);
+  upcomingDueDate.setDate(upcomingDueDate.getDate() + 7);
+
+  const [workspace, generatedPackages, upcomingPlanItems, openReminders, recentMetrics] =
+    await Promise.all([
+      tx.workspace.findFirst({
+        where: {
+          id: input.workspaceId,
+          deletedAt: null,
+        },
+        select: {
+          name: true,
+        },
+      }),
+      tx.contentPackage.findMany({
+        where: scopedWhere(input.workspaceId, {
+          status: {
+            in: [
+              ContentPackageStatus.GENERATED,
+              ContentPackageStatus.REVIEW_NEEDED,
+              ContentPackageStatus.APPROVED,
+            ],
+          },
+        }) as Prisma.ContentPackageWhereInput,
+        include: {
+          project: true,
+        },
+        orderBy: {
+          updatedAt: "desc",
+        },
+        take: 3,
+      }),
+      tx.contentPlanItem.findMany({
+        where: scopedWhere(input.workspaceId, {
+          dueDate: {
+            lte: upcomingDueDate,
+          },
+          status: {
+            not: PlanItemStatus.DONE,
+          },
+        }) as Prisma.ContentPlanItemWhereInput,
+        include: {
+          project: true,
+        },
+        orderBy: {
+          dueDate: "asc",
+        },
+        take: 5,
+      }),
+      tx.reminder.findMany({
+        where: scopedWhere(input.workspaceId, {
+          status: ReminderStatus.OPEN,
+        }) as Prisma.ReminderWhereInput,
+        include: {
+          project: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 5,
+      }),
+      tx.metricsSnapshot.findMany({
+        where: scopedWhere(input.workspaceId) as Prisma.MetricsSnapshotWhereInput,
+        include: {
+          project: true,
+        },
+        orderBy: {
+          capturedAt: "desc",
+        },
+        take: 5,
+      }),
+    ]);
+  const brief = buildDailyBrief(
+    {
+      workspaceName: workspace?.name ?? "当前 Workspace",
+      generatedPackages,
+      upcomingPlanItems,
+      openReminders,
+      recentMetrics,
+    },
+    now,
+  );
+
+  return [
+    `${brief.title}`,
+    brief.summary,
+    `重点：${brief.highlights.join("；")}`,
+    `风险：${brief.risks.join("；")}`,
+    `下一步：${brief.nextActions.join("；")}`,
   ].join("\n");
 }
 
@@ -5661,6 +5766,12 @@ function isProjectSummaryOperation(
   operation: ParsedAgentOperation,
 ): operation is Extract<ParsedAgentOperation, { type: "summarize_project" }> {
   return operation.type === "summarize_project";
+}
+
+function isWorkspaceSummaryOperation(
+  operation: ParsedAgentOperation,
+): operation is Extract<ParsedAgentOperation, { type: "summarize_workspace" }> {
+  return operation.type === "summarize_workspace";
 }
 
 function isStrategyRecommendationOperation(operation: ParsedAgentOperation) {

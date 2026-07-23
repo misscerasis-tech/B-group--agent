@@ -53,6 +53,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "workspace_daily_brief",
+    category: "project",
+    title: "查看今日工作简报",
+    example: "今天我该优先做什么？",
+    writesTo: ["AgentConversation", "AgentOperation"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "strategy_channels",
     category: "strategy",
     title: "新增或删除渠道",

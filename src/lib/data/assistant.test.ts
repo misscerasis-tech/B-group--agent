@@ -3,6 +3,9 @@ import { generateStarterPlan, submitAgentCommand } from "./assistant";
 
 const mocks = vi.hoisted(() => {
   const tx = {
+    workspace: {
+      findFirst: vi.fn(),
+    },
     projectStrategy: {
       findFirst: vi.fn(),
       create: vi.fn(),
@@ -189,6 +192,9 @@ describe("generateStarterPlan", () => {
       count: 3,
     });
     mocks.tx.project.findMany.mockResolvedValue([]);
+    mocks.tx.workspace.findFirst.mockResolvedValue({
+      name: "B组演示 Workspace",
+    });
     mocks.tx.metricsSnapshot.create.mockImplementation(({ data }) =>
       Promise.resolve({
         id: "metric-1",
@@ -692,6 +698,89 @@ describe("generateStarterPlan", () => {
     expect(mocks.tx.agentMessage.create).toHaveBeenLastCalledWith({
       data: expect.objectContaining({
         content: expect.stringContaining("首月第一份素材包"),
+      }),
+    });
+    expect(mocks.tx.changeLog.create).not.toHaveBeenCalled();
+  });
+
+  it("replies with a read-only workspace daily brief from a Chinese agent command", async () => {
+    mocks.tx.contentPackage.findMany.mockResolvedValue([
+      {
+        id: "package-1",
+        name: "7月蒙古首月素材包",
+        period: "2026-07",
+        frequency: "WEEKLY",
+        status: "REVIEW_NEEDED",
+        project: {
+          name: "蒙古新品增长",
+        },
+      },
+    ]);
+    mocks.tx.contentPlanItem.findMany.mockResolvedValue([
+      {
+        id: "plan-1",
+        title: "TikTok 开箱短视频",
+        channel: "TikTok",
+        theme: "新品认知",
+        deliverable: "脚本+配文",
+        dueDate: new Date("2026-07-25T00:00:00.000Z"),
+        project: {
+          name: "蒙古新品增长",
+        },
+      },
+    ]);
+    mocks.tx.reminder.findMany.mockResolvedValue([
+      {
+        id: "reminder-1",
+        title: "抽奖规则需要提前确认",
+        severity: "CRITICAL",
+        dueAt: new Date("2026-07-24T00:00:00.000Z"),
+        project: {
+          name: "蒙古新品增长",
+        },
+      },
+    ]);
+    mocks.tx.metricsSnapshot.findMany.mockResolvedValue([
+      {
+        id: "metric-1",
+        period: "2026-W29",
+        channel: "Facebook",
+        impressions: 4000,
+        clicks: 12,
+        conversions: 0,
+        spendCents: 12000,
+        project: {
+          name: "蒙古新品增长",
+        },
+      },
+    ]);
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "今天我该优先做什么？",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        status: "APPLIED",
+        summary: "生成 Workspace 今日工作简报",
+      }),
+    });
+    expect(mocks.tx.agentMessage.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        role: "ASSISTANT",
+        content: expect.stringContaining("Agent 工作简报"),
+      }),
+    });
+    expect(mocks.tx.agentMessage.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        content: expect.stringContaining("抽奖规则需要提前确认"),
       }),
     });
     expect(mocks.tx.changeLog.create).not.toHaveBeenCalled();

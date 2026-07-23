@@ -729,6 +729,36 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts read-only workspace daily brief requests", () => {
+    const parsed = parseAgentCommand("今天我该优先做什么？");
+
+    expect(parsed.operations).toEqual([
+      {
+        type: "summarize_workspace",
+        value: {
+          scope: "current_workspace",
+        },
+        label: "生成 Workspace 今日工作简报",
+      },
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
+  it("keeps explicit project summary requests scoped to the current project", () => {
+    const parsed = parseAgentCommand("这个项目今天该做什么？");
+
+    expect(parsed.operations).toEqual([
+      {
+        type: "summarize_project",
+        value: {
+          scope: "current_project",
+        },
+        label: "总结当前项目状态和下一步",
+      },
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("returns a low-confidence summary when no safe operation is detected", () => {
     const parsed = parseAgentCommand("帮我写一句很燃的口号");
 

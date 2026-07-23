@@ -153,6 +153,7 @@ V1 目标素材包：
 - `/b-agent` 在已有项目时也支持用中文 Brief 创建新项目，便于连续管理多个市场或 Campaign 项目。
 - `/b-agent` 支持用中文切换当前项目，例如“切换到蒙古项目工作台”，匹配范围限制在当前 Workspace，找不到目标时不改业务数据。
 - `/b-agent` 支持用中文生成只读项目简报，例如“帮我看看这个项目现在怎么样”，汇总项目就绪度、策略、近期计划、最新素材包、开放提醒和建议动作。
+- `/b-agent` 支持用中文生成只读 Workspace 今日工作简报，例如“今天我该优先做什么”，复用今日工作台的计划、素材包、提醒和渠道表现判断。
 - `/b-agent` 左侧中文指令可识别“创建/启动新项目”，并真实写入 Project、Product、ProjectProduct、ProductFact、ProjectStrategy、AgentConversation、AgentOperation 和 ChangeLog。
 - `/b-agent` 左侧中文指令可给当前项目新增并关联产品；服务端会先在当前 Workspace 查找同名产品，避免重复创建。
 - `/b-agent` 支持提交中文指令、确认正式策略、确认应用变更、修改项目状态、创建提醒、通过按钮或中文指令生成首月计划，并导出项目快照。
