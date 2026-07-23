@@ -758,6 +758,21 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts read-only agent capability summary requests", () => {
+    const parsed = parseAgentCommand("你能做什么？给我一些指令示例。");
+
+    expect(parsed.operations).toEqual([
+      {
+        type: "summarize_agent_capabilities",
+        value: {
+          scope: "b_agent",
+        },
+        label: "查看 B 组 Agent 能力和指令示例",
+      },
+    ]);
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("keeps explicit project summary requests scoped to the current project", () => {
     const parsed = parseAgentCommand("这个项目今天该做什么？");
 

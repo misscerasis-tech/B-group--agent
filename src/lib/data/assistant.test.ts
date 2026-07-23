@@ -786,6 +786,38 @@ describe("generateStarterPlan", () => {
     expect(mocks.tx.changeLog.create).not.toHaveBeenCalled();
   });
 
+  it("replies with read-only agent capability examples from a Chinese agent command", async () => {
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "你能做什么？给我一些指令示例。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.agentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        status: "APPLIED",
+        summary: "查看 B 组 Agent 能力和指令示例",
+      }),
+    });
+    expect(mocks.tx.agentMessage.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        role: "ASSISTANT",
+        content: expect.stringContaining("可执行能力"),
+      }),
+    });
+    expect(mocks.tx.agentMessage.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({
+        content: expect.stringContaining("常用指令示例"),
+      }),
+    });
+    expect(mocks.tx.changeLog.create).not.toHaveBeenCalled();
+  });
+
   it("confirms a complete draft strategy from a Chinese agent command", async () => {
     mocks.tx.projectStrategy.findFirst.mockResolvedValue({
       id: "strategy-draft",

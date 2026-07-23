@@ -18,6 +18,7 @@ import {
   StrategyStatus,
 } from "@prisma/client";
 import type { ParsedAgentOperation } from "@/lib/agent/command-parser";
+import { agentCommandCapabilities } from "@/lib/agent/capabilities";
 import { getConfiguredAgentTextProvider } from "@/lib/agent/provider";
 import {
   buildProjectHealthReminderDrafts,
@@ -857,6 +858,9 @@ export async function submitAgentCommand(input: {
               workspaceId: input.workspaceId,
             })
         : operationStatus === AgentOperationStatus.APPLIED &&
+            parsed.operations.some(isAgentCapabilitiesSummaryOperation)
+          ? buildAgentCapabilitiesReply()
+        : operationStatus === AgentOperationStatus.APPLIED &&
             parsed.operations.some(isStrategyConfirmationOperation)
           ? `已确认正式策略 v${updatedStrategy.version}。后续如果再调整市场、客群、渠道、内容方向或素材包频率，我会先做冲突检查并进入待确认。`
         : operationStatus === AgentOperationStatus.APPLIED && projectSwitchTarget
@@ -1268,6 +1272,42 @@ async function buildWorkspaceSummaryReply(
     `重点：${brief.highlights.join("；")}`,
     `风险：${brief.risks.join("；")}`,
     `下一步：${brief.nextActions.join("；")}`,
+  ].join("\n");
+}
+
+function buildAgentCapabilitiesReply() {
+  const categoryLabels: Record<string, string> = {
+    project: "项目与 Workspace",
+    strategy: "策略与确认",
+    product_brain: "产品大脑",
+    planning: "内容计划",
+    content_package: "素材包",
+    review: "审核",
+    reminder: "提醒",
+    recap: "数据复盘",
+  };
+  const groupedCapabilities = agentCommandCapabilities.reduce(
+    (groups, capability) => {
+      const group = groups.get(capability.category) ?? [];
+      group.push(capability.title);
+      groups.set(capability.category, group);
+      return groups;
+    },
+    new Map<string, string[]>(),
+  );
+  const capabilityLines = Array.from(groupedCapabilities.entries()).map(
+    ([category, titles]) => `${categoryLabels[category] ?? category}：${titles.slice(0, 5).join("、")}`,
+  );
+  const examples = agentCommandCapabilities.slice(0, 8).map((capability, index) => {
+    const firstLine = capability.example.split(/\r?\n/)[0];
+    return `${index + 1}. ${firstLine}`;
+  });
+
+  return [
+    `我现在能把中文指令转成真实工作台操作，共有 ${agentCommandCapabilities.length} 类可执行能力。`,
+    ...capabilityLines,
+    `常用指令示例：${examples.join("；")}`,
+    "当前版本使用本地规则型 Provider，不调用真实 GPT，也不会连接飞书；会写库的操作都会记录 AgentOperation 和 ChangeLog。",
   ].join("\n");
 }
 
@@ -5862,6 +5902,12 @@ function isWorkspaceSummaryOperation(
   operation: ParsedAgentOperation,
 ): operation is Extract<ParsedAgentOperation, { type: "summarize_workspace" }> {
   return operation.type === "summarize_workspace";
+}
+
+function isAgentCapabilitiesSummaryOperation(
+  operation: ParsedAgentOperation,
+): operation is Extract<ParsedAgentOperation, { type: "summarize_agent_capabilities" }> {
+  return operation.type === "summarize_agent_capabilities";
 }
 
 function isStrategyRecommendationOperation(operation: ParsedAgentOperation) {

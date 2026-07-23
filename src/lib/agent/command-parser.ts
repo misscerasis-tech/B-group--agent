@@ -70,6 +70,13 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "summarize_agent_capabilities";
+      value: {
+        scope: "b_agent";
+      };
+      label: string;
+    }
+  | {
       type: "recommend_strategy";
       value: {
         basis: "product_facts";
@@ -690,6 +697,20 @@ function parseWorkspaceSummaryOperation(text: string): ParsedAgentOperation | nu
       scope: "current_workspace",
     },
     label: "生成 Workspace 今日工作简报",
+  };
+}
+
+function parseAgentCapabilitiesSummaryOperation(text: string): ParsedAgentOperation | null {
+  if (!/(你能做什么|可以做什么|有哪些能力|能力清单|指令示例|怎么用|使用帮助|帮助)/.test(text)) {
+    return null;
+  }
+
+  return {
+    type: "summarize_agent_capabilities",
+    value: {
+      scope: "b_agent",
+    },
+    label: "查看 B 组 Agent 能力和指令示例",
   };
 }
 
@@ -2629,6 +2650,12 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
 
       if (workspaceSummaryOperation) {
         operations.push(workspaceSummaryOperation);
+      } else {
+        const capabilitiesSummaryOperation = parseAgentCapabilitiesSummaryOperation(text);
+
+        if (capabilitiesSummaryOperation) {
+          operations.push(capabilitiesSummaryOperation);
+        }
       }
     }
   }
@@ -2664,6 +2691,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "switch_project" ||
       operation.type === "summarize_project" ||
       operation.type === "summarize_workspace" ||
+      operation.type === "summarize_agent_capabilities" ||
       operation.type === "recommend_strategy" ||
       operation.type === "confirm_project_strategy" ||
       operation.type === "create_content_package" ||
