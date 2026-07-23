@@ -26,10 +26,12 @@
 - B 组 Agent 支持从对话中粘贴的中文产品资料批量提取产品事实，并写入当前项目关联产品；新事实进入需复核状态，已确认事实不会被静默覆盖。
 - B 组 Agent 支持通过中文指令确认当前项目关联产品的草稿/待复核事实，并写入变更日志。
 - B 组 Agent 支持基于当前项目产品事实生成策略推荐草案；已有正式策略时创建新的草案版本，不覆盖已确认版本。
-- B 组 Agent 支持用中文录入渠道表现指标，并写入数据复盘和变更日志。
-- B 组 Agent 支持用中文新增内容日历计划项，并写入变更日志。
+- B 组 Agent 支持用中文录入单条渠道表现指标，也支持粘贴 CSV 或表格文本批量导入多条指标，并写入数据复盘和变更日志。
+- B 组 Agent 支持用中文新增单条内容日历计划项，也支持粘贴 CSV 或表格文本批量导入多条计划项，并写入内容日历和变更日志。
 - B 组 Agent 支持用中文完成项目提醒和内容日历计划项；如果当前项目内找不到匹配的开放提醒或未完成计划，会失败并避免误写入。
+- B 组 Agent 支持通过中文指令生成只读项目简报、Workspace 今日工作简报和能力/指令示例说明；这些只读指令只写 Agent 对话/操作记录，不修改业务数据。
 - B 组 Agent 支持把项目体检缺口生成当前项目提醒，复用项目就绪度算法并避免重复开放提醒。
+- B 组 Agent 支持把当前项目未来 7 天内即将截止的内容计划生成提醒，并保留原计划截止日期。
 - B 组 Agent 支持用中文创建指定周期素材包结构，并自动补齐 V1 默认 11 项文件清单。
 - B 组 Agent 支持把素材包可交付性阻塞项生成当前项目提醒，帮助补齐文件生成、真实产品图和官方 Logo。
 - B 组 Agent 支持在用户明确确认后批量推进素材包文件项状态，并同步素材包整体状态；该能力只记录状态，不伪造真实外部素材。
@@ -70,12 +72,13 @@ npx pnpm@10.13.1 run lint
 npx pnpm@10.13.1 run test
 npx pnpm@10.13.1 run typecheck
 DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public" npx pnpm@10.13.1 run build
+npx pnpm@10.13.1 exec prisma validate
 ```
 
 最近一次测试结果：
 
-- Test Files：`25 passed`
-- Tests：`88 passed`
+- Test Files：`28 passed`
+- Tests：`164 passed`
 - Build：通过，包含 `/setup`、`/api/health`、`/b-agent`、`/workspace/export`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
 
 ## 仍需人工完成
