@@ -30,6 +30,7 @@
 - B 组 Agent 支持用中文新增单条内容日历计划项，也支持粘贴 CSV 或表格文本批量导入多条计划项，并写入内容日历和变更日志。
 - B 组 Agent 支持用中文完成项目提醒和内容日历计划项；如果当前项目内找不到匹配的开放提醒或未完成计划，会失败并避免误写入。
 - B 组 Agent 支持通过中文指令生成只读项目简报、Workspace 今日工作简报和能力/指令示例说明；这些只读指令只写 Agent 对话/操作记录，不修改业务数据。
+- B 组 Agent 支持通过中文指令查看当前项目最近变更日志摘要，便于复盘本轮操作。
 - B 组 Agent 支持把项目体检缺口生成当前项目提醒，复用项目就绪度算法并避免重复开放提醒。
 - B 组 Agent 支持把当前项目未来 7 天内即将截止的内容计划生成提醒，并保留原计划截止日期。
 - B 组 Agent 支持用中文创建指定周期素材包结构，并自动补齐 V1 默认 11 项文件清单。
@@ -78,7 +79,7 @@ npx pnpm@10.13.1 exec prisma validate
 最近一次测试结果：
 
 - Test Files：`28 passed`
-- Tests：`164 passed`
+- Tests：`166 passed`
 - Build：通过，包含 `/setup`、`/api/health`、`/b-agent`、`/workspace/export`、`/projects/[id]/export`、`/packages/[id]/export`、`/recaps/export`
 
 ## 仍需人工完成
