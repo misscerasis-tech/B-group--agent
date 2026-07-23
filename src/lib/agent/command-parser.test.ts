@@ -474,6 +474,20 @@ describe("parseAgentCommand", () => {
     expect(parsed.confidence).toBe("high");
   });
 
+  it("extracts due content plan reminder requests", () => {
+    const parsed = parseAgentCommand("把未来 7 天要截止的内容计划生成提醒。");
+
+    expect(parsed.operations).toContainEqual({
+      type: "create_due_plan_item_reminders",
+      value: {
+        days: 7,
+        limit: 5,
+      },
+      label: "根据近期截止内容计划生成提醒",
+    });
+    expect(parsed.confidence).toBe("high");
+  });
+
   it("extracts content package creation requests for a specific period", () => {
     const parsed = parseAgentCommand("为 2026-08 第1周创建 TikTok 素材包。");
 

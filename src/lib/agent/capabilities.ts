@@ -256,6 +256,14 @@ export const agentCommandCapabilities: AgentCommandCapability[] = [
     requiresExplicitHumanReview: false,
   },
   {
+    key: "plan_item_due_reminders",
+    category: "planning",
+    title: "将近期截止计划生成提醒",
+    example: "把未来 7 天要截止的内容计划生成提醒。",
+    writesTo: ["ContentPlanItem", "Reminder", "AgentOperation", "ChangeLog"],
+    requiresExplicitHumanReview: false,
+  },
+  {
     key: "content_package_create",
     category: "content_package",
     title: "创建素材包结构",

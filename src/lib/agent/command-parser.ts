@@ -254,6 +254,14 @@ export type ParsedAgentOperation =
       label: string;
     }
   | {
+      type: "create_due_plan_item_reminders";
+      value: {
+        days: number;
+        limit: number;
+      };
+      label: string;
+    }
+  | {
       type: "create_content_package";
       value: {
         name: string;
@@ -1875,6 +1883,25 @@ function parseCalendarGapReminderOperation(text: string): ParsedAgentOperation |
   };
 }
 
+function parseDuePlanItemReminderOperation(text: string): ParsedAgentOperation | null {
+  if (
+    !/(内容日历|内容计划|排期|计划|交付物)/.test(text) ||
+    !/(截止|到期|本周|未来\s*7\s*天|未来七天|近期)/.test(text) ||
+    !/(生成|创建|加入|转成|变成).*(提醒|待办)/.test(text)
+  ) {
+    return null;
+  }
+
+  return {
+    type: "create_due_plan_item_reminders",
+    value: {
+      days: 7,
+      limit: 5,
+    },
+    label: "根据近期截止内容计划生成提醒",
+  };
+}
+
 function parseCompletePlanItemOperation(text: string): ParsedAgentOperation | null {
   if (
     !/(计划|内容|视频|图文|脚本|海报|帖子|贴文)/.test(text) ||
@@ -2534,6 +2561,11 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
     operations.push(calendarGapReminderOperation);
   }
 
+  const duePlanItemReminderOperation = parseDuePlanItemReminderOperation(text);
+  if (duePlanItemReminderOperation) {
+    operations.push(duePlanItemReminderOperation);
+  }
+
   const planItemDueDateUpdateOperation = parsePlanItemDueDateUpdateOperation(text);
   if (planItemDueDateUpdateOperation) {
     operations.push(planItemDueDateUpdateOperation);
@@ -2646,6 +2678,7 @@ export function parseAgentCommand(rawText: string): ParsedAgentCommand {
       operation.type === "create_metrics_risk_reminders" ||
       operation.type === "create_calendar_gap_reminders" ||
       operation.type === "import_plan_items" ||
+      operation.type === "create_due_plan_item_reminders" ||
       operation.type === "create_missing_review_tasks",
   );
 

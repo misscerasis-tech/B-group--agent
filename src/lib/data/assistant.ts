@@ -512,6 +512,9 @@ export async function submitAgentCommand(input: {
       const calendarGapReminderOperations = parsed.operations.filter(
         isCalendarGapReminderOperation,
       );
+      const duePlanItemReminderOperations = parsed.operations.filter(
+        isDuePlanItemReminderOperation,
+      );
       const contentPackageOperations = parsed.operations.filter(isContentPackageOperation);
       const contentPackageStatusOperations = parsed.operations.filter(
         isContentPackageStatusOperation,
@@ -723,6 +726,13 @@ export async function submitAgentCommand(input: {
         projectId: project.id,
         strategy: updatedStrategy,
         operations: calendarGapReminderOperations,
+      });
+
+      await applyDuePlanItemReminderOperations(tx, {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        projectId: project.id,
+        operations: duePlanItemReminderOperations,
       });
 
       await applyContentPackageOperations(tx, {
@@ -1304,6 +1314,7 @@ export async function applyPendingAgentOperation(input: {
     const planItemDueDateOperations = parsedOperations.filter(isPlanItemDueDateOperation);
     const planItemStatusOperations = parsedOperations.filter(isPlanItemStatusOperation);
     const calendarGapReminderOperations = parsedOperations.filter(isCalendarGapReminderOperation);
+    const duePlanItemReminderOperations = parsedOperations.filter(isDuePlanItemReminderOperation);
     const contentPackageOperations = parsedOperations.filter(isContentPackageOperation);
     const contentPackageStatusOperations = parsedOperations.filter(
       isContentPackageStatusOperation,
@@ -1556,6 +1567,13 @@ export async function applyPendingAgentOperation(input: {
       operations: calendarGapReminderOperations,
     });
 
+    await applyDuePlanItemReminderOperations(tx, {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      projectId: operation.projectId,
+      operations: duePlanItemReminderOperations,
+    });
+
     await applyContentPackageOperations(tx, {
       workspaceId: input.workspaceId,
       userId: input.userId,
@@ -1694,6 +1712,7 @@ export async function applyPendingAgentOperation(input: {
         planItemDueDateChanged: planItemDueDateOperations.length > 0,
         planItemStatusChanged: planItemStatusOperations.length > 0,
         calendarGapReminderChanged: calendarGapReminderOperations.length > 0,
+        duePlanItemReminderChanged: duePlanItemReminderOperations.length > 0,
         contentPackageChanged: contentPackageOperations.length > 0,
         contentPackageStatusChanged: contentPackageStatusOperations.length > 0,
         packageReadinessReminderChanged: packageReadinessReminderOperations.length > 0,
@@ -3475,6 +3494,7 @@ async function createReminderIfMissing(
     title: string;
     description: string;
     severity: ReminderSeverity;
+    dueAt?: Date | null;
   },
 ) {
   const existingReminder = await tx.reminder.findFirst({
@@ -3497,6 +3517,7 @@ async function createReminderIfMissing(
       title: data.title,
       description: data.description,
       severity: data.severity,
+      dueAt: data.dueAt ?? null,
       status: ReminderStatus.OPEN,
     },
   });
@@ -3802,6 +3823,75 @@ async function applyCalendarGapReminderOperations(
           activePlanItems: planItems.length,
           gapCandidates: reminderDrafts.length,
           createdCount,
+        },
+        actorUserId: input.userId,
+      },
+    });
+  }
+}
+
+async function applyDuePlanItemReminderOperations(
+  tx: Prisma.TransactionClient,
+  input: {
+    workspaceId: string;
+    userId: string;
+    projectId: string;
+    operations: ParsedAgentOperation[];
+  },
+) {
+  for (const operation of input.operations) {
+    if (operation.type !== "create_due_plan_item_reminders") {
+      continue;
+    }
+
+    const dueBefore = new Date();
+    dueBefore.setDate(dueBefore.getDate() + operation.value.days);
+    const planItems = await tx.contentPlanItem.findMany({
+      where: scopedWhere(input.workspaceId, {
+        projectId: input.projectId,
+        status: {
+          not: PlanItemStatus.DONE,
+        },
+        dueDate: {
+          not: null,
+          lte: dueBefore,
+        },
+      }) as Prisma.ContentPlanItemWhereInput,
+      orderBy: [
+        {
+          dueDate: "asc",
+        },
+        {
+          week: "asc",
+        },
+      ],
+      take: operation.value.limit,
+    });
+    let createdCount = 0;
+
+    for (const planItem of planItems) {
+      createdCount += await createReminderIfMissing(tx, {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        title: `内容计划即将截止：第${planItem.week}周 ${planItem.channel} ${planItem.title}`,
+        description: `${planItem.title} 的交付物为「${planItem.deliverable}」，建议在截止日前确认素材、文案和审核状态。`,
+        severity: ReminderSeverity.WARNING,
+        dueAt: planItem.dueDate,
+      });
+    }
+
+    await tx.changeLog.create({
+      data: {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        entityType: "ContentPlanItem",
+        entityId: input.projectId,
+        action: "agent_due_plan_item_reminders_generated",
+        summary: `${operation.label}：新增 ${createdCount} 条。`,
+        after: {
+          inspectedPlanItems: planItems.length,
+          createdCount,
+          days: operation.value.days,
         },
         actorUserId: input.userId,
       },
@@ -5846,6 +5936,10 @@ function isCalendarGapReminderOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_calendar_gap_reminders";
 }
 
+function isDuePlanItemReminderOperation(operation: ParsedAgentOperation) {
+  return operation.type === "create_due_plan_item_reminders";
+}
+
 function isContentPackageOperation(operation: ParsedAgentOperation) {
   return operation.type === "create_content_package";
 }
@@ -6154,6 +6248,15 @@ function parseStoredOperations(value: Prisma.JsonValue): ParsedAgentOperation[] 
       continue;
     }
 
+    if (type === "create_due_plan_item_reminders" && isDuePlanItemReminderValue(value)) {
+      operations.push({
+        type,
+        value,
+        label: label || "根据近期截止内容计划生成提醒",
+      });
+      continue;
+    }
+
     if (
       type === "create_content_package_readiness_reminders" &&
       isPackageReadinessReminderValue(value)
@@ -6396,6 +6499,26 @@ function isCalendarGapReminderValue(value: unknown): value is Extract<
   const record = value as Record<string, unknown>;
 
   return Number.isInteger(record.limit) && Number(record.limit) >= 1 && Number(record.limit) <= 8;
+}
+
+function isDuePlanItemReminderValue(value: unknown): value is Extract<
+  ParsedAgentOperation,
+  { type: "create_due_plan_item_reminders" }
+>["value"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    Number.isInteger(record.days) &&
+    Number(record.days) >= 1 &&
+    Number(record.days) <= 30 &&
+    Number.isInteger(record.limit) &&
+    Number(record.limit) >= 1 &&
+    Number(record.limit) <= 10
+  );
 }
 
 function isPackageReadinessReminderValue(value: unknown): value is Extract<
@@ -6854,6 +6977,7 @@ function buildConfirmedAssistantReply(input: {
   planItemDueDateChanged: boolean;
   planItemStatusChanged: boolean;
   calendarGapReminderChanged: boolean;
+  duePlanItemReminderChanged: boolean;
   contentPackageChanged: boolean;
   contentPackageStatusChanged: boolean;
   packageReadinessReminderChanged: boolean;
@@ -6973,6 +7097,10 @@ function buildConfirmedAssistantReply(input: {
 
   if (input.calendarGapReminderChanged) {
     return `已按你的确认生成内容日历缺口提醒${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
+  }
+
+  if (input.duePlanItemReminderChanged) {
+    return `已按你的确认生成近期截止内容计划提醒${contentPackageText}${packageReadinessReminderText}${packageFilesStatusText}${packageReviewText}${packageReviewDecisionText}${reviewTaskDecisionText}${missingReviewTaskText}${completedReminderText}${completedPlanItemText}：${input.operationSummary}`;
   }
 
   if (input.contentPackageChanged) {

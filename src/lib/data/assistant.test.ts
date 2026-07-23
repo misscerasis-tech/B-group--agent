@@ -1175,6 +1175,56 @@ describe("generateStarterPlan", () => {
     });
   });
 
+  it("creates reminders from due content plan items", async () => {
+    const dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    mocks.tx.contentPlanItem.findMany.mockResolvedValue([
+      {
+        id: "plan-due-soon",
+        week: 2,
+        channel: "TikTok",
+        title: "开箱短视频",
+        deliverable: "脚本+配文",
+        dueDate,
+      },
+    ]);
+    mocks.tx.reminder.findFirst.mockResolvedValue(null);
+    mocks.tx.reminder.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: `reminder-${data.title}`,
+        ...data,
+      }),
+    );
+
+    const result = await submitAgentCommand({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      projectId: "project-1",
+      text: "把未来 7 天要截止的内容计划生成提醒。",
+    });
+
+    expect(result.status).toBe("APPLIED");
+    expect(mocks.tx.reminder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        title: "内容计划即将截止：第2周 TikTok 开箱短视频",
+        severity: "WARNING",
+        status: "OPEN",
+        dueAt: dueDate,
+      }),
+    });
+    expect(mocks.tx.changeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        entityType: "ContentPlanItem",
+        action: "agent_due_plan_item_reminders_generated",
+        summary: "根据近期截止内容计划生成提醒：新增 1 条。",
+        actorUserId: "user-1",
+      }),
+    });
+  });
+
   it("creates a product fact for the linked product from a Chinese agent command", async () => {
     mocks.tx.projectProduct.count.mockResolvedValue(1);
     mocks.tx.projectProduct.findFirst.mockResolvedValue({
