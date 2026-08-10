@@ -28,7 +28,6 @@ import { submitContentPackageForReviewAction } from "@/app/actions/package-actio
 import { kickoffProjectFromBriefAction } from "@/app/actions/project-actions";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { agentCommandCapabilities } from "@/lib/agent/capabilities";
 import { buildContentPackageReadiness } from "@/lib/content-package-readiness";
@@ -109,19 +108,7 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
   const { context, error } = await loadWorkspaceContextSafe();
 
   if (!context) {
-    return (
-      <AppShell activePath="/b-agent" context={null} contextError={error} returnTo="/b-agent">
-        <section className="page-header">
-          <div>
-            <h2>B组 Agent 工作台</h2>
-            <p className="muted">
-              当前页面已升级为数据库驱动。启动 PostgreSQL、运行 migration 和 seed 后即可保存真实项目数据。
-            </p>
-          </div>
-        </section>
-        <ErrorState message={error ?? "无法加载演示 Workspace。"} />
-      </AppShell>
-    );
+    return <OfflineBAgentWorkbench reason={error ?? "无法加载演示 Workspace。"} />;
   }
 
   try {
@@ -998,13 +985,219 @@ export default async function BAgentPage({ searchParams }: BAgentPageProps) {
     );
   } catch (assistantError) {
     return (
-      <AppShell activePath="/b-agent" context={context} contextError={error} returnTo="/b-agent">
-        <ErrorState
-          message={assistantError instanceof Error ? assistantError.message : "无法加载 B 组 Agent。"}
-        />
-      </AppShell>
+      <OfflineBAgentWorkbench
+        reason={assistantError instanceof Error ? assistantError.message : "无法加载 B 组 Agent。"}
+      />
     );
   }
+}
+
+function OfflineBAgentWorkbench({ reason }: { reason: string }) {
+  const demoFacts = [
+    ["产品名称", "Aurora Cup 智能保温杯"],
+    ["核心卖点", "600ml、不锈钢、24小时保温、适合通勤和户外"],
+    ["官方素材", "真实产品图和 Logo 必须走人工审核后进入素材库"],
+    ["限制条件", "不得用图片模型重绘产品结构或替换 Logo"],
+  ];
+  const demoPlan = [
+    ["第1周", "TikTok", "产品痛点短视频", "展示通勤场景与保温测试"],
+    ["第2周", "Instagram", "生活方式海报", "真实产品图 + 模板化节日背景"],
+    ["第3周", "Facebook", "互动抽奖内容", "提前准备奖品和活动规则"],
+    ["第4周", "TikTok", "用户评价复用", "沉淀评论问题并反哺产品事实"],
+  ];
+  const demoPackageFiles = [
+    "素材包说明 PDF",
+    "内容排期 XLSX",
+    "平台文案 DOCX",
+    "Hashtags TXT",
+    "TikTok 视频脚本 DOCX",
+    "发布配文 TXT",
+    "模板化海报图片",
+    "海报文案 DOCX",
+    "设计 Brief PDF",
+    "品牌与合规检查 PDF",
+    "最终 ZIP 打包下载",
+  ];
+
+  return (
+    <AppShell activePath="/b-agent" context={null} contextError="离线演示模式" returnTo="/b-agent">
+      <section className="page-header">
+        <div>
+          <p className="eyebrow">B组 · AI 内容增长 Agent</p>
+          <h2>离线可打开的中文工作台</h2>
+          <p className="muted">
+            本机 PostgreSQL 尚未连接，当前先展示完整工作链路；连接数据库后会自动切回可保存的真实工作台。
+          </p>
+        </div>
+      </section>
+
+      <div className="setup-warning">
+        数据库未就绪：{reason} 这不影响先验收 B 组入口、页面结构和业务链路。
+      </div>
+
+      <section className="agent-demo-shell working" aria-label="B组 Agent 离线工作台">
+        <aside className="conversation-pane">
+          <div className="pane-heading">
+            <MessageSquareText size={20} aria-hidden="true" />
+            <div>
+              <h3>AI 顾问对话</h3>
+              <p>当前是离线演示模式，真实保存需要 PostgreSQL。</p>
+            </div>
+          </div>
+
+          <div className="project-mini-card">
+            <strong>巴西新品首月内容增长</strong>
+            <StatusBadge label="演示项目" tone="warning" />
+            <p>目标是用中文自然语言把产品事实、渠道策略、内容计划和素材包交付串起来。</p>
+          </div>
+
+          <div className="chat-thread">
+            <div className="chat-bubble user">
+              <span>用户</span>
+              <p>这是一款 600ml 智能保温杯，主推巴西市场，新增 TikTok 和 Instagram。</p>
+            </div>
+            <div className="chat-bubble agent">
+              <span>B组 Agent</span>
+              <p>
+                已提取产品事实，并建议先聚焦 TikTok、Instagram 和 Facebook。LinkedIn
+                暂不作为首月重点渠道。
+              </p>
+            </div>
+            <div className="chat-bubble user">
+              <span>用户</span>
+              <p>下个月每周生成一次素材包，正式视觉只用真实产品图和官方 Logo。</p>
+            </div>
+            <div className="chat-bubble agent">
+              <span>B组 Agent</span>
+              <p>
+                已形成待确认策略：巴西市场、年轻通勤与户外客群、每周素材包节奏、模板化海报合成。
+              </p>
+            </div>
+          </div>
+
+          <div className="nl-command-box">
+            <PencilLine size={18} aria-hidden="true" />
+            <div>
+              <strong>可执行指令示例</strong>
+              <ul>
+                {agentCommandCapabilities.slice(0, 8).map((capability) => (
+                  <li key={capability.key}>{capability.example}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </aside>
+
+        <section className="workbench-pane">
+          <div className="pane-heading">
+            <Target size={20} aria-hidden="true" />
+            <div>
+              <h3>结构化项目工作台</h3>
+              <p>右侧展示 Agent 必须沉淀的数据对象，而不是只停留在聊天记录。</p>
+            </div>
+          </div>
+
+          <section className="workbench-grid">
+            <div className="workbench-section facts">
+              <div className="section-title-row">
+                <h3>1. 产品事实提取</h3>
+                <StatusBadge label="待人工确认" tone="warning" />
+              </div>
+              <dl className="fact-list">
+                {demoFacts.map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>
+                      {value}
+                      <small>来源：中文 Brief / 上传资料 · 待确认</small>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+
+            <div className="workbench-section strategy">
+              <div className="section-title-row">
+                <h3>2. 策略推荐</h3>
+                <StatusBadge label="草案" tone="warning" />
+              </div>
+              <div className="strategy-grid">
+                <StrategyField label="推荐市场" values={["巴西"]} />
+                <StrategyField label="核心客群" values={["年轻通勤人群", "户外轻运动人群"]} />
+                <StrategyField label="平台渠道" values={["TikTok", "Instagram", "Facebook"]} />
+                <StrategyField label="内容方向" values={["保温测试", "生活方式场景", "小抽奖互动"]} />
+              </div>
+              <div className="approval-line">
+                <CheckCircle2 size={18} aria-hidden="true" />
+                <p>人工确认后，这份策略会成为正式项目策略；后续中文指令若冲突，需要二次确认。</p>
+              </div>
+            </div>
+
+            <div className="workbench-section plan">
+              <div className="section-title-row">
+                <h3>3. 首月计划</h3>
+                <StatusBadge label="每周一次" tone="success" />
+              </div>
+              <div className="month-plan">
+                {demoPlan.map(([week, channel, title, deliverable]) => (
+                  <article className="plan-row" key={`${week}-${channel}`}>
+                    <CalendarDays size={18} aria-hidden="true" />
+                    <div>
+                      <strong>
+                        {week} · {title}
+                      </strong>
+                      <p>
+                        {channel} · {deliverable}
+                      </p>
+                      <small>待生成素材包内容</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div className="workbench-section package">
+              <div className="section-title-row">
+                <h3>4. 素材包预览</h3>
+                <StatusBadge label="结构完整" tone="success" />
+              </div>
+              <div className="package-summary">
+                <FileArchive size={20} aria-hidden="true" />
+                <div>
+                  <strong>巴西首月内容素材包</strong>
+                  <p>PDF / XLSX / DOCX / TXT / 图片 / ZIP 下载结构已预留。</p>
+                </div>
+              </div>
+              <div className="pack-grid">
+                {demoPackageFiles.map((file) => (
+                  <div className="pack-file" key={file}>
+                    <FileText size={18} aria-hidden="true" />
+                    <span>
+                      {file}
+                      <small>模板结构</small>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="workbench-section visual-policy">
+              <div className="section-title-row">
+                <h3>5. 图片与海报原则</h3>
+                <Layers size={18} aria-hidden="true" />
+              </div>
+              <ul className="clean-list">
+                <li>V1 使用真实产品图和官方 Logo 做模板化合成。</li>
+                <li>产品层和 Logo 层必须引用已审核 Asset，禁止 AI 静默替换。</li>
+                <li>AI 图片能力后续只用于背景、氛围、画布扩展和非产品装饰元素。</li>
+                <li>海报层级固定预留：背景层、产品层、文字层、Logo层、装饰层。</li>
+              </ul>
+            </div>
+          </section>
+        </section>
+      </section>
+    </AppShell>
+  );
 }
 
 function StrategyField({ label, values }: { label: string; values: string[] }) {
